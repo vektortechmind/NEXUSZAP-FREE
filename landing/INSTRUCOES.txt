@@ -1,0 +1,145 @@
+# NexusZAP Landing Page - Instruções
+
+## Como Alterar o Link do Botão de Compra
+
+### Botão "Começar agora" (Hero)
+
+1. Abra o arquivo:
+   `src/components/Hero.tsx`
+
+2. Localize o botão:
+   ```typescript
+   <Button size="lg" onClick={() => handleScroll("#preco")}>
+   ```
+
+3. Substitua por um link:
+   ```typescript
+   <a href="https://seu-link.com" target="_blank" rel="noopener noreferrer">
+     Começar agora
+   </a>
+   ```
+
+### Botão "Comprar Licença" (Preços)
+
+1. Abra o arquivo:
+   `src/components/PricingSection.tsx`
+
+2. Localize a função:
+   ```typescript
+   const handleCheckout = () => {
+     alert("Configure o link de compra em: src/components/PricingSection.tsx");
+   };
+   ```
+
+3. Substitua pelo seu link de checkout:
+   ```typescript
+   const handleCheckout = () => {
+     window.location.href = "https://seu-checkout.com/compra";
+   };
+   ```
+
+   **Exemplos de plataformas:**
+   - Hotmart: `https://pay.hotmart.com/SEU_CODIGO`
+   - Kiwify: `https://kiwify.com.br/SEU_CODIGO`
+   - PerfectPay: `https://checkout.perfectpay.com/SEU_CODIGO`
+   - Mercado Pago: Cole o link de cobrança/boleto
+   - WhatsApp: `https://wa.me/55XXXXXXXXXXX?text=Quero%20comprar`
+
+## Como Fazer Build
+
+1. Instale as dependências (se necessário):
+   ```bash
+   npm install
+   ```
+
+2. Gere o build:
+   ```bash
+   npm run build
+   ```
+
+3. Os arquivos estarão em:
+   ```
+   dist/
+   ```
+
+4. Copie o conteúdo da pasta `dist/` para seu servidor
+
+## Hospedagem
+
+### Netlify
+1. Arraste a pasta `dist/` para netlify.com/drop
+
+### Vercel
+1. Instale: `npm i -g vercel`
+2. Execute: `vercel --prod`
+3. Ou conecte ao GitHub
+
+### Hospedagem PHP/Apache
+1. Renomeie `dist/index.html` para `index.php`
+2. Faça upload de todos os arquivos
+3. Configure o .htaccess se necessário
+
+### GitHub Pages
+1. Faça upload da pasta `dist/` no repositório
+2. Ative GitHub Pages nas configurações
+
+## Personalização
+
+### Alterar Título
+1. Abra: `index.html`
+2. Edite a tag `<title>`
+
+### Alterar Descrição (SEO)
+Adicione no `<head>` do `index.html`:
+```html
+<meta name="description" content="Sua descrição aqui">
+```
+
+### Alterar Cores
+1. Edite o arquivo CSS
+2. Ou use variáveis Tailwind no código
+
+### Adicionar Google Analytics
+Adicione no `<head>` do `index.html`:
+```html
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXXXXXXXX"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-XXXXXXXXXX');
+</script>
+```
+
+## Atualizar Conteúdo
+
+### FAQ
+Arquivo: `src/components/FaqSection.tsx`
+
+### Funcionalidades
+Arquivo: `src/components/FeaturesGrid.tsx`
+
+### Preços
+Arquivo: `src/components/PricingSection.tsx`
+
+### Meta Description
+Arquivo: `index.html`
+
+## Erros Comuns
+
+### "npm command not found"
+Solução: Instale o Node.js em https://nodejs.org
+
+### "Module not found"
+Solução: Execute `npm install`
+
+### Build falha
+Solução: Verifique se não há erros de TypeScript
+```bash
+npm run typecheck
+```
+
+## Suporte
+
+Para dúvidas, abra uma issue no repositório do projeto.

@@ -1,0 +1,10 @@
+# Apache (hospedagem compartilhada): entrega index.html para rotas do SPA.
+# Copiado para a raiz de `dist/` no build. Ajuste se usar subpasta (veja HOSPEDAGEM-COMPARTILHADA.md).
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+  RewriteRule ^index\.html$ - [L]
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule . index.html [L]
+</IfModule>

@@ -183,8 +183,11 @@ chatbot/
 │   │   ├── pages/       # Páginas do painel
 │   │   └── contexts/     # React Context
 │   └── public/
-├── scripts/             # Scripts auxiliares
-└── setup.ps1            # Script de instalação
+├── scripts/
+│   ├── install-vps.sh   # Script instalação VPS
+│   └── start-safe.cjs   # Script segurança
+├── setup.ps1            # Script instalação Windows
+└── start.ps1           # Script iniciar Windows
 ```
 
 ## Scripts Disponíveis
@@ -194,6 +197,116 @@ chatbot/
 | `setup.ps1` | Instala todas as dependências |
 | `start.ps1` | Inicia backend e frontend |
 | `diagnose.ps1` | Diagnostica problemas |
+| `scripts/install-vps.sh` | Instalação completa para VPS (Linux) |
+
+## Instalação em VPS (Servidor Linux)
+
+### Opção 1: Script Automático
+
+1. Conecte ao servidor como root:
+```bash
+sudo su
+```
+
+2. Baixe o script:
+```bash
+curl -O https://raw.githubusercontent.com/vektortechmind/CHATBOT/main/scripts/install-vps.sh
+```
+
+3. Edite as configurações no início do script:
+```bash
+nano install-vps.sh
+```
+Configure:
+- `PROJECT_DIR` - diretório de instalação
+- `ADMIN_EMAIL` - email do admin
+- `ADMIN_PASSWORD` - senha do admin
+- `GITHUB_REPO` - seu repositório
+
+4. Execute:
+```bash
+chmod +x install-vps.sh
+./install-vps.sh
+```
+
+### O que o script faz:
+- Instala Node.js 20 LTS
+- Instala Git e PM2
+- Instala e configura Nginx
+- Configura firewall (UFW)
+- Inicia com PM2 (mantém rodando 24/7)
+- Auto-start no boot
+
+### Comandos úteis (VPS):
+```bash
+pm2 status          # Ver status
+pm2 logs           # Ver logs
+pm2 restart all    # Reiniciar
+pm2 stop all      # Parar
+```
+
+### Para HTTPS (SSL):
+```bash
+apt install certbot python3-certbot-nginx
+certbot --nginx -d seu-dominio.com
+```
+
+### Opção 2: Instalação Manual (VPS)
+
+```bash
+# 1. Clone o repositório
+cd /var/www
+git clone https://github.com/vektortechmind/CHATBOT.git
+cd CHATBOT/backend
+
+# 2. Configure
+cp .env.example .env
+nano .env  # Edite as variáveis
+
+# 3. Instale
+npm install
+npx prisma generate
+npx prisma db push
+npm run build
+
+# 4. Inicie com PM2
+npm install -g pm2
+pm2 start dist/server.js --name nexuszap
+pm2 save
+pm2 startup
+
+# 5. Configure Nginx
+nano /etc/nginx/sites-available/nexuszap
+```
+
+### Configuração Nginx:
+```nginx
+server {
+    listen 80;
+    server_name _;
+
+    client_max_body_size 100M;
+
+    location /api {
+        proxy_pass http://127.0.0.1:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location / {
+        root /var/www/CHATBOT/frontend/dist;
+        try_files $uri $uri/ /index.html;
+    }
+}
+```
+
+```bash
+ln -s /etc/nginx/sites-available/nexuszap /etc/nginx/sites-enabled/
+systemctl reload nginx
+```
 
 ## API Endpoints
 
