@@ -73,28 +73,6 @@ O script irá:
 .\start.ps1
 ```
 
-## Instalação Manual
-
-### Backend
-
-```bash
-cd backend
-npm install
-cp .env.example .env
-# Edite o .env com suas configurações
-npx prisma generate
-npx prisma db push
-npm run dev
-```
-
-### Frontend
-
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
 ## Configuração
 
 ### Variáveis de Ambiente (backend/.env)
