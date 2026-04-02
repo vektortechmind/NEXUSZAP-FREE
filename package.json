@@ -6,7 +6,7 @@
     "dev": "concurrently -k -n api,web -c green,blue \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
     "dev:api": "npm run dev --prefix backend",
     "dev:web": "npm run dev --prefix frontend",
-    "dev:landing": "npm run dev --prefix landing"
+
   },
   "dependencies": {
     "fastify": "^5.2.0"
