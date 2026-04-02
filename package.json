@@ -1,13 +1,19 @@
 {
   "name": "nexus-chatbot",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "concurrently -k -n api,web -c green,blue \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
     "dev:api": "npm run dev --prefix backend",
     "dev:web": "npm run dev --prefix frontend",
-    "dev:landing": "npm run dev --prefix landing"
+    "dev:landing": "npm run dev --prefix landing",
+    "install:wizard": "npx tsx installer.ts"
+  },
+  "dependencies": {
+    "fastify": "^5.2.0"
   },
   "devDependencies": {
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "tsx": "^4.19.0"
   }
 }
