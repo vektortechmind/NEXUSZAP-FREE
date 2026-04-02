@@ -10,7 +10,6 @@ datasource db {
 model Instance {
   id             String          @id @default(uuid())
   name           String          @default("Agente Principal")
-  // Nome do atendente no WhatsApp (instruções). Opcional; se vazio a IA usa "Atendente".
   agentName      String?
   status         String          @default("DISCONNECTED")
   aiWhatsappEnabled Boolean      @default(true)
@@ -20,14 +19,13 @@ model Instance {
   delayMax       Int             @default(7000)
   systemPrompt   String?
   telegramSystemPrompt String?
+  telegramBotToken String?        // Token do bot Telegram (criptografado)
   
-  // Configurações de Provedor (somente chat)
   chatProvider  String?
   groqKey       String?
-  groqAudioKey  String?  // ← Chave separada para áudio/whisper (opcional)
+  groqAudioKey  String?
   geminiKey     String?
   openrouterKey String?
-  // ID do modelo OpenRouter; null = modelo padrao interno (Llama 3 8B free)
   openrouterModel String?
 
   createdAt      DateTime        @default(now())

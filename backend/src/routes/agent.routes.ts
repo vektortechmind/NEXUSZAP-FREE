@@ -240,4 +240,50 @@ export async function agentRoutes(fastify: FastifyInstance) {
     }));
     return reply.send({ labels });
   });
+
+  fastify.post("/telegram/save-token", async (request, reply) => {
+    const agent = await getAgent();
+    const body = z.object({
+      token: z.string().min(20, "Token inválido")
+    }).parse(request.body);
+
+    const result = await TelegramBotManager.saveAndStart(agent.id, body.token);
+    if (!result.success) {
+      return reply.status(400).send({ error: result.error });
+    }
+
+    return reply.send({
+      success: true,
+      message: "Token do Telegram salvo e bot iniciado!",
+      status: TelegramBotManager.getStatus()
+    });
+  });
+
+  fastify.delete("/telegram/token", async (_request, reply) => {
+    const agent = await getAgent();
+    await TelegramBotManager.stop();
+    await prisma.instance.update({
+      where: { id: agent.id },
+      data: { telegramBotToken: null }
+    });
+    return reply.send({ success: true, message: "Token removido e bot parado." });
+  });
+
+  fastify.get("/telegram/status", async (_request, reply) => {
+    const agent = await getAgent();
+    const isConfigured = await TelegramBotManager.isConfigured(agent.id);
+    return reply.send({
+      configured: isConfigured,
+      ...TelegramBotManager.getStatus()
+    });
+  });
+
+  fastify.post("/telegram/validate-token", async (request, reply) => {
+    const body = z.object({
+      token: z.string().min(20, "Token inválido")
+    }).parse(request.body);
+
+    const result = await TelegramBotManager.validateToken(body.token);
+    return reply.send(result);
+  });
 }
