@@ -18,10 +18,13 @@ echo "║   NexusZAP - Configuração do Ambiente      ║"
 echo "╚═══════════════════════════════════════════════╝"
 echo -e "${NC}"
 
-# Diretório do projeto
-PROJECT_DIR="/var/www/nexuszap"
+# Raiz do repositório (pasta acima de scripts/)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 BACKEND_DIR="$PROJECT_DIR/backend"
 ENV_FILE="$BACKEND_DIR/.env"
+
+mkdir -p "$BACKEND_DIR"
 
 # Verificar se já existe
 if [ -f "$ENV_FILE" ]; then
@@ -60,34 +63,29 @@ echo -e "${GREEN}📝 Configurando variáveis de ambiente${NC}"
 echo ""
 
 # Credenciais Admin
-echo -e "${CYAN}[1/6] Credenciais do Administrador${NC}"
+echo -e "${CYAN}[1/5] Credenciais do Administrador${NC}"
 read_default "Email do admin" "admin@nexuszap.com" ADMIN_EMAIL
 read_default "Senha do admin" "" ADMIN_PASSWORD
 
 # Repositório GitHub
 echo ""
-echo -e "${CYAN}[2/6] GitHub${NC}"
+echo -e "${CYAN}[2/5] GitHub${NC}"
 read_default "Usuário/Repo (ex: usuario/chatbot)" "vektortechmind/CHATBOT" GITHUB_REPO
 
 # Versão
 echo ""
-echo -e "${CYAN}[3/6] Versão${NC}"
+echo -e "${CYAN}[3/5] Versão${NC}"
 read_default "Versão do sistema" "v1.0.0" APP_VERSION
 
 # Porta
 echo ""
-echo -e "${CYAN}[4/6] Servidor${NC}"
+echo -e "${CYAN}[4/5] Servidor${NC}"
 read_default "Porta do servidor" "3000" PORT
 
 # CORS
 echo ""
-echo -e "${CYAN}[5/6] CORS (pressione Enter para pular)${NC}"
+echo -e "${CYAN}[5/5] CORS (pressione Enter para pular)${NC}"
 read -p "Domínios permitidos (ex: https://app.exemplo.com): " CORS_ORIGINS
-
-# Domínio
-echo ""
-echo -e "${CYAN}[6/6] Domínio (opcional)${NC}"
-read -p "Domínio do site (ex: app.exemplo.com): " DOMAIN
 
 # Gerar chaves
 echo ""

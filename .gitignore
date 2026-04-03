@@ -38,3 +38,10 @@ Thumbs.db
 # Configurações pessoais
 *.local
 *.env.local
+
+# Build produção frontend (gerado pelo install-vps.sh)
+frontend/.env.production
+
+# SQLite — ficheiros auxiliares
+*.db-wal
+*.db-shm

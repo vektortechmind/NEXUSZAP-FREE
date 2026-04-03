@@ -91,16 +91,11 @@ Write-Host ""
 
 Write-Host "[1/6] Verificando .env e token do Telegram..." -ForegroundColor Yellow
 $envPath = Join-Path $PSScriptRoot "backend\.env"
-$envExamplePath = Join-Path $PSScriptRoot "backend\.env.example"
 
 if (-not (Test-Path -LiteralPath $envPath)) {
-  if (Test-Path -LiteralPath $envExamplePath) {
-    Copy-Item -LiteralPath $envExamplePath -Destination $envPath
-    Write-Host "     backend\.env criado automaticamente." -ForegroundColor Green
-  } else {
-    Write-Host "     [ERRO] backend\.env.example nao encontrado." -ForegroundColor Red
-    exit 1
-  }
+  Write-Host "     [ERRO] backend\.env nao encontrado." -ForegroundColor Red
+  Write-Host "     Execute na raiz do projeto: .\setup-env.ps1" -ForegroundColor Yellow
+  exit 1
 }
 
 $telegramToken = $env:TELEGRAM_BOT_TOKEN

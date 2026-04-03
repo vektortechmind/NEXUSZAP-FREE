@@ -36,7 +36,6 @@ export function Instancia() {
   const [working, setWorking] = useState(false);
   const [token, setToken] = useState("");
   const [savingToken, setSavingToken] = useState(false);
-  const [testingToken, setTestingToken] = useState(false);
   const { addToast } = useToast();
 
   const loadStatus = async () => {
@@ -182,20 +181,103 @@ export function Instancia() {
   return (
     <div className="space-y-8">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{data.name}</h1>
-          <p className="text-gray-600 dark:text-gray-400">Gerencie suas conexões</p>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">{data.name}</h1>
+            <p className="text-gray-600 dark:text-gray-400 max-w-xl">
+              <span className="font-medium text-gray-800 dark:text-gray-200">WhatsApp:</span>{" "}
+              conecte escaneando o QR Code (como no WhatsApp Web). O Telegram é opcional e fica abaixo.
+            </p>
+          </div>
+          <div className="flex flex-col sm:flex-row sm:items-center gap-3 shrink-0">
+            <Badge variant={getStatusColor(data.status)} className="w-fit">
+              <Smartphone className="w-3.5 h-3.5 mr-1.5 opacity-90" />
+              <span className={`inline-block w-2 h-2 rounded-full mr-2 ${isOnline ? "bg-current animate-pulse" : ""}`} />
+              WhatsApp — {getStatusText(data.status)}
+            </Badge>
+            <Button onClick={() => void handleToggle()} disabled={working} loading={working} variant={isOnline ? "danger" : "primary"}>
+              {isOnline ? (
+                <>
+                  <Square className="w-4 h-4 mr-2" />
+                  Desconectar WhatsApp
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4 mr-2" />
+                  Conectar WhatsApp
+                </>
+              )}
+            </Button>
+          </div>
         </div>
-        <div className="flex items-center gap-4">
-          <Badge variant={getStatusColor(data.status)}>
-            <span className={`inline-block w-2 h-2 rounded-full mr-2 ${isOnline ? "bg-current animate-pulse" : ""}`} />
-            {getStatusText(data.status)}
-          </Badge>
-          <Button onClick={() => void handleToggle()} disabled={working} loading={working} variant={isOnline ? "danger" : "primary"}>
-            {isOnline ? <><Square className="w-4 h-4 mr-2" />Desconectar</> : <><Play className="w-4 h-4 mr-2" />Conectar</>}
-          </Button>
-        </div>
+      </div>
+
+      {/* WhatsApp + detalhes (WhatsApp primeiro) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <Card className="lg:col-span-2 border-emerald-200/80 dark:border-emerald-900/50 ring-1 ring-emerald-500/10">
+          <div className="space-y-6">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-100 dark:bg-emerald-950/50 flex items-center justify-center shrink-0">
+                <Smartphone className="w-5 h-5 text-emerald-700 dark:text-emerald-400" />
+              </div>
+              <div>
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">Ligar o WhatsApp a esta instância</h2>
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                  No telefone: <span className="font-medium text-gray-800 dark:text-gray-200">WhatsApp</span> → menu ⋮ ou
+                  Configurações → <span className="font-medium">Aparelhos conectados</span> →{" "}
+                  <span className="font-medium">Conectar um aparelho</span>. Depois escaneie o QR ao lado.
+                </p>
+              </div>
+            </div>
+            <ol className="list-decimal list-inside space-y-2 text-sm text-gray-700 dark:text-gray-300 pl-1">
+              <li>Toque em <strong className="text-gray-900 dark:text-white">Conectar WhatsApp</strong> no topo desta página.</li>
+              <li>Aguarde o QR Code aparecer na coluna ao lado (ou abaixo, no celular).</li>
+              <li>Escaneie com o celular; quando aparecer &quot;Dispositivo Conectado&quot;, está pronto.</li>
+            </ol>
+          </div>
+        </Card>
+
+        <Card
+          header={
+            <div className="flex items-center gap-2">
+              <QrCode className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+              <h3 className="font-semibold text-gray-900 dark:text-white">QR Code — WhatsApp</h3>
+            </div>
+          }
+          className="border-emerald-200/80 dark:border-emerald-900/50"
+        >
+          {isOnline ? (
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-950/50 flex items-center justify-center mb-3">
+                <Smartphone className="w-8 h-8 text-green-600 dark:text-green-400" />
+              </div>
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1">WhatsApp conectado</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400">Esta instância já está pareada com o app</p>
+            </div>
+          ) : data.qr ? (
+            <div className="flex flex-col items-center gap-4">
+              <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_14px_26px_-20px_rgba(15,23,42,0.6)] dark:border-slate-700/70 dark:bg-white">
+                <QRCodeSVG value={data.qr} level="M" includeMargin size={256} bgColor="#ffffff" fgColor="#000000" />
+              </div>
+              <p className="text-sm text-gray-700 dark:text-gray-300 text-center font-medium">
+                Escaneie com o WhatsApp no telefone
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                Menu do app → Aparelhos conectados → Ler QR Code
+              </p>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-8 text-center px-2">
+              <QrCode className="w-12 h-12 text-emerald-600/70 dark:text-emerald-500/70 mx-auto mb-3" />
+              <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1">Ainda não há QR Code</p>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                Use o botão <strong className="text-gray-900 dark:text-white">Conectar WhatsApp</strong> no topo da página. O
+                código aparece aqui em seguida.
+              </p>
+            </div>
+          )}
+        </Card>
       </div>
 
       {/* Token Telegram */}
@@ -262,69 +344,42 @@ export function Instancia() {
         </div>
       </Card>
 
-      {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Section */}
-        <Card className="lg:col-span-2">
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Informações da Instância</h2>
-              <div className="space-y-4">
-                <div className="rounded-xl border border-slate-200/70 bg-white/70 p-4 dark:border-slate-700/70 dark:bg-slate-800/50">
-                  <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">ID</p>
-                  <p className="text-sm font-mono text-gray-900 dark:text-gray-100">{data.id}</p>
+      {/* Informações da instância + IA */}
+      <Card>
+        <div className="space-y-6">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Informações da instância</h2>
+          <div className="space-y-4">
+            <div className="rounded-xl border border-slate-200/70 bg-white/70 p-4 dark:border-slate-700/70 dark:bg-slate-800/50">
+              <p className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">ID</p>
+              <p className="text-sm font-mono text-gray-900 dark:text-gray-100">{data.id}</p>
+            </div>
+            <div className="space-y-3 rounded-xl border border-slate-200/70 bg-white/70 p-4 dark:border-slate-700/70 dark:bg-slate-800/50">
+              <p className="text-xs font-semibold text-gray-600 dark:text-gray-400">Atendimento com IA (após conectar os canais)</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 -mt-1 mb-2">
+                Liga ou desliga a IA por canal. O WhatsApp precisa estar <strong className="text-gray-700 dark:text-gray-300">conectado</strong> acima; o Telegram precisa do token.
+              </p>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <MessageCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">WhatsApp</span>
                 </div>
-                <div className="space-y-3 rounded-xl border border-slate-200/70 bg-white/70 p-4 dark:border-slate-700/70 dark:bg-slate-800/50">
-                  <p className="text-xs font-semibold text-gray-600 dark:text-gray-400">Atendimento com IA</p>
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <MessageCircle className="w-4 h-4 text-green-600 dark:text-green-400" />
-                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">WhatsApp</span>
-                    </div>
-                    <Button size="sm" variant={data.aiWhatsappEnabled ? "danger" : "secondary"} onClick={() => void handleAiToggle("whatsapp")} disabled={working}>
-                      {data.aiWhatsappEnabled ? "Desativar" : "Ativar"}
-                    </Button>
-                  </div>
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex items-center gap-2">
-                      <Bot className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Telegram</span>
-                    </div>
-                    <Button size="sm" variant={data.aiTelegramEnabled ? "danger" : "secondary"} onClick={() => void handleAiToggle("telegram")} disabled={working || !telegramStatus?.configured}>
-                      {data.aiTelegramEnabled ? "Desativar" : "Ativar"}
-                    </Button>
-                  </div>
+                <Button size="sm" variant={data.aiWhatsappEnabled ? "danger" : "secondary"} onClick={() => void handleAiToggle("whatsapp")} disabled={working}>
+                  {data.aiWhatsappEnabled ? "Desativar IA" : "Ativar IA"}
+                </Button>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <Bot className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Telegram</span>
                 </div>
+                <Button size="sm" variant={data.aiTelegramEnabled ? "danger" : "secondary"} onClick={() => void handleAiToggle("telegram")} disabled={working || !telegramStatus?.configured}>
+                  {data.aiTelegramEnabled ? "Desativar IA" : "Ativar IA"}
+                </Button>
               </div>
             </div>
           </div>
-        </Card>
-
-        {/* QR Code Section */}
-        <Card header={<h3 className="font-semibold text-gray-900 dark:text-white">Conexão WhatsApp</h3>}>
-          {isOnline ? (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <div className="w-16 h-16 rounded-full bg-green-100 dark:bg-green-950/50 flex items-center justify-center mb-3">
-                <Smartphone className="w-8 h-8 text-green-600 dark:text-green-400" />
-              </div>
-              <p className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1">Dispositivo Conectado</p>
-              <p className="text-xs text-gray-500 dark:text-gray-400">Pronto para uso</p>
-            </div>
-          ) : data.qr ? (
-            <div className="flex flex-col items-center gap-4">
-              <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_14px_26px_-20px_rgba(15,23,42,0.6)] dark:border-slate-700/70 dark:bg-white">
-                <QRCodeSVG value={data.qr} level="M" includeMargin size={256} bgColor="#ffffff" fgColor="#000000" />
-              </div>
-              <p className="text-xs text-gray-600 dark:text-gray-400 text-center">Escaneie com WhatsApp</p>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-8 text-center">
-              <QrCode className="w-12 h-12 text-gray-400 dark:text-gray-500 mx-auto mb-3" />
-              <p className="text-sm text-gray-600 dark:text-gray-400">Clique em "Conectar" para gerar o QR code</p>
-            </div>
-          )}
-        </Card>
-      </div>
+        </div>
+      </Card>
     </div>
   );
 }

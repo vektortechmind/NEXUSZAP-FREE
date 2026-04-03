@@ -1,0 +1,5 @@
+# Normaliza finais de linha e reduz diffs ruidosos entre ambientes (Windows, macOS, etc.)
+* text=auto
+
+*.sh text eol=lf
+*.ps1 text eol=crlf

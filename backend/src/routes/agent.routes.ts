@@ -6,7 +6,7 @@ import { InstanceManager } from "../whatsapp/InstanceManager";
 import { getLabelsForInstance } from "../whatsapp/labelsCache";
 import { z } from "zod";
 import { geminiChat } from "../ai/gemini";
-import { groqChat } from "../ai/groq";
+import { groqChat, groqPingModels } from "../ai/groq";
 import { openRouterChat } from "../ai/openrouter";
 import { fetchOpenRouterModelsGrouped } from "../ai/openrouterModels";
 import { TelegramBotManager } from "../telegram/TelegramBotManager";
@@ -113,17 +113,19 @@ export async function agentRoutes(fastify: FastifyInstance) {
       if (!key || !String(key).trim()) {
         return { provider: name, configured: false, ok: false as const };
       }
-      const t0 = Date.now();
+      const t0 = performance.now();
       try {
         if (name === "gemini") await geminiChat(key, messages);
         if (name === "groq") await groqChat(key, messages);
         if (name === "openrouter") await openRouterChat(key, messages, agent.openrouterModel);
-        // groq-audio: apenas verifica se a chave é válida (não faz transcrição real no healthcheck)
-        if (name === "groq-audio") {
-          // Healthcheck simples: apenas valida que a chave existe
-          // Transcrição real será testada no uso
-        }
-        return { provider: name, configured: true, ok: true as const, latencyMs: Date.now() - t0 };
+        // groq-audio: GET /v1/models (leve, OpenAI-compatible) — antes o bloco estava vazio e dava sempre 0ms
+        if (name === "groq-audio") await groqPingModels(key);
+        return {
+          provider: name,
+          configured: true,
+          ok: true as const,
+          latencyMs: Math.round(performance.now() - t0)
+        };
       } catch (err: unknown) {
         const msg =
           err instanceof Error ? err.message : typeof err === "string" ? err : "Falha desconhecida";
@@ -131,7 +133,7 @@ export async function agentRoutes(fastify: FastifyInstance) {
           provider: name,
           configured: true,
           ok: false as const,
-          latencyMs: Date.now() - t0,
+          latencyMs: Math.round(performance.now() - t0),
           error: msg.slice(0, 300)
         };
       }

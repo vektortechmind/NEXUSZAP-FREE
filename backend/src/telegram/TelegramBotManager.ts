@@ -1,5 +1,6 @@
 import { Telegraf, Context } from "telegraf";
 import { prisma } from "../database/prisma";
+import { CHAT_MEMORY_MAX_MESSAGES } from "../ai/chatMemory";
 import { askChat, transcribeAudio } from "../ai/providerSelector";
 import { getResolvedTelegramPrompt } from "../services/agentPrompt";
 import { buildCompleteSystemPrompt, resolveAgentDisplayName } from "../ai/systemPrompt";
@@ -179,7 +180,9 @@ async function handleTelegramMessage(ctx: Context) {
   const memoryKey = `${instance.id}:${fromId}`;
   let memory = userMemory.get(memoryKey) ?? [];
   memory.push({ role: "user", content: userContent });
-  if (memory.length > 15) memory = memory.slice(memory.length - 15);
+  if (memory.length > CHAT_MEMORY_MAX_MESSAGES) {
+    memory = memory.slice(memory.length - CHAT_MEMORY_MAX_MESSAGES);
+  }
   userMemory.set(memoryKey, memory);
 
   if (instance.typing) {
@@ -206,7 +209,9 @@ async function handleTelegramMessage(ctx: Context) {
 
   let finalMemory = userMemory.get(memoryKey) ?? memory;
   finalMemory.push({ role: "assistant", content: aiResponse });
-  if (finalMemory.length > 15) finalMemory = finalMemory.slice(finalMemory.length - 15);
+  if (finalMemory.length > CHAT_MEMORY_MAX_MESSAGES) {
+    finalMemory = finalMemory.slice(finalMemory.length - CHAT_MEMORY_MAX_MESSAGES);
+  }
   userMemory.set(memoryKey, finalMemory);
 }
 

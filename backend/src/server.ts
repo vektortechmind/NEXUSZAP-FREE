@@ -102,15 +102,7 @@ async function bootstrap() {
       }
     }, 1000);
 
-    if (env.TELEGRAM_BOT_TOKEN) {
-      try {
-        TelegramBotManager.start(env.TELEGRAM_BOT_TOKEN);
-      } catch (err) {
-        console.error("⚠️ Erro ao iniciar bot do Telegram:", err);
-      }
-    } else {
-      console.log("ℹ️ TELEGRAM_BOT_TOKEN não configurado. Bot do Telegram desativado.");
-    }
+    console.log("ℹ️ Telegram: tokens são configurados por instância no painel.");
 
     const shutdown = async (signal: string) => {
       console.log(`⛔ Recebido ${signal}. Encerrando...`);

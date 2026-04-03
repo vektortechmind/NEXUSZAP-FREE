@@ -45,39 +45,71 @@ npm --version
 git --version
 ```
 
-## Instalação Automática (Windows)
+## Instalação
 
-### Passo 1: Clone o Repositório
+> **Nunca commite** `backend/.env`, bases `.db`, `node_modules` nem `dist` — já estão no `.gitignore` (o Git não os envia para o repositório por defeito).
 
-```bash
-git clone https://github.com/vektortechmind/CHATBOT.git
-cd CHATBOT
-```
+Regra comum aos dois cenários: **criar `backend/.env` antes de `npm install` / scripts de instalação** (senha, JWT, base de dados). Modelo: `backend/.env.example`.
 
-### Passo 2: Execute o Script de Instalação
+---
 
-```bash
-.\setup.ps1
-```
+### No PC (desenvolvimento local)
 
-O script irá:
-- Verificar se o Node.js está instalado
-- Instalar dependências do backend
-- Instalar dependências do frontend
-- Gerar o banco de dados
-- Criar o arquivo `.env`
+1. Clonar e entrar na pasta:
+   ```bash
+   git clone https://github.com/vektortechmind/CHATBOT.git
+   cd CHATBOT
+   ```
+2. Criar `backend/.env`:
+   - **Windows (PowerShell):** `.\setup-env.ps1`
+   - **Ou** copiar `backend/.env.example` → `backend/.env` e editar.
+3. Instalar e arrancar:
+   - **Windows:** `.\setup.ps1` depois `.\start.ps1` (abre API + painel em modo dev).
+   - **macOS, WSL ou terminal com Bash:** na raiz, `npm install` dentro de `backend`, `frontend` e na raiz; depois `npm run dev` na raiz (ou dois terminais: `npm run dev` em `backend` e em `frontend`).
+4. Abrir o painel: **http://localhost:5173** — login com `ADMIN_EMAIL` / `ADMIN_PASSWORD` do `.env`. API: **http://localhost:3000** por defeito (ou a porta em **`PORT`** no `.env`). Em dev, o Vite faz proxy de `/api` para o backend.
 
-### Passo 3: Inicie o Projeto
+**Extra:** `.\diagnose.ps1` se algo falhar (Windows). `.\clean-repo.ps1` para apagar `node_modules`, `dist`, `.db` locais (pare o servidor antes).  
+**Build local de teste:** na raiz, `npm run build`. Sem `VITE_API_URL`, o frontend usa a porta de `backend/.env` (ou `VITE_LOCAL_API_PORT`).
 
-```bash
-.\start.ps1
-```
+---
+
+### Na VPS (produção)
+
+1. **Node.js 18+** e **npm** na VPS.
+2. Clonar e entrar na pasta (mesmo `git clone` de cima).
+3. Criar `backend/.env`:
+   - `./scripts/setup-env.sh` (torna executável antes: `chmod +x scripts/setup-env.sh`), **ou** copiar/editar `backend/.env.example`.
+4. No `backend/.env`: definir **`PORT`** da API; **`CORS_ORIGINS`** = URL do painel no browser (com o script padrão o painel fica na porta **4173**, ex. `CORS_ORIGINS="http://SEU_IP:4173"`).
+5. Instalar build e PM2 (na raiz do projeto):
+   ```bash
+   chmod +x install-vps.sh
+   ./install-vps.sh --api-url "http://SEU_IP_OU_DOMINIO:PORTA_DA_API/api"
+   ```
+   A URL deve ser a que o **navegador** usa para a API (mesma porta que `PORT` no `.env`, salvo proxy).
+6. Executar a linha **`sudo`** que o **`pm2 startup`** mostrar, para o PM2 voltar após reboot.
+7. **Firewall:** abrir a porta da API e a **4173** (painel), ou só 80/443 se usares Nginx.
+
+**Útil:** `pm2 status`, `pm2 logs`, `pm2 restart all`. Só build sem PM2: `./install-vps.sh --api-url "..." --skip-pm2`. Ajuda: `./install-vps.sh -h`.
+
+---
+
+### Opcional: mesmo fluxo da VPS no teu PC (Bash)
+
+**Git Bash**, **WSL** ou **outro terminal com Bash** na pasta do projeto:  
+`./install-vps.sh --api-url "http://127.0.0.1:3000/api"` (ajusta porta ao teu `.env`). Para trabalho diário no Windows, o fluxo **No PC** acima é mais simples.
 
 ## Configuração
 
 ### Variáveis de Ambiente (backend/.env)
 
+Lista mínima exigida pelo servidor (ver também **`backend/.env.example`**):
+
 ```env
+NODE_ENV=development
+
+# Obrigatório — SQLite (caminho relativo à pasta prisma/)
+DATABASE_URL="file:./chatbot.db"
+
 # ===========================================
 # SEGURANÇA
 # ===========================================
@@ -125,13 +157,11 @@ O CORS controla quais domínios podem acessar o backend. Configure em produção
 
 ```env
 # Um domínio
-CORS_ORIGINS="https://app.nexuszap.com"
+CORS_ORIGINS="https://app.seudominio.com"
 
-# Múltiplos domínios
-CORS_ORIGINS="https://app.nexuszap.com,https://www.nexuszap.com"
+# Múltiplos domínios (troque pelos seus)
+CORS_ORIGINS="https://app.seudominio.com,https://www.seudominio.com"
 
-# Em desenvolvimento (não usar em produção)
-CORS_ORIGINS="*"
 ```
 
 ## Uso
@@ -143,11 +173,26 @@ CORS_ORIGINS="*"
 5. Personalize o prompt de sistema
 6. Carregue arquivos para a base de conhecimento
 
+### Reiniciar depois de parar (API + painel)
+
+Se tiver fechado o terminal, usado Ctrl+C ou os processos pararam:
+
+| Onde | Comando (na raiz do repositório clonado) |
+|------|------------------------------------------|
+| **PC (Windows, desenvolvimento)** | `.\start.ps1` — volta a subir o backend e o frontend (API em `http://localhost:3000`, painel em `http://localhost:5173`). |
+| **VPS (PM2 já configurado)** | `pm2 restart all` — reinicia `chatbot-api` e `chatbot-web`. |
+| **VPS (PM2 vazio / após `pm2 delete`)** | `pm2 start ecosystem.config.cjs` e depois `pm2 save`. |
+
+**VPS após reboot do servidor:** se já tiver executado o `sudo` indicado por `pm2 startup`, o PM2 sobe sozinho. Se não, inicie com `pm2 resurrect` (se existir `pm2 save` anterior) ou `pm2 start ecosystem.config.cjs`.
+
+**Só o processo Node parou, mas o PM2 continua:** use `pm2 logs` para ver erros e `pm2 restart chatbot-api` ou `chatbot-web` individualmente.
+
 ## Estrutura do Projeto
 
 ```
 chatbot/
 ├── backend/
+│   ├── .env.example     # Modelo (copiar para .env)
 │   ├── src/
 │   │   ├── ai/          # Serviços de IA
 │   │   ├── routes/      # API routes
@@ -162,20 +207,28 @@ chatbot/
 │   │   └── contexts/     # React Context
 │   └── public/
 ├── scripts/
-│   └── setup-env.sh     # Configurar .env (Linux)
-├── setup.html           # Gerador de .env (navegador)
+│   └── setup-env.sh     # Configurar .env (bash / VPS)
+├── install-vps.sh       # VPS: build + PM2 + systemd (ver cabeçalho do script)
+├── ecosystem.config.cjs # Definição PM2 (api + painel)
 ├── setup.ps1            # Script instalação Windows
-└── start.ps1           # Script iniciar Windows
+├── start.ps1           # Script iniciar Windows
+└── clean-repo.ps1      # Limpa node_modules, dist, SQLite (antes de commit / estado limpo)
 ```
 
 ## Scripts Disponíveis
 
 | Script | Descrição |
 |--------|-----------|
-| `setup.ps1` | Instala todas as dependências |
-| `start.ps1` | Inicia backend e frontend |
-| `diagnose.ps1` | Diagnostica problemas |
-| `setup.html` | Gerador de .env pelo navegador |
+| `setup-env.ps1` | **Rodar primeiro:** gera `backend/.env` (Windows, interativo) |
+| `scripts/setup-env.sh` | **Rodar primeiro na VPS:** gera/edita `backend/.env` (bash) |
+| `setup.ps1` | Instala dependências e base de dados (Windows) — **depois** do `setup-env.ps1` |
+| `clean-repo.ps1` | Remove `node_modules`, `dist`, `.db`, etc. (estado limpo; parar o servidor antes) |
+| `start.ps1` | Sobe API + painel em modo desenvolvimento (Windows) |
+| `install-vps.sh` | VPS: build produção, PM2 (api + painel), `pm2 startup` |
+| `ecosystem.config.cjs` | Definição dos processos PM2 |
+| `diagnose.ps1` | Diagnóstico no Windows |
+| `npm run build` (raiz) | Build produção: backend (`tsc`) + frontend (`vite build`) |
+| `npm run test:smoke` (raiz) | Smoke test da API (`backend/scripts/smoke-api.cjs`) |
 
 ## API Endpoints
 

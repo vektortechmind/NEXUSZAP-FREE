@@ -37,16 +37,11 @@ function Set-OrAppendEnvValue {
 
 Write-Host "[0/4] Configuracao inicial..." -ForegroundColor Yellow
 $envPath = Join-Path $scriptDir "backend\.env"
-$envExamplePath = Join-Path $scriptDir "backend\.env.example"
 
 if (-not (Test-Path -LiteralPath $envPath)) {
-  if (Test-Path -LiteralPath $envExamplePath) {
-    Copy-Item -LiteralPath $envExamplePath -Destination $envPath
-    Write-Host "      backend\.env nao existia e foi criado a partir de .env.example." -ForegroundColor Green
-  } else {
-    Write-Host "      Erro: backend\.env.example nao encontrado." -ForegroundColor Red
-    exit 1
-  }
+  Write-Host "      Erro: backend\.env nao encontrado." -ForegroundColor Red
+  Write-Host "      Crie o ficheiro executando na raiz do projeto: .\setup-env.ps1" -ForegroundColor Yellow
+  exit 1
 }
 
 $telegramToken = $env:TELEGRAM_BOT_TOKEN

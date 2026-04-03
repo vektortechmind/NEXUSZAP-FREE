@@ -8,6 +8,7 @@ import {
   downloadMediaMessage
 } from "@whiskeysockets/baileys";
 import { prisma } from "../database/prisma";
+import { CHAT_MEMORY_MAX_MESSAGES } from "../ai/chatMemory";
 import { askChat, transcribeAudio } from "../ai/providerSelector";
 import { getResolvedAgentPrompt } from "../services/agentPrompt";
 import { buildCompleteSystemPrompt, resolveAgentDisplayName } from "../ai/systemPrompt";
@@ -206,21 +207,20 @@ export async function handleIncomingMessage(
     const audioMessage = content.audioMessage;
     if (audioMessage && instance.aiWhatsappEnabled) {
       try {
-        // Extrair buffer do áudio
-        const audioBuffer = audioMessage.fileEncSha256 
-          ? await downloadAudioFromMessage(sock, m)
-          : null;
-        
-        if (audioBuffer) {
-          // Transcrever áudio usando Groq Whisper
+        // Baixar sempre que houver audioMessage — fileEncSha256 é opcional no proto;
+        // exigir esse campo impedia o download em várias notas de voz.
+        const audioBuffer = await downloadAudioFromMessage(sock, m);
+
+        if (audioBuffer && audioBuffer.length > 0) {
           const mimeType = audioMessage.mimetype || "audio/ogg; codecs=opus";
           const transcribed = await transcribeAudio(instanceId, audioBuffer, mimeType, "pt");
           userContent = `[Áudio transcrito]: ${transcribed}`;
           console.log(`[WhatsApp] Áudio transcrito: ${transcribed.slice(0, 100)}...`);
+        } else {
+          console.warn("[WhatsApp] Áudio: download retornou buffer vazio ou nulo");
         }
       } catch (err) {
         console.error("[WhatsApp] Erro ao transcrever áudio:", err);
-        // Continua sem o áudio se falhar
       }
     }
 
@@ -263,7 +263,7 @@ export async function handleIncomingMessage(
       }
 
       memory.push({ role: "user", content: userContent });
-      if (memory.length > 15) memory.shift();
+      if (memory.length > CHAT_MEMORY_MAX_MESSAGES) memory.shift();
       chatMemory.set(remoteJid, memory);
 
       const knowledgeFiles = await prisma.file.findMany({
@@ -335,7 +335,7 @@ export async function handleIncomingMessage(
 
     let mem = chatMemory.get(remoteJid) || [];
     mem.push({ role: "assistant", content: aiResponse });
-    if (mem.length > 15) mem.shift();
+    if (mem.length > CHAT_MEMORY_MAX_MESSAGES) mem.shift();
     chatMemory.set(remoteJid, mem);
   } catch (err) {
     console.error(`[CRÍTICO] Falha no handleIncomingMessage:`, err);
