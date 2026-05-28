@@ -121,6 +121,25 @@ remove_ps1() {
   find "$ROOT" -type f -name '*.ps1' -delete
 }
 
+restore_managed_scripts() {
+  local paths=()
+  for path in install.sh update.sh; do
+    if git ls-files --error-unmatch "$path" >/dev/null 2>&1; then
+      paths+=("$path")
+    fi
+  done
+
+  if [[ ${#paths[@]} -eq 0 ]]; then
+    return 0
+  fi
+
+  if ! git diff --quiet -- "${paths[@]}" || ! git diff --cached --quiet -- "${paths[@]}"; then
+    echo "Alteracoes locais em scripts gerenciados detectadas. Restaurando install.sh/update.sh antes do pull..."
+    git restore --staged -- "${paths[@]}" >/dev/null 2>&1 || true
+    git restore --worktree -- "${paths[@]}"
+  fi
+}
+
 require git "Instale Git antes de atualizar."
 require node "Instale Node.js 18+ antes de atualizar."
 require npm "Instale npm antes de atualizar."
@@ -146,6 +165,8 @@ current_branch="$(git branch --show-current)"
 if [[ -z "$current_branch" ]]; then
   current_branch="main"
 fi
+
+restore_managed_scripts
 
 if ! git pull --ff-only origin "$current_branch"; then
   echo "Pull direto falhou para branch $current_branch." >&2
