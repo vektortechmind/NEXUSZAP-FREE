@@ -140,6 +140,16 @@ restore_managed_scripts() {
   fi
 }
 
+changed_any() {
+  local pattern
+  for pattern in "$@"; do
+    if printf '%s\n' "$CHANGED_FILES" | grep -Eq "$pattern"; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 require git "Instale Git antes de atualizar."
 require node "Instale Node.js 18+ antes de atualizar."
 require npm "Instale npm antes de atualizar."
@@ -167,11 +177,18 @@ if [[ -z "$current_branch" ]]; then
 fi
 
 restore_managed_scripts
+old_rev="$(git rev-parse HEAD)"
 
 if ! git pull --ff-only origin "$current_branch"; then
   echo "Pull direto falhou para branch $current_branch." >&2
   echo "Resolva conflitos/commits locais e rode update.sh novamente." >&2
   exit 1
+fi
+new_rev="$(git rev-parse HEAD)"
+if [[ "$old_rev" == "$new_rev" ]]; then
+  CHANGED_FILES=""
+else
+  CHANGED_FILES="$(git diff --name-only "$old_rev" "$new_rev")"
 fi
 
 echo ""
@@ -204,13 +221,50 @@ fi
 popd >/dev/null
 
 echo ""
-echo "[5/5] Build e restart Docker, se disponivel..."
+echo "[5/5] Build e restart Docker seletivo, se disponivel..."
 npm run build
 
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   load_env
   ensure_frontend_port
-  docker compose up -d --build
+
+  update_backend=false
+  update_frontend=false
+  update_stack=false
+
+  if [[ -z "$CHANGED_FILES" ]]; then
+    echo "Nenhuma mudanca nova no Git. Mantendo containers atuais."
+  else
+    if changed_any '^docker-compose\.yml$' '^\.dockerignore$'; then
+      update_stack=true
+    fi
+    if changed_any '^backend/' '^package(-lock)?\.json$'; then
+      update_backend=true
+    fi
+    if changed_any '^frontend/' '^package(-lock)?\.json$'; then
+      update_frontend=true
+    fi
+  fi
+
+  if [[ "$update_stack" == "true" ]]; then
+    docker compose up -d --build
+  else
+    if [[ "$update_backend" == "true" ]]; then
+      docker compose build backend
+      docker compose up -d --no-deps backend
+    fi
+    if [[ "$update_frontend" == "true" ]]; then
+      docker compose build frontend
+      docker compose up -d --no-deps frontend
+    fi
+    if [[ "$update_backend" != "true" && "$update_frontend" != "true" && -n "$CHANGED_FILES" ]]; then
+      echo "Mudancas sem impacto em containers. Nenhum restart Docker necessario."
+    fi
+  fi
+
+  if [[ "$update_backend" == "true" || "$update_stack" == "true" ]]; then
+    docker compose ps backend
+  fi
   echo "Stack Docker atualizada."
 else
   echo "Docker Compose nao encontrado. Update local concluido. Reinicie seu process manager manualmente."
