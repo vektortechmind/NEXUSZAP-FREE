@@ -1,47 +1,102 @@
-# ===========================================
-# SENSÍVEL - NUNCA COMMITAR
-# ===========================================
+# Secrets and local environment
 .env
-*.db
-*.db-journal
+.env.*
+!.env.example
+!**/.env.example
+*.local
+*.key
+*.pem
+*.p12
+*.pfx
 .encryption_key
 
-# Backups e updates
-backups/
-updates/
+# Dependencies
+node_modules/
+**/node_modules/
 
-# Logs
+# Build outputs
+dist/
+**/dist/
+build/
+**/build/
+coverage/
+**/coverage/
+.next/
+out/
+.vite/
+**/.vite/
+
+# Logs and runtime diagnostics
 *.log
 logs/
+**/logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+frontend-dev*.log
 
-# Dependências
-node_modules/
-*/node_modules/
-
-# Build
-dist/
-build/
-
-# Landing page (projeto separado)
-landing/
-
-# Editores
-.vscode/
-.idea/
-*.sw?
-*.suo
-
-# Sistema
-.DS_Store
-Thumbs.db
-
-# Configurações pessoais
-*.local
-*.env.local
-
-# Build produção frontend (gerado pelo install-vps.sh)
-frontend/.env.production
-
-# SQLite — ficheiros auxiliares
+# Databases and runtime state
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
 *.db-wal
 *.db-shm
+backups/
+updates/
+tmp/
+temp/
+*.tmp
+*.bak
+*.backup
+
+# WhatsApp/Baileys/session runtime files
+auth_info*/
+sessions/
+session/
+tokens/
+storage/
+uploads/
+media/
+
+# Local agent/workspace artifacts, not product source
+.agent/
+.agents/
+.aiox-core/
+.antigravity/
+.claude/
+.codex/
+.cursor/
+.gemini/
+.kiro/
+.qoder/
+.qwen/
+frontend/.agents/
+frontend/.claude/
+frontend/.kiro/
+frontend/.qoder/
+frontend/.qwen/
+CHANGELOG-LOCAL-vs-REMOTE.md
+docs/
+
+# IDE and OS files
+.vscode/
+.idea/
+*.swp
+*.sw?
+*.suo
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Misc local-only folders
+landing/
+playwright-report/
+test-results/
+.nyc_output/
+.cache/
+**/.cache/
+__pycache__/
+**/__pycache__/
+*.pyc

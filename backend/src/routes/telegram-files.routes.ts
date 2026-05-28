@@ -1,114 +1,198 @@
 import { FastifyInstance } from "fastify";
-import { verifyJwt } from "../security/middlewares";
 import { prisma } from "../database/prisma";
-import path from "path";
+import { verifyJwt } from "../security/middlewares";
 import { extractTextFromBuffer } from "../services/fileExtractor";
+import {
+  assertStorageQuota,
+  buildSafeDownloadHeaders,
+  FileSecurityError,
+  logExtractionFailure,
+  MAX_UPLOAD_BYTES,
+  streamToLimitedBuffer,
+  validateAndNormalizeUpload,
+} from "../services/fileSecurity.service";
+import {
+  getKnowledgeOwnerByAgent,
+  listKnowledgeFilesByAgent,
+  listKnowledgeFilesByInstance,
+} from "../services/knowledgeService";
+import { getOrCreatePrimaryAgent } from "../services/agent.service";
 
-async function streamToBuffer(stream: NodeJS.ReadableStream, maxBytes: number) {
-  const chunks: Buffer[] = [];
-  let total = 0;
-  for await (const chunk of stream as any) {
-    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    total += buf.length;
-    if (total > maxBytes) {
-      throw new Error("Arquivo excede o limite.");
-    }
-    chunks.push(buf);
+async function extractKnowledgeText(
+  fastify: FastifyInstance,
+  buffer: Buffer,
+  mimetype: string
+) {
+  try {
+    return await extractTextFromBuffer(buffer, mimetype);
+  } catch (e) {
+    logExtractionFailure(fastify.log, e, { channel: "TELEGRAM", mimetype });
+    throw new FileSecurityError("Arquivo corrompido ou inextraível OWASP.", "FILE_EXTRACTION_FAILED");
   }
-  return Buffer.concat(chunks);
-}
-
-function resolveMimeFromUpload(filename: string, incomingMime?: string) {
-  const ext = path.extname(filename).toLowerCase();
-  const byExt: Record<string, string> = {
-    ".pdf": "application/pdf",
-    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ".txt": "text/plain",
-    ".json": "application/json",
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".webp": "image/webp"
-  };
-
-  const normalizedIncoming = String(incomingMime ?? "").trim().toLowerCase();
-  if (!normalizedIncoming || normalizedIncoming === "application/octet-stream") {
-    return byExt[ext] ?? "application/octet-stream";
-  }
-  return normalizedIncoming;
 }
 
 export async function telegramFilesRoutes(fastify: FastifyInstance) {
   fastify.addHook("preValidation", verifyJwt);
 
-  fastify.get("/:instanceId", async (request, reply) => {
-    const { instanceId } = request.params as { instanceId: string };
-    const files = await prisma.file.findMany({
-      where: {
-        instanceId,
-        channel: "TELEGRAM"
-      },
-      orderBy: { createdAt: "asc" }
-    });
+  fastify.get("/download/:fileId", async (request, reply) => {
+    const { fileId } = request.params as { fileId: string };
+    const file = await prisma.file.findUnique({ where: { id: fileId } });
+    if (!file || file.channel !== "TELEGRAM") {
+      return reply.status(404).send({ error: "Arquivo não encontrado." });
+    }
+
+    const headers = buildSafeDownloadHeaders(file.filename, file.mimetype);
+    for (const [key, value] of Object.entries(headers)) reply.header(key, value);
+    return reply.send(file.data);
+  });
+
+  fastify.get("/agent/:agentId", async (request, reply) => {
+    const { agentId } = request.params as { agentId: string };
+    const files = await listKnowledgeFilesByAgent(agentId, "TELEGRAM");
+    if (!files) {
+      return reply.status(404).send({ error: "Agente não encontrado." });
+    }
     return reply.send(files);
   });
 
-  fastify.post("/:instanceId/upload", async (request, reply) => {
+  fastify.get("/:instanceId", async (request, reply) => {
     const { instanceId } = request.params as { instanceId: string };
-    const parts = request.parts();
-    let savedFile = null;
+    const files = await listKnowledgeFilesByInstance(instanceId, "TELEGRAM");
+    if (!files) {
+      return reply.status(404).send({ error: "Instância não encontrada." });
+    }
+    return reply.send(files);
+  });
 
-    for await (const part of parts) {
-      if (part.type !== "file") continue;
-      const ext = path.extname(part.filename).toLowerCase();
-      const allowedExts = [".pdf", ".txt", ".docx", ".json", ".png", ".jpg", ".jpeg", ".webp"];
-      if (!allowedExts.includes(ext)) {
-        return reply.status(400).send({ error: "Extensão inválida OWASP: Upload bloqueado." });
+  fastify.post(
+    "/agent/:agentId/upload",
+    {
+      config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+    },
+    async (request, reply) => {
+      const { agentId } = request.params as { agentId: string };
+      const owner = await getKnowledgeOwnerByAgent(agentId);
+      if (!owner) {
+        return reply.status(404).send({ error: "Agente não encontrado." });
       }
 
-      const buffer = await streamToBuffer(part.file, 5 * 1024 * 1024);
-      const resolvedMime = resolveMimeFromUpload(part.filename, part.mimetype);
+      const parts = request.parts();
+      let savedFile = null;
 
-      try {
-        let extractedText: string | null = null;
-        const canExtract = [
-          "application/pdf",
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-          "application/json",
-          "text/plain"
-        ].includes(resolvedMime);
-        if (canExtract) {
-          extractedText = await extractTextFromBuffer(buffer, resolvedMime);
-        }
+      for await (const part of parts) {
+        if (part.type !== "file") continue;
 
-        savedFile = await prisma.file.create({
-          data: {
-            instanceId,
+        try {
+          const buffer = await streamToLimitedBuffer(part.file, MAX_UPLOAD_BYTES);
+          const normalized = validateAndNormalizeUpload({
             filename: part.filename,
-            mimetype: resolvedMime,
-            data: buffer,
-            extracted: extractedText,
-            channel: "TELEGRAM"
+            incomingMime: part.mimetype,
+            buffer,
+          });
+
+          const existingFiles = (await listKnowledgeFilesByAgent(agentId, "TELEGRAM")) ?? [];
+          await assertStorageQuota({ existingFiles, nextBytes: buffer.length });
+
+          let extractedText: string | null = null;
+          if (normalized.canExtract) {
+            extractedText = await extractKnowledgeText(fastify, buffer, normalized.mimetype);
           }
-        });
-      } catch {
-        return reply.status(400).send({ error: "Arquivo corrompido ou inextraível OWASP." });
+
+          savedFile = await prisma.file.create({
+            data: {
+              instanceId: owner.instanceId,
+              agentId: owner.id,
+              filename: normalized.filename,
+              mimetype: normalized.mimetype,
+              data: buffer,
+              extracted: extractedText,
+              channel: "TELEGRAM",
+            },
+          });
+        } catch (e) {
+          if (e instanceof FileSecurityError) {
+            return reply.status(400).send({ error: e.message });
+          }
+          throw e;
+        }
       }
-    }
 
-    if (!savedFile) {
-      return reply.status(400).send({ error: "Nenhum arquivo de upload válido recebido no form-data." });
-    }
+      if (!savedFile) {
+        return reply.status(400).send({ error: "Nenhum arquivo de upload válido recebido no form-data." });
+      }
 
-    return reply.send(savedFile);
-  });
-
-  fastify.delete("/:fileId", async (request, reply) => {
-    const { fileId } = request.params as { fileId: string };
-    const file = await prisma.file.findUnique({ where: { id: fileId } });
-    if (file && file.channel === "TELEGRAM") {
-      await prisma.file.delete({ where: { id: fileId } });
+      return reply.send(savedFile);
     }
-    return reply.send({ success: true, message: "Excluído da base do Telegram." });
-  });
+  );
+
+  fastify.post(
+    "/:instanceId/upload",
+    {
+      config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+    },
+    async (request, reply) => {
+      const primaryAgent = await getOrCreatePrimaryAgent();
+      const parts = request.parts();
+      let savedFile = null;
+
+      for await (const part of parts) {
+        if (part.type !== "file") continue;
+
+        try {
+          const buffer = await streamToLimitedBuffer(part.file, MAX_UPLOAD_BYTES);
+          const normalized = validateAndNormalizeUpload({
+            filename: part.filename,
+            incomingMime: part.mimetype,
+            buffer,
+          });
+
+          const existingFiles = (await listKnowledgeFilesByAgent(primaryAgent.id, "TELEGRAM")) ?? [];
+          await assertStorageQuota({ existingFiles, nextBytes: buffer.length });
+
+          let extractedText: string | null = null;
+          if (normalized.canExtract) {
+            extractedText = await extractKnowledgeText(fastify, buffer, normalized.mimetype);
+          }
+
+          savedFile = await prisma.file.create({
+            data: {
+              instanceId: primaryAgent.instanceId,
+              agentId: primaryAgent.id,
+              filename: normalized.filename,
+              mimetype: normalized.mimetype,
+              data: buffer,
+              extracted: extractedText,
+              channel: "TELEGRAM",
+            },
+          });
+        } catch (e) {
+          if (e instanceof FileSecurityError) {
+            return reply.status(400).send({ error: e.message });
+          }
+          throw e;
+        }
+      }
+
+      if (!savedFile) {
+        return reply.status(400).send({ error: "Nenhum arquivo de upload válido recebido no form-data." });
+      }
+
+      return reply.send(savedFile);
+    }
+  );
+
+  fastify.delete(
+    "/:fileId",
+    {
+      config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
+    },
+    async (request, reply) => {
+      const { fileId } = request.params as { fileId: string };
+      const file = await prisma.file.findUnique({ where: { id: fileId } });
+      if (file && file.channel === "TELEGRAM") {
+        await prisma.file.delete({ where: { id: fileId } });
+      }
+      return reply.send({ success: true, message: "Excluído da base do Telegram." });
+    }
+  );
 }

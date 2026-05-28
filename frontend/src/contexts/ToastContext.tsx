@@ -1,6 +1,6 @@
 import React, { useRef } from "react";
 import { AlertCircle, Check, Info, AlertTriangle } from "lucide-react";
-import { useTheme } from "./ThemeContext";
+import { useTheme } from "./useTheme";
 
 type ToastType = "success" | "error" | "info" | "warning";
 
@@ -13,8 +13,8 @@ interface Toast {
 
 interface ToastContextType {
   toasts: Toast[];
-  addToast: (message: string, type?: ToastType, duration?: number) => void;
-  removeToast: (id: string) => void;
+  addToast: (messageParam: string, typeParam?: ToastType, durationParam?: number) => void;
+  removeToast: (idParam: string) => void;
 }
 
 const ToastContext = React.createContext<ToastContextType | undefined>(undefined);
@@ -24,18 +24,18 @@ export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
   const [toasts, setToasts] = React.useState<Toast[]>([]);
   const toastIdSeq = useRef(0);
 
-  const addToast = (message: string, type: ToastType = "info", duration = 3000) => {
+  const removeToast = React.useCallback((id: string) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+  }, []);
+
+  const addToast = React.useCallback((message: string, type: ToastType = "info", duration = 3000) => {
     const id = `toast-${++toastIdSeq.current}`;
     setToasts((prev) => [...prev, { id, type, message, duration }]);
 
     if (duration) {
       setTimeout(() => removeToast(id), duration);
     }
-  };
-
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((toast) => toast.id !== id));
-  };
+  }, [removeToast]);
 
   const getIcon = (type: ToastType) => {
     const iconProps = { className: "w-5 h-5" };

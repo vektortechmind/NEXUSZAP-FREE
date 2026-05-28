@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { isAxiosError } from "axios";
 import { useAuth } from "../contexts/AuthContext";
-import { Mail, Lock } from "lucide-react";
+import { AlertCircle, Lock, Mail, ShieldCheck } from "lucide-react";
 import { Navigate } from "react-router-dom";
 import { APP_VERSION } from "../version";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
-import { Card } from "../components/ui/Card";
+import { InlineAlert } from "../components/ui/InlineAlert";
 import { ThemeToggle } from "../components/ThemeToggle";
 
 function loginErrorMessage(err: unknown): string {
@@ -61,58 +61,54 @@ export function Login() {
   };
 
   return (
-    <div className="relative min-h-screen w-full bg-gradient-to-br from-slate-50 via-blue-50/60 to-violet-50/70 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 flex items-center justify-center p-4 transition-colors duration-200">
-      <div className="absolute top-4 right-4 z-20">
+    <div className="min-h-screen w-full bg-[var(--nexus-bg)] text-[var(--nexus-text)]">
+      <div className="fixed right-4 top-4 z-20">
         <ThemeToggle />
       </div>
-      {/* Animated Background */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className={"absolute top-0 left-1/4 w-96 h-96 bg-blue-400 opacity-20 dark:opacity-10 blur-3xl rounded-full"} />
-        <div className={"absolute bottom-0 right-1/4 w-96 h-96 bg-purple-400 opacity-20 dark:opacity-10 blur-3xl rounded-full"} />
-      </div>
 
-      <div className="w-full max-w-md relative z-10">
-        <Card className="shadow-2xl">
-          {/* Header */}
-          <div className="text-center mb-8">
-            <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-violet-600 shadow-[0_16px_34px_-18px_rgba(59,130,246,0.9)]">
-              <span className="text-2xl font-bold text-white">🤖</span>
-            </div>
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-              Nexus<span className="text-blue-600 dark:text-blue-400">ZAP</span>
-            </h2>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Plataforma de Inteligência Artificial
-            </p>
-          </div>
-
-          {/* Form */}
-          <form onSubmit={handleLogin} className="space-y-5">
-            {error && (
-              <div className="rounded-xl border border-red-200 bg-red-50/90 p-4 backdrop-blur-xl dark:border-red-900 dark:bg-red-950/40">
-                <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+      <main className="mx-auto flex min-h-screen w-full max-w-7xl items-center justify-center px-4 py-20 sm:px-6 lg:px-8">
+        <section className="flex w-full items-center justify-center" aria-labelledby="login-title">
+          <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-8">
+            <div className="mb-8">
+              <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-600 text-white dark:bg-emerald-500 dark:text-slate-950">
+                <ShieldCheck size={24} aria-hidden="true" />
               </div>
+              <h2 id="login-title" className="text-2xl font-semibold tracking-normal text-slate-950 dark:text-slate-50">
+                Entrar no painel
+              </h2>
+            </div>
+
+            <form onSubmit={handleLogin} className="space-y-5">
+            {error && (
+              <InlineAlert tone="danger" icon={<AlertCircle size={18} aria-hidden="true" />} title="Não foi possível entrar">
+                {error}
+              </InlineAlert>
             )}
 
             <Input
               label="Email"
+              id="login-email"
               type="email"
-              placeholder="seu@email.com"
+              placeholder="admin@seudominio.com"
               icon={<Mail size={18} />}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={loading}
+              autoComplete="email"
+              autoFocus
               required
             />
 
             <Input
               label="Senha"
+              id="login-password"
               type="password"
               placeholder="••••••••"
               icon={<Lock size={18} />}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={loading}
+              autoComplete="current-password"
               required
             />
 
@@ -123,23 +119,16 @@ export function Login() {
               className="w-full"
               loading={loading}
             >
-              {loading ? "Entrando..." : "Entrar"}
+              Entrar
             </Button>
           </form>
 
-          {/* Footer */}
-          <div className="mt-8 border-t border-slate-200/70 pt-6 text-center dark:border-slate-700/70">
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Acesso protegido por autenticação segura
+            <p className="mt-6 text-center text-xs text-slate-500 dark:text-slate-500">
+              NexusZAP v{APP_VERSION}
             </p>
           </div>
-        </Card>
-
-        <p className="text-center text-xs text-gray-500 dark:text-gray-500 mt-6">
-          © 2026 NexusZAP · v{APP_VERSION} — Todos os direitos reservados.
-        </p>
-      </div>
+        </section>
+      </main>
     </div>
   );
 }
-

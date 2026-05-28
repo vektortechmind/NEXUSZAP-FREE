@@ -1,3 +1,5 @@
+import { buildPromptInjectionGuardrailBlock, wrapUntrustedUserMessage } from "./promptGuard";
+
 /**
  * Identidade fixa do atendente (sempre role=system, sempre primeiro).
  * {{agent_name}} vem do campo **agentName** da instância (instruções do agente), não do nome interno da instância.
@@ -38,7 +40,7 @@ export function buildCompleteSystemPrompt(params: {
   fileContextSuffix?: string;
 }): string {
   const identity = formatIdentityBlock(params.agentName);
-  const parts: string[] = [identity];
+  const parts: string[] = [identity, `\n\n${buildPromptInjectionGuardrailBlock()}`];
 
   const extra = params.behavioralPrompt?.trim();
   if (extra) {
@@ -71,9 +73,9 @@ export function normalizeMessagesForChatApi(
     if (role === "system") {
       if (content.trim()) systemChunks.push(content.trim());
     } else if (role === "assistant") {
-      rest.push({ role: "assistant", content });
+      rest.push({ role: "assistant", content: content.slice(0, 4000) });
     } else {
-      rest.push({ role: "user", content });
+      rest.push({ role: "user", content: wrapUntrustedUserMessage(content) });
     }
   }
 

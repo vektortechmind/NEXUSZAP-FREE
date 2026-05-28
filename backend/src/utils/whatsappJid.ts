@@ -6,6 +6,7 @@ import {
   isPnUser,
   jidDecode
 } from "@whiskeysockets/baileys";
+import { safeLogError } from "./redaction";
 
 /** JID de identificador interno (LID) — não é número de telefone */
 export function isWhatsAppInternalIdJid(jid: string): boolean {
@@ -103,7 +104,7 @@ export async function resolveContactPhoneDisplay(
         if (d) return `+${d}`;
       }
     } catch (e) {
-      console.warn("[whatsappJid] getPnJidForLidChat:", e);
+      console.warn("[whatsappJid] getPnJidForLidChat:", safeLogError(e));
     }
   }
 
