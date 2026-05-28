@@ -1,7 +1,12 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_PATH="${BASH_SOURCE[0]:-}"
+if [[ -n "$SCRIPT_PATH" && "$SCRIPT_PATH" != "bash" && "$SCRIPT_PATH" != "-bash" ]]; then
+  ROOT="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
+else
+  ROOT="$(pwd)"
+fi
 cd "$ROOT"
 REPO_URL="https://github.com/vektortechmind/NEXUSZAP-FREE.git"
 APP_DIR="NEXUSZAP-FREE"
