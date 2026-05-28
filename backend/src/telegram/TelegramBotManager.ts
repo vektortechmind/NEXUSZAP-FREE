@@ -5,13 +5,13 @@ import { askChat, getKeys, isAudioTranscriptionEnabled, transcribeAudio } from "
 import { getResolvedTelegramPrompt } from "../services/agentPrompt";
 import { encryptToken, tryDecryptSecret } from "../services/crypto.service";
 import { recordMessageEvent } from "../services/messageEvent.service";
-import { getOrCreatePrimaryInstance } from "../services/instance.service";
 import { buildCompleteSystemPrompt, resolveAgentDisplayName } from "../ai/systemPrompt";
 import {
   ensureKnowledgeExtracted,
   buildFileContextSuffix,
   listKnowledgeFilesByInstance,
 } from "../services/knowledgeService";
+import { getTelegramInstance } from "../services/instance.service";
 import { safeLogError } from "../utils/redaction";
 import { globalMemoryManager } from "../utils/ai/memoryManager";
 import { splitLongText } from "../utils/textSplitter";
@@ -41,10 +41,6 @@ function randomInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-async function getTelegramInstance() {
-  return (await getOrCreatePrimaryInstance()) as Instance;
-}
-
 async function getDecryptedTelegramToken(instanceId: string): Promise<string | null> {
   const instance = await prisma.instance.findUnique({ where: { id: instanceId } });
   if (!instance?.telegramBotToken) return null;
@@ -63,7 +59,8 @@ async function handleTelegramMessage(ctx: Context) {
   const fromId = message.from?.id;
   if (!fromId) return;
 
-  const instance = await getTelegramInstance();
+  const instance = (await getTelegramInstance()) as Instance | null;
+  if (!instance) return;
   const hasTextMessage = "text" in message && typeof message.text === "string" && message.text.trim().length > 0;
   const hasAudioMessage = "audio" in message && Boolean(message.audio);
   const hasVoiceMessage = "voice" in message && Boolean(message.voice);

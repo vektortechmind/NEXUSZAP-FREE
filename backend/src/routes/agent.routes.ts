@@ -28,10 +28,13 @@ import {
   createInstance,
   deleteInstance,
   getInstanceById,
+  getOrCreateTelegramInstance,
   getOrCreatePrimaryInstance,
   getPrimaryInstance,
-  MaxWhatsAppInstancesError,
+  getTelegramInstance,
+  InstanceLinkedAgentError,
   listInstances,
+  MaxWhatsAppInstancesError,
 } from "../services/instance.service";
 import { tryDecryptSecret } from "../services/crypto.service";
 import { TelegramBotManager } from "../telegram/TelegramBotManager";
@@ -255,7 +258,13 @@ export async function agentRoutes(fastify: FastifyInstance) {
   }
 
   fastify.get("/instances", async (_request, reply) => {
-    const instances = await prisma.instance.findMany({
+    const instances = await listInstances();
+    const instancesWithAgent = await prisma.instance.findMany({
+      where: {
+        id: {
+          in: instances.map((instance) => instance.id),
+        },
+      },
       orderBy: { slot: "asc" },
       include: {
         agent: {
@@ -263,7 +272,7 @@ export async function agentRoutes(fastify: FastifyInstance) {
         },
       },
     });
-    return reply.send(instances.map(serializeInstanceStatus));
+    return reply.send(instancesWithAgent.map(serializeInstanceStatus));
   });
 
   fastify.get("/instances/runtime-options", async (_request, reply) => {
@@ -467,13 +476,26 @@ export async function agentRoutes(fastify: FastifyInstance) {
     config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
   }, async (request, reply) => {
     const { instanceId } = request.params as { instanceId: string };
-    const deleted = await deleteInstance(instanceId);
+    try {
+      const telegramStatus = TelegramBotManager.getStatus();
+      const deleted = await deleteInstance(instanceId);
 
-    if (!deleted) {
-      return reply.status(404).send({ error: "Instância não encontrada." });
+      if (!deleted) {
+        return reply.status(404).send({ error: "Instância não encontrada." });
+      }
+
+      if (telegramStatus.instanceId === instanceId) {
+        await TelegramBotManager.stop();
+      }
+
+      return reply.send({ success: true, id: deleted.id, name: deleted.name });
+    } catch (err) {
+      if (err instanceof InstanceLinkedAgentError) {
+        return reply.status(err.statusCode).send({ error: err.message });
+      }
+
+      throw err;
     }
-
-    return reply.send({ success: true, id: deleted.id, name: deleted.name });
   });
 
   fastify.get("/status", async (_request, reply) => {
@@ -696,10 +718,10 @@ export async function agentRoutes(fastify: FastifyInstance) {
   fastify.post("/telegram/save-token", {
     config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
   }, async (request, reply) => {
-    const agent = await getAgent();
+    const instance = await getOrCreateTelegramInstance();
     const body = z.object({ token: z.string().min(20, "Token inválido") }).parse(request.body);
 
-    const result = await TelegramBotManager.saveAndStart(agent.id, body.token);
+    const result = await TelegramBotManager.saveAndStart(instance.id, body.token);
     if (!result.success) {
       return reply.status(400).send({ error: result.error });
     }
@@ -714,14 +736,18 @@ export async function agentRoutes(fastify: FastifyInstance) {
   fastify.post("/telegram/start", {
     config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
   }, async (_request, reply) => {
-    const agent = await getAgent();
-    const isConfigured = await TelegramBotManager.isConfigured(agent.id);
+    const instance = await getTelegramInstance();
+    if (!instance) {
+      return reply.status(404).send({ error: "Instância Telegram não encontrada." });
+    }
+
+    const isConfigured = await TelegramBotManager.isConfigured(instance.id);
 
     if (!isConfigured) {
       return reply.status(400).send({ error: "Configure o token do Telegram antes de conectar." });
     }
 
-    await TelegramBotManager.restartForInstance(agent.id);
+    await TelegramBotManager.restartForInstance(instance.id);
     return reply.send({ success: true, status: TelegramBotManager.getStatus() });
   });
 
@@ -735,22 +761,37 @@ export async function agentRoutes(fastify: FastifyInstance) {
   fastify.delete("/telegram/token", {
     config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
   }, async (_request, reply) => {
-    const agent = await getAgent();
+    const instance = await getTelegramInstance();
+    if (!instance) {
+      return reply.status(404).send({ error: "Instância Telegram não encontrada." });
+    }
+
     await TelegramBotManager.stop();
     await prisma.instance.update({
-      where: { id: agent.id },
+      where: { id: instance.id },
       data: { telegramBotToken: null },
     });
     return reply.send({ success: true, message: "Token removido e bot parado." });
   });
 
   fastify.get("/telegram/status", async (_request, reply) => {
-    const agent = await getAgent();
-    const isConfigured = await TelegramBotManager.isConfigured(agent.id);
+    const instance = await getTelegramInstance();
+    if (!instance) {
+      return reply.send({
+        ...TelegramBotManager.getStatus(),
+        configured: false,
+        instanceId: undefined,
+        instanceName: null,
+        channel: "TELEGRAM" as const,
+      });
+    }
+
+    const isConfigured = await TelegramBotManager.isConfigured(instance.id);
     return reply.send({
       ...TelegramBotManager.getStatus(),
       configured: isConfigured,
-      instanceName: agent.name,
+      instanceId: instance.id,
+      instanceName: instance.name,
       channel: "TELEGRAM" as const,
     });
   });

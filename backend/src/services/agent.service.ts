@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../database/prisma";
-import { getOrCreatePrimaryInstance, getPrimaryInstance } from "./instance.service";
+import { getOrCreatePrimaryInstance, getPrimaryInstance, TELEGRAM_INSTANCE_SLOT } from "./instance.service";
 
 export class AgentEligibilityError extends Error {
   statusCode: number;
@@ -49,6 +49,7 @@ export async function getAgentById(agentId: string) {
 export async function listEligibleInstances() {
   return prisma.instance.findMany({
     where: {
+      slot: { gt: TELEGRAM_INSTANCE_SLOT },
       status: "CONNECTED",
       agent: null,
     },

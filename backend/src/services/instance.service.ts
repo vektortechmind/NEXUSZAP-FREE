@@ -2,6 +2,7 @@ import { prisma } from "../database/prisma";
 import { InstanceManager } from "../whatsapp/InstanceManager";
 
 export const MAX_WHATSAPP_INSTANCES = 3;
+export const TELEGRAM_INSTANCE_SLOT = 0;
 
 export class MaxWhatsAppInstancesError extends Error {
   constructor() {
@@ -15,11 +16,36 @@ type CreateInstanceInput = {
 };
 
 export async function listInstances() {
-  return prisma.instance.findMany({ orderBy: { slot: "asc" } });
+  return prisma.instance.findMany({
+    where: { slot: { gt: TELEGRAM_INSTANCE_SLOT } },
+    orderBy: { slot: "asc" },
+  });
 }
 
 export async function getPrimaryInstance() {
-  return prisma.instance.findFirst({ orderBy: { slot: "asc" } });
+  return prisma.instance.findFirst({
+    where: { slot: { gt: TELEGRAM_INSTANCE_SLOT } },
+    orderBy: { slot: "asc" },
+  });
+}
+
+export async function getTelegramInstance() {
+  return prisma.instance.findUnique({ where: { slot: TELEGRAM_INSTANCE_SLOT } });
+}
+
+export async function getOrCreateTelegramInstance() {
+  const existing = await getTelegramInstance();
+  if (existing) return existing;
+
+  return prisma.instance.create({
+    data: {
+      slot: TELEGRAM_INSTANCE_SLOT,
+      name: "Telegram",
+      typing: true,
+      delayMin: 4000,
+      delayMax: 7000,
+    },
+  });
 }
 
 export async function getOrCreatePrimaryInstance() {
@@ -44,11 +70,13 @@ export async function createInstance(input: CreateInstanceInput) {
       orderBy: { slot: "asc" },
     });
 
-    if (existing.length >= MAX_WHATSAPP_INSTANCES) {
+    const whatsappInstances = existing.filter((instance) => instance.slot > TELEGRAM_INSTANCE_SLOT);
+
+    if (whatsappInstances.length >= MAX_WHATSAPP_INSTANCES) {
       throw new MaxWhatsAppInstancesError();
     }
 
-    const occupiedSlots = new Set(existing.map((instance) => instance.slot));
+    const occupiedSlots = new Set(whatsappInstances.map((instance) => instance.slot));
     const nextSlot = [1, 2, 3].find((slot) => !occupiedSlots.has(slot));
 
     if (!nextSlot) {
@@ -71,6 +99,16 @@ export async function getInstanceById(instanceId: string) {
   return prisma.instance.findUnique({ where: { id: instanceId } });
 }
 
+export class InstanceLinkedAgentError extends Error {
+  statusCode: number;
+
+  constructor(message = "Exclua o agente vinculado antes de remover esta instância.") {
+    super(message);
+    this.name = "INSTANCE_LINKED_AGENT_ERROR";
+    this.statusCode = 409;
+  }
+}
+
 export async function deleteInstance(instanceId: string) {
   const instance = await prisma.instance.findUnique({
     where: { id: instanceId },
@@ -85,19 +123,16 @@ export async function deleteInstance(instanceId: string) {
     return null;
   }
 
+  if (instance.agent) {
+    throw new InstanceLinkedAgentError();
+  }
+
   if (InstanceManager.isRunning(instanceId) || instance.status === "CONNECTED" || instance.status === "RECONNECTING") {
     await InstanceManager.stop(instanceId);
   }
 
   await prisma.$transaction(async (tx) => {
     await tx.session.deleteMany({ where: { instanceId } });
-
-    if (instance.agent) {
-      await tx.file.updateMany({
-        where: { agentId: instance.agent.id },
-        data: { agentId: null },
-      });
-    }
 
     await tx.instance.delete({ where: { id: instanceId } });
   });
