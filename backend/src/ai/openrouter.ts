@@ -1,4 +1,5 @@
 import type { ChatMessage } from "./systemPrompt";
+import { redactSensitiveText } from "../utils/redaction";
 
 /**
  * Mensagens chegam como `ChatMessage[]` (system primeiro) via `askChat` → `normalizeMessagesForChatApi`.
@@ -36,8 +37,9 @@ export async function openRouterChat(
   });
   const raw = await res.text();
   if (!res.ok) {
-    console.error("[openRouterChat] HTTP", res.status, raw.slice(0, 600));
-    throw new Error(`OpenRouter HTTP error: ${res.status} ${raw.slice(0, 400)}`);
+    const safeBody = redactSensitiveText(raw, 180);
+    console.error("[openRouterChat] HTTP", res.status, safeBody);
+    throw new Error(`OpenRouter HTTP error: ${res.status} ${safeBody}`);
   }
   const data = JSON.parse(raw) as { choices?: { message?: { content?: string } }[] };
   const text = data.choices?.[0]?.message?.content;

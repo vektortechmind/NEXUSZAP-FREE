@@ -1,15 +1,20 @@
-import { Telegraf, Context } from "telegraf";
+import type { Instance } from "@prisma/client";
+import { Context, Telegraf } from "telegraf";
 import { prisma } from "../database/prisma";
-import { CHAT_MEMORY_MAX_MESSAGES } from "../ai/chatMemory";
 import { askChat, transcribeAudio } from "../ai/providerSelector";
 import { getResolvedTelegramPrompt } from "../services/agentPrompt";
+import { encryptToken, tryDecryptSecret } from "../services/crypto.service";
+import { recordMessageEvent } from "../services/messageEvent.service";
+import { getOrCreatePrimaryInstance } from "../services/instance.service";
 import { buildCompleteSystemPrompt, resolveAgentDisplayName } from "../ai/systemPrompt";
-import { extractTextFromBuffer } from "../services/fileExtractor";
-import { encryptToken, decryptToken, maskToken } from "../services/crypto.service";
-
-type MemoryItem = { role: "user" | "assistant"; content: string };
-
-const userMemory = new Map<string, MemoryItem[]>();
+import {
+  ensureKnowledgeExtracted,
+  buildFileContextSuffix,
+  listKnowledgeFilesByInstance,
+} from "../services/knowledgeService";
+import { safeLogError } from "../utils/redaction";
+import { globalMemoryManager } from "../utils/ai/memoryManager";
+import { splitLongText } from "../utils/textSplitter";
 
 async function downloadTelegramFile(ctx: Context, filePath: string): Promise<Buffer | null> {
   try {
@@ -19,7 +24,7 @@ async function downloadTelegramFile(ctx: Context, filePath: string): Promise<Buf
     const arrayBuffer = await response.arrayBuffer();
     return Buffer.from(arrayBuffer);
   } catch (err) {
-    console.error("[downloadTelegramFile] Erro:", err);
+    console.error("[downloadTelegramFile] Erro:", safeLogError(err));
     return null;
   }
 }
@@ -36,98 +41,51 @@ function randomInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function splitLongTextForTelegram(text: string, maxChunkLen = 3500): string[] {
-  const t = String(text ?? "").trim();
-  if (!t) return [];
-  const paragraphs = t.split(/\n{2,}/g).map((p) => p.trim()).filter(Boolean);
-  const chunks: string[] = [];
-  for (const p of paragraphs) {
-    const v = p.trim();
-    if (!v) continue;
-    if (v.length <= maxChunkLen) {
-      chunks.push(v);
-    } else {
-      const sentences = v.split(/(?<=[.!?])\s+/g);
-      let current = "";
-      for (const sentence of sentences) {
-        const candidate = current ? `${current} ${sentence}` : sentence;
-        if (candidate.length <= maxChunkLen) {
-          current = candidate;
-        } else {
-          if (current) chunks.push(current.trim());
-          current = sentence;
-          while (current.length > maxChunkLen) {
-            chunks.push(current.slice(0, maxChunkLen));
-            current = current.slice(maxChunkLen);
-          }
-        }
-      }
-      if (current.trim()) chunks.push(current.trim());
-    }
-  }
-  return chunks;
-}
-
 async function getTelegramInstance() {
-  let instance = await prisma.instance.findFirst();
-  if (!instance) {
-    instance = await prisma.instance.create({
-      data: { name: "Agente Principal", typing: true, delayMin: 4000, delayMax: 7000 }
-    });
-  }
-  return instance;
+  return (await getOrCreatePrimaryInstance()) as Instance;
 }
 
 async function getDecryptedTelegramToken(instanceId: string): Promise<string | null> {
   const instance = await prisma.instance.findUnique({ where: { id: instanceId } });
   if (!instance?.telegramBotToken) return null;
   try {
-    return decryptToken(instance.telegramBotToken);
+    return tryDecryptSecret(instance.telegramBotToken);
   } catch {
     return null;
-  }
-}
-
-async function ensureKnowledgeExtracted(
-  files: Array<{ id: string; mimetype: string; data: Buffer; extracted: string | null }>
-) {
-  for (const file of files) {
-    if (file.extracted && file.extracted.trim()) continue;
-    const canExtract = [
-      "application/pdf",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "application/json",
-      "text/plain"
-    ].includes(file.mimetype);
-    if (!canExtract) continue;
-    try {
-      const text = await extractTextFromBuffer(Buffer.from(file.data), file.mimetype);
-      if (text && text.trim()) {
-        await prisma.file.update({ where: { id: file.id }, data: { extracted: text } });
-        file.extracted = text;
-      }
-    } catch { }
   }
 }
 
 async function handleTelegramMessage(ctx: Context) {
   const message = ctx.message;
   if (!message || !("chat" in message) || message.chat.type !== "private") return;
-  
+
   const chatId = message.chat.id;
   const fromId = message.from?.id;
   if (!fromId) return;
 
   const instance = await getTelegramInstance();
+  const hasTextMessage = "text" in message && typeof message.text === "string" && message.text.trim().length > 0;
+  const hasAudioMessage = "audio" in message && Boolean(message.audio);
+  const hasVoiceMessage = "voice" in message && Boolean(message.voice);
+  const hasSupportedInboundContent = hasTextMessage || hasAudioMessage || hasVoiceMessage;
+  if (!hasSupportedInboundContent) return;
+
+  await recordMessageEvent({
+    instanceId: instance.id,
+    channel: "TELEGRAM",
+    direction: "INBOUND",
+    usedAi: instance.aiTelegramEnabled,
+  });
+
   if (!instance.aiTelegramEnabled) return;
 
   let userContent: string | undefined;
 
-  if ("text" in message && typeof message.text === "string") {
+  if (hasTextMessage && "text" in message) {
     userContent = message.text.trim();
   }
-  
-  if (!userContent && "audio" in message && message.audio) {
+
+  if (!userContent && hasAudioMessage && "audio" in message && message.audio) {
     try {
       const audioFile = message.audio;
       const file = await ctx.telegram.getFile(audioFile.file_id);
@@ -139,11 +97,11 @@ async function handleTelegramMessage(ctx: Context) {
         }
       }
     } catch (err) {
-      console.error("[Telegram] Erro ao transcrever áudio:", err);
+      console.error("[Telegram] Erro ao transcrever áudio:", safeLogError(err));
     }
   }
 
-  if (!userContent && "voice" in message && message.voice) {
+  if (!userContent && hasVoiceMessage && "voice" in message && message.voice) {
     try {
       const voiceFile = message.voice;
       const file = await ctx.telegram.getFile(voiceFile.file_id);
@@ -155,35 +113,28 @@ async function handleTelegramMessage(ctx: Context) {
         }
       }
     } catch (err) {
-      console.error("[Telegram] Erro ao transcrever nota de voz:", err);
+      console.error("[Telegram] Erro ao transcrever nota de voz:", safeLogError(err));
     }
   }
 
   if (!userContent || !userContent.trim()) return;
 
-  const knowledgeFiles = await prisma.file.findMany({
-    where: { instanceId: instance.id, channel: "TELEGRAM" }
-  });
-  await ensureKnowledgeExtracted(knowledgeFiles as Array<{ id: string; mimetype: string; data: Buffer; extracted: string | null }>);
-  const extractedParts = knowledgeFiles.map((f) => f.extracted).filter((t): t is string => typeof t === "string" && t.trim().length > 0);
-  const combinedKnowledge = extractedParts.length > 0
-    ? "\n[CONTEXTO DE ARQUIVOS]:\n" + extractedParts.join("\n---\n") + "\n[FIM DO CONTEXTO]\n"
-    : undefined;
+  const knowledgeFiles = (await listKnowledgeFilesByInstance(instance.id, "TELEGRAM")) ?? [];
+  await ensureKnowledgeExtracted(
+    knowledgeFiles as Array<{ id: string; mimetype: string; data: Buffer; extracted: string | null }>
+  );
+  const combinedKnowledge = buildFileContextSuffix(knowledgeFiles);
 
   const behavioral = await getResolvedTelegramPrompt(instance.id);
   const systemContent = buildCompleteSystemPrompt({
     agentName: resolveAgentDisplayName(instance),
     behavioralPrompt: behavioral,
-    fileContextSuffix: combinedKnowledge
+    fileContextSuffix: combinedKnowledge,
   });
 
   const memoryKey = `${instance.id}:${fromId}`;
-  let memory = userMemory.get(memoryKey) ?? [];
-  memory.push({ role: "user", content: userContent });
-  if (memory.length > CHAT_MEMORY_MAX_MESSAGES) {
-    memory = memory.slice(memory.length - CHAT_MEMORY_MAX_MESSAGES);
-  }
-  userMemory.set(memoryKey, memory);
+  globalMemoryManager.addMessage(memoryKey, "user", userContent);
+  const memory = globalMemoryManager.getMemory(memoryKey, instance.memoryLimit);
 
   if (instance.typing) {
     const min = clamp(instance.delayMin ?? 4000, 4000, 7000);
@@ -193,7 +144,7 @@ async function handleTelegramMessage(ctx: Context) {
   }
 
   const aiResponse = await askChat(instance.id, [{ role: "system", content: systemContent }, ...memory]);
-  const parts = splitLongTextForTelegram(aiResponse, 3500);
+  const parts = splitLongText(aiResponse, 3500);
   if (parts.length === 0) return;
 
   for (let i = 0; i < parts.length; i++) {
@@ -202,17 +153,18 @@ async function handleTelegramMessage(ctx: Context) {
       await sleep(randomInt(700, 1400));
     }
     await ctx.telegram.sendMessage(chatId, parts[i]);
+    await recordMessageEvent({
+      instanceId: instance.id,
+      channel: "TELEGRAM",
+      direction: "OUTBOUND",
+      usedAi: true,
+    });
     if (i < parts.length - 1 && instance.typing) {
       await sleep(randomInt(900, 1600));
     }
   }
 
-  let finalMemory = userMemory.get(memoryKey) ?? memory;
-  finalMemory.push({ role: "assistant", content: aiResponse });
-  if (finalMemory.length > CHAT_MEMORY_MAX_MESSAGES) {
-    finalMemory = finalMemory.slice(finalMemory.length - CHAT_MEMORY_MAX_MESSAGES);
-  }
-  userMemory.set(memoryKey, finalMemory);
+  globalMemoryManager.addMessage(memoryKey, "assistant", aiResponse);
 }
 
 export class TelegramBotManager {
@@ -246,19 +198,19 @@ export class TelegramBotManager {
       const me = await bot.telegram.getMe();
       this.botLabel = me.username ? `@${me.username}` : me.first_name || null;
     } catch (err) {
-      console.warn("[Telegram] Não foi possível obter dados do bot:", err);
+      console.warn("[Telegram] Não foi possível obter dados do bot:", safeLogError(err));
     }
 
-    bot.on("message", async (ctx) => {
+    bot.on("message", async (messageCtx) => {
       try {
-        await handleTelegramMessage(ctx);
+        await handleTelegramMessage(messageCtx);
       } catch (err) {
-        console.error("[Telegram] Falha ao processar mensagem:", err);
+        console.error("[Telegram] Falha ao processar mensagem:", safeLogError(err));
       }
     });
 
     bot.catch((err) => {
-      console.error("[Telegram] polling_error:", err);
+      console.error("[Telegram] polling_error:", safeLogError(err));
     });
 
     void bot.launch();
@@ -287,7 +239,7 @@ export class TelegramBotManager {
     return {
       online: this.started,
       label: this.botLabel,
-      instanceId: this.currentInstanceId
+      instanceId: this.currentInstanceId,
     };
   }
 
@@ -321,7 +273,7 @@ export class TelegramBotManager {
     const encrypted = encryptToken(token);
     await prisma.instance.update({
       where: { id: instanceId },
-      data: { telegramBotToken: encrypted }
+      data: { telegramBotToken: encrypted },
     });
 
     await this.startForInstance(instanceId);

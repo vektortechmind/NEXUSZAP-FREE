@@ -5,36 +5,39 @@ import {
   extractMessageContent,
   normalizeMessageContent,
   isJidStatusBroadcast,
-  downloadMediaMessage
+  downloadMediaMessage,
 } from "@whiskeysockets/baileys";
+import type { Instance } from "@prisma/client";
 import { prisma } from "../database/prisma";
-import { CHAT_MEMORY_MAX_MESSAGES } from "../ai/chatMemory";
 import { askChat, transcribeAudio } from "../ai/providerSelector";
 import { getResolvedAgentPrompt } from "../services/agentPrompt";
 import { buildCompleteSystemPrompt, resolveAgentDisplayName } from "../ai/systemPrompt";
+import { recordMessageEvent } from "../services/messageEvent.service";
 import { resolveContactPhoneDisplay } from "../utils/whatsappJid";
 import { recordLastMessageForChat } from "./lastMessageCache";
-import { extractTextFromBuffer } from "../services/fileExtractor";
+import { globalMemoryManager } from "../utils/ai/memoryManager";
+import { splitLongText } from "../utils/textSplitter";
+import {
+  ensureKnowledgeExtracted,
+  buildFileContextSuffix,
+  listKnowledgeFilesByInstance,
+} from "../services/knowledgeService";
+import { safeLogError } from "../utils/redaction";
 
-const chatMemory = new Map<string, { role: "user" | "assistant" | "system", content: string }[]>();
-
-/**
- * Baixa o áudio de uma mensagem do WhatsApp e retorna como Buffer.
- */
 async function downloadAudioFromMessage(sock: WASocket, m: proto.IWebMessageInfo): Promise<Buffer | null> {
   try {
     const buffer = await downloadMediaMessage(
-      m as any,
+      m as never,
       "buffer",
       {},
-      { 
-        logger: console as any,
-        reuploadRequest: sock.updateMediaMessage 
+      {
+        logger: { trace() {}, debug() {}, info() {}, warn() {}, error() {} } as never,
+        reuploadRequest: sock.updateMediaMessage,
       }
     );
     return buffer ? Buffer.from(buffer) : null;
   } catch (err) {
-    console.error("[downloadAudioFromMessage] Erro:", err);
+    console.error("[downloadAudioFromMessage] Erro:", safeLogError(err));
     return null;
   }
 }
@@ -43,7 +46,6 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Mantém o indicador "digitando..." ativo durante esperas longas (o cliente costuma esconder se não houver renovação). */
 async function sleepWithComposingRefresh(sock: WASocket, remoteJid: string, totalMs: number) {
   if (totalMs <= 0) return;
   const step = 2500;
@@ -52,7 +54,7 @@ async function sleepWithComposingRefresh(sock: WASocket, remoteJid: string, tota
     try {
       await sock.sendPresenceUpdate("composing", remoteJid);
     } catch {
-      /* ignore */
+      // ignore presence refresh failures
     }
     const chunk = Math.min(step, totalMs - elapsed);
     await sleep(chunk);
@@ -60,16 +62,11 @@ async function sleepWithComposingRefresh(sock: WASocket, remoteJid: string, tota
   }
 }
 
-/** Composição imediata + renovação periódica enquanto a operação assíncrona roda (ex.: resposta da IA). */
-async function withComposingWhile<T>(
-  sock: WASocket,
-  remoteJid: string,
-  fn: () => Promise<T>
-): Promise<T> {
+async function withComposingWhile<T>(sock: WASocket, remoteJid: string, fn: () => Promise<T>): Promise<T> {
   try {
     await sock.sendPresenceUpdate("composing", remoteJid);
   } catch {
-    /* ignore */
+    // ignore composing failures
   }
   const id = setInterval(() => {
     void sock.sendPresenceUpdate("composing", remoteJid).catch(() => {});
@@ -91,77 +88,7 @@ function randomInt(min: number, max: number) {
   return Math.floor(Math.random() * (b - a + 1)) + a;
 }
 
-function splitLongTextForWhatsApp(text: string, maxChunkLen = 800): string[] {
-  const t = String(text ?? "").trim();
-  if (!t) return [];
-
-  // 1) quebra por parágrafos
-  const paragraphs = t.split(/\n{2,}/g).map((p) => p.trim()).filter(Boolean);
-
-  const chunks: string[] = [];
-  const push = (s: string) => {
-    const v = s.trim();
-    if (!v) return;
-    if (v.length <= maxChunkLen) {
-      chunks.push(v);
-      return;
-    }
-    // 2) se ainda estiver grande, quebra por frases
-    const sentences = v.split(/(?<=[.!?])\s+/g);
-    let cur = "";
-    for (const sentence of sentences) {
-      const candidate = cur ? `${cur} ${sentence}` : sentence;
-      if (candidate.length <= maxChunkLen) {
-        cur = candidate;
-      } else {
-        if (cur) chunks.push(cur.trim());
-        cur = sentence;
-        // 3) fallback: quebra “na marra”
-        while (cur.length > maxChunkLen) {
-          chunks.push(cur.slice(0, maxChunkLen));
-          cur = cur.slice(maxChunkLen);
-        }
-      }
-    }
-    if (cur.trim()) chunks.push(cur.trim());
-  };
-
-  for (const p of paragraphs) push(p);
-  return chunks;
-}
-
-async function ensureKnowledgeExtracted(
-  files: Array<{ id: string; mimetype: string; data: Buffer; extracted: string | null }>
-) {
-  for (const f of files) {
-    if (f.extracted && f.extracted.trim()) continue;
-    const canExtract = [
-      "application/pdf",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "application/json",
-      "text/plain"
-    ].includes(f.mimetype);
-    if (!canExtract) continue;
-    try {
-      const text = await extractTextFromBuffer(Buffer.from(f.data), f.mimetype);
-      if (text && text.trim()) {
-        await prisma.file.update({
-          where: { id: f.id },
-          data: { extracted: text }
-        });
-        f.extracted = text;
-      }
-    } catch {
-      // Mantém sem extracted caso o arquivo seja inválido/ilegível.
-    }
-  }
-}
-
-export async function handleIncomingMessage(
-  sock: WASocket,
-  instanceId: string,
-  m: proto.IWebMessageInfo
-) {
+export async function handleIncomingMessage(sock: WASocket, instanceId: string, m: proto.IWebMessageInfo) {
   try {
     if (!m.message) return;
     const key = m.key;
@@ -169,27 +96,25 @@ export async function handleIncomingMessage(
 
     const remoteJid = key.remoteJid;
     if (!remoteJid || remoteJid.includes("@g.us")) return;
-    /** Stories / Status do WhatsApp — não tratar como conversa de cliente */
     if (isJidStatusBroadcast(remoteJid)) return;
 
     recordLastMessageForChat(instanceId, remoteJid, m);
 
-    const instance = await prisma.instance.findUnique({ where: { id: instanceId } });
+    const instance = (await prisma.instance.findUnique({ where: { id: instanceId } })) as Instance | null;
     if (!instance) return;
 
-    // Só marca como lida / presença quando a automação (IA) está ativa — senão o contato vê "visualização" instantânea sem atendimento automático.
     if (instance.aiWhatsappEnabled) {
       try {
         await sock.readMessages([key]);
         await sock.sendPresenceUpdate("available", remoteJid);
       } catch (e) {
-        console.warn("[Baileys] readMessages / available:", e);
+        console.warn("[Baileys] readMessages / available:", safeLogError(e));
       }
     }
 
     const raw = m.message;
-    const norm = normalizeMessageContent(raw as any);
-    const content = extractMessageContent(norm as any) ?? norm;
+    const norm = normalizeMessageContent(raw as never);
+    const content = extractMessageContent(norm as never) ?? norm;
     if (!content) return;
 
     const textMsg =
@@ -198,29 +123,34 @@ export async function handleIncomingMessage(
       (content as { listResponseMessage?: { title?: string } }).listResponseMessage?.title ||
       "";
 
+    const audioMessage = content.audioMessage;
+    const hasSupportedInboundContent = Boolean(textMsg.trim() || audioMessage);
+    if (!hasSupportedInboundContent) return;
+
+    await recordMessageEvent({
+      instanceId,
+      channel: "WHATSAPP",
+      direction: "INBOUND",
+      usedAi: instance.aiWhatsappEnabled,
+    });
+
     if (!instance.aiWhatsappEnabled) return;
 
-    // Detectar e transcrever áudio (notas de voz do WhatsApp)
     let userContent: string | undefined = textMsg || undefined;
 
-    // Verificar se é mensagem de áudio (nota de voz)
-    const audioMessage = content.audioMessage;
-    if (audioMessage && instance.aiWhatsappEnabled) {
+    if (audioMessage) {
       try {
-        // Baixar sempre que houver audioMessage — fileEncSha256 é opcional no proto;
-        // exigir esse campo impedia o download em várias notas de voz.
         const audioBuffer = await downloadAudioFromMessage(sock, m);
-
         if (audioBuffer && audioBuffer.length > 0) {
           const mimeType = audioMessage.mimetype || "audio/ogg; codecs=opus";
           const transcribed = await transcribeAudio(instanceId, audioBuffer, mimeType, "pt");
           userContent = `[Áudio transcrito]: ${transcribed}`;
-          console.log(`[WhatsApp] Áudio transcrito: ${transcribed.slice(0, 100)}...`);
+          console.log("[WhatsApp] Áudio transcrito com sucesso.");
         } else {
           console.warn("[WhatsApp] Áudio: download retornou buffer vazio ou nulo");
         }
       } catch (err) {
-        console.error("[WhatsApp] Erro ao transcrever áudio:", err);
+        console.error("[WhatsApp] Erro ao transcrever áudio:", safeLogError(err));
       }
     }
 
@@ -230,7 +160,7 @@ export async function handleIncomingMessage(
       try {
         await sock.sendPresenceUpdate("composing", remoteJid);
       } catch {
-        /* ignore */
+        // ignore composing failures
       }
     }
 
@@ -244,56 +174,26 @@ export async function handleIncomingMessage(
       await sleepWithComposingRefresh(sock, remoteJid, randomInt(4000, 7000));
     }
 
+    const memoryKey = `${instanceId}:${remoteJid}`;
+
     const runAgentReply = async () => {
-      const phoneDisplay = await resolveContactPhoneDisplay(
-        sock,
-        remoteJid,
-        (key as WAMessageKey).remoteJidAlt
+      await resolveContactPhoneDisplay(sock, remoteJid, (key as WAMessageKey).remoteJidAlt);
+      globalMemoryManager.addMessage(memoryKey, "user", userContent);
+      const memory = globalMemoryManager.getMemory(memoryKey, instance.memoryLimit);
+
+      const knowledgeFiles = (await listKnowledgeFilesByInstance(instanceId, "WHATSAPP")) ?? [];
+      await ensureKnowledgeExtracted(
+        knowledgeFiles as Array<{ id: string; mimetype: string; data: Buffer; extracted: string | null }>
       );
-      const pushName = m.pushName || undefined;
-
-      let memory = chatMemory.get(remoteJid) || [];
-
-      let lastAssistantContent: string | null = null;
-      for (let i = memory.length - 1; i >= 0; i--) {
-        if (memory[i].role === "assistant") {
-          lastAssistantContent = memory[i].content;
-          break;
-        }
-      }
-
-      memory.push({ role: "user", content: userContent });
-      if (memory.length > CHAT_MEMORY_MAX_MESSAGES) memory.shift();
-      chatMemory.set(remoteJid, memory);
-
-      const knowledgeFiles = await prisma.file.findMany({
-        where: { instanceId, channel: "WHATSAPP" },
-        orderBy: { createdAt: "asc" }
-      });
-      await ensureKnowledgeExtracted(knowledgeFiles as Array<{ id: string; mimetype: string; data: Buffer; extracted: string | null }>);
-
-      const extractedParts = knowledgeFiles
-        .map((f) => f.extracted)
-        .filter((t): t is string => typeof t === "string" && t.trim().length > 0);
-      let combinedKnowledge = "";
-      if (extractedParts.length > 0) {
-        combinedKnowledge =
-          "\n[CONTEXTO DE ARQUIVOS (priorize quando relevante)]:\n" +
-          extractedParts.join("\n---\n") +
-          "\n[FIM DO CONTEXTO]\n";
-      }
+      const combinedKnowledge = buildFileContextSuffix(knowledgeFiles) || "";
       const behavioral = await getResolvedAgentPrompt(instanceId);
       const systemContent = buildCompleteSystemPrompt({
         agentName: resolveAgentDisplayName(instance),
         behavioralPrompt: behavioral,
-        fileContextSuffix: combinedKnowledge.trim() || undefined
+        fileContextSuffix: combinedKnowledge.trim() || undefined,
       });
 
-      const messagesForAi = [
-        { role: "system" as const, content: systemContent },
-        ...memory
-      ];
-
+      const messagesForAi = [{ role: "system" as const, content: systemContent }, ...memory];
       return askChat(instanceId, messagesForAi);
     };
 
@@ -301,7 +201,7 @@ export async function handleIncomingMessage(
       ? await withComposingWhile(sock, remoteJid, runAgentReply)
       : await runAgentReply();
 
-    const parts = splitLongTextForWhatsApp(aiResponse, 800);
+    const parts = splitLongText(aiResponse, 800);
     if (parts.length === 0) return;
 
     for (let i = 0; i < parts.length; i++) {
@@ -311,33 +211,35 @@ export async function handleIncomingMessage(
         try {
           await sock.sendPresenceUpdate("composing", remoteJid);
         } catch {
-          /* ignore */
+          // ignore composing failures
         }
         await sleep(randomInt(900, 1700));
       }
 
       const sent = await sock.sendMessage(remoteJid, { text: part });
       if (sent) recordLastMessageForChat(instanceId, remoteJid, sent);
+      await recordMessageEvent({
+        instanceId,
+        channel: "WHATSAPP",
+        direction: "OUTBOUND",
+        usedAi: true,
+      });
 
       if (instance.typing) {
         try {
           await sock.sendPresenceUpdate("paused", remoteJid);
         } catch {
-          /* ignore */
+          // ignore paused failures
         }
       }
 
-      // delay humano entre “frases”/partes (exceto na última)
       if (i < parts.length - 1) {
         await sleep(randomInt(4000, 7000));
       }
     }
 
-    let mem = chatMemory.get(remoteJid) || [];
-    mem.push({ role: "assistant", content: aiResponse });
-    if (mem.length > CHAT_MEMORY_MAX_MESSAGES) mem.shift();
-    chatMemory.set(remoteJid, mem);
+    globalMemoryManager.addMessage(memoryKey, "assistant", aiResponse);
   } catch (err) {
-    console.error(`[CRÍTICO] Falha no handleIncomingMessage:`, err);
+    console.error("[CRÍTICO] Falha no handleIncomingMessage:", safeLogError(err));
   }
 }

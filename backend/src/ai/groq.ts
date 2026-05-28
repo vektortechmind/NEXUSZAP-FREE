@@ -1,4 +1,5 @@
 import type { ChatMessage } from "./systemPrompt";
+import { redactSensitiveText } from "../utils/redaction";
 
 /**
  * Mensagens chegam como `ChatMessage[]` (system primeiro) via `askChat` → `normalizeMessagesForChatApi`.
@@ -9,7 +10,7 @@ export type { ChatMessage } from "./systemPrompt";
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 
 /** Modelo Whisper para transcrição de áudio na Groq */
-const GROQ_WHISPER_MODEL = "whisper-large-v3-turbo";
+export const GROQ_WHISPER_MODEL = "whisper-large-v3-turbo";
 
 const GROQ_OPENAI_BASE = "https://api.groq.com/openai/v1";
 
@@ -23,7 +24,7 @@ export async function groqPingModels(apiKey: string): Promise<void> {
   });
   const raw = await res.text();
   if (!res.ok) {
-    throw new Error(`Groq API: ${res.status} ${raw.slice(0, 200)}`);
+    throw new Error(`Groq API: ${res.status} ${redactSensitiveText(raw, 160)}`);
   }
 }
 
@@ -35,8 +36,9 @@ export async function groqChat(apiKey: string, messages: ChatMessage[]) {
   });
   const raw = await res.text();
   if (!res.ok) {
-    console.error("[groqChat] HTTP", res.status, raw.slice(0, 600));
-    throw new Error(`Groq API error: ${res.status} ${raw.slice(0, 400)}`);
+    const safeBody = redactSensitiveText(raw, 180);
+    console.error("[groqChat] HTTP", res.status, safeBody);
+    throw new Error(`Groq API error: ${res.status} ${safeBody}`);
   }
   const data = JSON.parse(raw) as { choices?: { message?: { role?: string; content?: string } }[] };
   const text = data.choices?.[0]?.message?.content;
@@ -59,7 +61,8 @@ export async function groqWhisper(
   apiKey: string,
   audioBuffer: Buffer,
   mimeType: string = "audio/ogg",
-  language: string = "pt" // ISO-639-1 — ver https://console.groq.com/docs/speech-to-text
+  language: string = "pt", // ISO-639-1 — ver https://console.groq.com/docs/speech-to-text
+  model: string = GROQ_WHISPER_MODEL
 ) {
   if (!audioBuffer || audioBuffer.length === 0) {
     throw new Error("Groq Whisper: arquivo de áudio vazio");
@@ -98,7 +101,7 @@ export async function groqWhisper(
   const filename = `audio.${ext}`;
   const blob = new Blob([new Uint8Array(audioBuffer)], { type: mediaType });
   formData.append("file", blob, filename);
-  formData.append("model", GROQ_WHISPER_MODEL);
+  formData.append("model", model);
   formData.append("language", language);
   formData.append("response_format", "json");
   formData.append("temperature", "0");
@@ -114,14 +117,15 @@ export async function groqWhisper(
 
   const raw = await res.text();
   if (!res.ok) {
-    console.error("[groqWhisper] HTTP", res.status, raw.slice(0, 600));
-    throw new Error(`Groq Whisper error: ${res.status} - ${raw.slice(0, 400)}`);
+    const safeBody = redactSensitiveText(raw, 180);
+    console.error("[groqWhisper] HTTP", res.status, safeBody);
+    throw new Error(`Groq Whisper error: ${res.status} - ${safeBody}`);
   }
 
   const data = JSON.parse(raw) as { text?: string; error?: { message?: string } };
   
   if (data.error) {
-    throw new Error(`Groq Whisper: ${data.error.message || "Erro desconhecido"}`);
+    throw new Error(`Groq Whisper: ${redactSensitiveText(data.error.message || "Erro desconhecido")}`);
   }
 
   if (typeof data.text !== "string" || !data.text.trim()) {

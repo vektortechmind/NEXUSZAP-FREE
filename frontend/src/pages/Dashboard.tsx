@@ -1,194 +1,405 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/axios";
-import { MessageSquare, FileText, Calendar, Inbox } from "lucide-react";
-import { Card } from "../components/ui/Card";
+import { Activity, Bot, Calendar, FileText, Inbox, MessageSquare, RefreshCw, Send, ShieldOff } from "lucide-react";
 import { Button } from "../components/ui/Button";
+import { EmptyState } from "../components/ui/EmptyState";
+import { Metric } from "../components/ui/Metric";
+import { Panel } from "../components/ui/Panel";
+import { Section } from "../components/ui/Section";
+import { Skeleton } from "../components/ui/Skeleton";
+import { StatusDot } from "../components/ui/StatusDot";
+import { Toolbar } from "../components/ui/Toolbar";
 import { useToast } from "../contexts/ToastContext";
 
 type MessageStats = {
   date: string;
   channel: "WHATSAPP" | "TELEGRAM";
-  count: number;
+  inboundCount: number;
+  outboundCount: number;
+  withAiCount: number;
+  withoutAiCount: number;
+  totalCount: number;
+};
+
+type DashboardSummary = {
+  totalMessages: number;
+  totalInbound: number;
+  totalOutbound: number;
+  totalWithAi: number;
+  totalWithoutAi: number;
+  whatsappMessages: number;
+  telegramMessages: number;
+  totalKnowledgeFiles: number;
 };
 
 type FilterStats = {
   messages: MessageStats[];
-  totalFiles: number;
+  summary: DashboardSummary;
 };
 
+type ChannelFilter = "all" | MessageStats["channel"];
+
+function isoDate(date: Date): string {
+  return date.toISOString().split("T")[0];
+}
+
+function defaultDateRange() {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - 7);
+  return { start: isoDate(start), end: isoDate(end) };
+}
+
+function channelLabel(channel: MessageStats["channel"]): string {
+  return channel === "WHATSAPP" ? "WhatsApp" : "Telegram";
+}
+
+function formatDisplayDate(value: string): string {
+  const date = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(date);
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="space-y-6" aria-busy="true">
+      <Skeleton className="h-16" />
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }).map((_, index) => <Skeleton key={index} className="h-32" />)}
+      </div>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.4fr)_minmax(20rem,0.8fr)]">
+        <Skeleton className="h-80" />
+        <Skeleton className="h-80" />
+      </div>
+    </div>
+  );
+}
+
 export function Dashboard() {
+  const [initialRange] = useState(defaultDateRange);
   const [stats, setStats] = useState<FilterStats | null>(null);
   const [loading, setLoading] = useState(true);
-  const [startDate, setStartDate] = useState<string>("");
-  const [endDate, setEndDate] = useState<string>("");
-  const [channel, setChannel] = useState<string>("all");
+  const [refreshing, setRefreshing] = useState(false);
+  const [startDate, setStartDate] = useState<string>(initialRange.start);
+  const [endDate, setEndDate] = useState<string>(initialRange.end);
+  const [channel, setChannel] = useState<ChannelFilter>("all");
   const { addToast } = useToast();
 
-  // Definir datas padrão (últimos 7 dias)
-  useEffect(() => {
-    const end = new Date();
-    const start = new Date();
-    start.setDate(start.getDate() - 7);
-    
-    setEndDate(end.toISOString().split("T")[0]);
-    setStartDate(start.toISOString().split("T")[0]);
-  }, []);
-
-  const loadStats = async () => {
-    setLoading(true);
+  const fetchStats = useCallback(async (range: { start: string; end: string }) => {
     try {
-      const params = new URLSearchParams();
-      if (startDate) params.append("startDate", startDate);
-      if (endDate) params.append("endDate", endDate);
-      if (channel && channel !== "all") params.append("channel", channel);
-      
-      const res = await api.get<FilterStats>(`/dashboard/stats?${params.toString()}`);
-      setStats(res.data);
-    } catch (err) {
-      console.error(err);
+      const { data } = await api.get<FilterStats>("/dashboard/stats", {
+        params: { startDate: range.start, endDate: range.end },
+      });
+      setStats(data);
+      return true;
+    } catch {
       addToast("Erro ao carregar estatísticas", "error");
-    } finally {
-      setLoading(false);
+      return false;
     }
-  };
+  }, [addToast]);
 
   useEffect(() => {
-    void loadStats();
-  }, []);
+    let active = true;
+    const loadInitialStats = async () => {
+      const loaded = await fetchStats(initialRange);
+      if (!active) return;
+      if (!loaded) {
+        setStats({
+          messages: [],
+          summary: {
+            totalMessages: 0,
+            totalInbound: 0,
+            totalOutbound: 0,
+            totalWithAi: 0,
+            totalWithoutAi: 0,
+            whatsappMessages: 0,
+            telegramMessages: 0,
+            totalKnowledgeFiles: 0,
+          },
+        });
+      }
+      setLoading(false);
+    };
+    void loadInitialStats();
+    return () => {
+      active = false;
+    };
+  }, [fetchStats, initialRange]);
+
+  const loadStats = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const loaded = await fetchStats({ start: startDate, end: endDate });
+      if (loaded) addToast("Filtros aplicados", "success");
+    } finally {
+      setRefreshing(false);
+    }
+  }, [addToast, endDate, fetchStats, startDate]);
+
+  const filteredMessages = useMemo(() => {
+    const messages = stats?.messages ?? [];
+    return channel === "all" ? messages : messages.filter((message) => message.channel === channel);
+  }, [channel, stats?.messages]);
+
+  const summary = useMemo(() => {
+    if (!stats) {
+      return {
+        totalMessages: 0,
+        totalInbound: 0,
+        totalOutbound: 0,
+        totalWithAi: 0,
+        totalWithoutAi: 0,
+        whatsappMessages: 0,
+        telegramMessages: 0,
+        totalKnowledgeFiles: 0,
+      } satisfies DashboardSummary;
+    }
+
+    if (channel === "all") return stats.summary;
+
+    return filteredMessages.reduce<DashboardSummary>((acc, message) => {
+      acc.totalMessages += message.totalCount;
+      acc.totalInbound += message.inboundCount;
+      acc.totalOutbound += message.outboundCount;
+      acc.totalWithAi += message.withAiCount;
+      acc.totalWithoutAi += message.withoutAiCount;
+      if (message.channel === "WHATSAPP") acc.whatsappMessages += message.totalCount;
+      if (message.channel === "TELEGRAM") acc.telegramMessages += message.totalCount;
+      acc.totalKnowledgeFiles = stats.summary.totalKnowledgeFiles;
+      return acc;
+    }, {
+      totalMessages: 0,
+      totalInbound: 0,
+      totalOutbound: 0,
+      totalWithAi: 0,
+      totalWithoutAi: 0,
+      whatsappMessages: 0,
+      telegramMessages: 0,
+      totalKnowledgeFiles: stats.summary.totalKnowledgeFiles,
+    });
+  }, [channel, filteredMessages, stats]);
+
+  const hasMessages = filteredMessages.length > 0 && summary.totalMessages > 0;
+  const operationalStatus = [
+    {
+      label: "API de métricas",
+      detail: stats ? "Respondendo" : "Aguardando dados",
+      tone: stats ? "success" : "warning",
+      pulse: Boolean(stats),
+    },
+    {
+      label: "WhatsApp",
+      detail: summary.whatsappMessages > 0 ? `${summary.whatsappMessages} eventos no período` : "Sem atividade no período",
+      tone: summary.whatsappMessages > 0 ? "success" : "neutral",
+      pulse: summary.whatsappMessages > 0,
+    },
+    {
+      label: "Telegram",
+      detail: summary.telegramMessages > 0 ? `${summary.telegramMessages} eventos no período` : "Sem atividade no período",
+      tone: summary.telegramMessages > 0 ? "info" : "neutral",
+      pulse: summary.telegramMessages > 0,
+    },
+    {
+      label: "IA",
+      detail: summary.totalWithAi > 0 ? `${summary.totalWithAi} eventos com IA` : "Sem uso de IA no período",
+      tone: summary.totalWithAi > 0 ? "success" : "warning",
+      pulse: summary.totalWithAi > 0,
+    },
+  ] as const;
+
+  const timeline = useMemo(() => {
+    const byDate = new Map<string, number>();
+    for (const message of filteredMessages) {
+      byDate.set(message.date, (byDate.get(message.date) ?? 0) + message.totalCount);
+    }
+    return Array.from(byDate.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, count]) => ({ date, count }));
+  }, [filteredMessages]);
+
+  const maxTimelineCount = Math.max(...timeline.map((item) => item.count), 1);
+  const topActivity = useMemo(() => {
+    return [...filteredMessages]
+      .sort((a, b) => b.totalCount - a.totalCount)
+      .slice(0, 6);
+  }, [filteredMessages]);
 
   const handleFilter = () => {
     void loadStats();
-    addToast("Filtros aplicados", "success");
   };
 
-  const totalMessages = stats?.messages.reduce((sum, m) => sum + m.count, 0) ?? 0;
-
-  // Agrupar mensagens por canal
-  const whatsappMessages = stats?.messages.filter(m => m.channel === "WHATSAPP").reduce((sum, m) => sum + m.count, 0) ?? 0;
-  const telegramMessages = stats?.messages.filter(m => m.channel === "TELEGRAM").reduce((sum, m) => sum + m.count, 0) ?? 0;
+  if (loading && !stats) {
+    return <DashboardSkeleton />;
+  }
 
   return (
-    <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
-        <p className="text-gray-600 dark:text-gray-400 mt-1">Visão geral das mensagens e arquivos</p>
-      </div>
-
-      {/* Filtros */}
-      <Card className="p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <Calendar className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white">Filtros</h2>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-              Data Inicial
-            </label>
+    <div className="space-y-6">
+      <Toolbar aria-label="Filtros do dashboard">
+        <div className="grid w-full gap-3 md:grid-cols-[minmax(10rem,1fr)_minmax(10rem,1fr)_minmax(11rem,1fr)_auto] md:items-end">
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+            <span className="mb-1.5 block">Data inicial</span>
             <input
               type="date"
               value={startDate}
               onChange={(e) => setStartDate(e.target.value)}
-              className="w-full rounded-xl border border-slate-200/80 bg-white/80 px-4 py-2.5 text-sm text-slate-900 outline-none backdrop-blur-xl transition-all duration-200 focus:ring-2 focus:ring-blue-500/80 dark:border-slate-700/80 dark:bg-slate-900/50 dark:text-slate-100"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-              Data Final
-            </label>
+          </label>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+            <span className="mb-1.5 block">Data final</span>
             <input
               type="date"
               value={endDate}
               onChange={(e) => setEndDate(e.target.value)}
-              className="w-full rounded-xl border border-slate-200/80 bg-white/80 px-4 py-2.5 text-sm text-slate-900 outline-none backdrop-blur-xl transition-all duration-200 focus:ring-2 focus:ring-blue-500/80 dark:border-slate-700/80 dark:bg-slate-900/50 dark:text-slate-100"
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
-              Canal
-            </label>
+          </label>
+          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+            <span className="mb-1.5 block">Canal</span>
             <select
               value={channel}
-              onChange={(e) => setChannel(e.target.value)}
-              className="w-full rounded-xl border border-slate-200/80 bg-white/80 px-4 py-2.5 text-sm text-slate-900 outline-none backdrop-blur-xl transition-all duration-200 focus:ring-2 focus:ring-blue-500/80 dark:border-slate-700/80 dark:bg-slate-900/50 dark:text-slate-100"
+              onChange={(e) => setChannel(e.target.value as ChannelFilter)}
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
             >
               <option value="all">Todos os canais</option>
               <option value="WHATSAPP">WhatsApp</option>
               <option value="TELEGRAM">Telegram</option>
             </select>
-          </div>
-          <div className="flex items-end">
-            <Button
-              onClick={handleFilter}
-              disabled={loading}
-              loading={loading}
-              className="w-full"
-            >
-              Filtrar
-            </Button>
-          </div>
+          </label>
+          <Button onClick={handleFilter} disabled={refreshing} loading={refreshing} className="w-full md:w-auto">
+            <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+            Atualizar
+          </Button>
         </div>
-      </Card>
+      </Toolbar>
 
-      {/* Cards de Estatísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {loading ? (
-          Array.from({ length: 3 }).map((_, i) => (
-            <div key={i} className="h-32 rounded-xl bg-gray-200 dark:bg-slate-700 animate-pulse" />
-          ))
-        ) : (
-          <>
-            <Card className="p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-lg bg-green-100 dark:bg-green-950/40 flex items-center justify-center">
-                  <MessageSquare className="w-6 h-6 text-green-600 dark:text-green-400" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Total de Mensagens</p>
-                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{totalMessages}</p>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-lg bg-blue-100 dark:bg-blue-950/40 flex items-center justify-center">
-                  <Inbox className="w-6 h-6 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">WhatsApp</p>
-                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{whatsappMessages}</p>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="p-6">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-12 h-12 rounded-lg bg-purple-100 dark:bg-purple-950/40 flex items-center justify-center">
-                  <Inbox className="w-6 h-6 text-purple-600 dark:text-purple-400" />
-                </div>
-                <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Telegram</p>
-                  <p className="text-3xl font-bold text-gray-900 dark:text-white">{telegramMessages}</p>
-                </div>
-              </div>
-            </Card>
-          </>
-        )}
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {operationalStatus.map((item) => (
+          <Panel key={item.label} className="flex items-center justify-between gap-3 p-4">
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-slate-950 dark:text-slate-50">{item.label}</p>
+              <p className="mt-1 truncate text-xs text-slate-600 dark:text-slate-400">{item.detail}</p>
+            </div>
+            <StatusDot tone={item.tone} pulse={item.pulse} />
+          </Panel>
+        ))}
       </div>
 
-      {/* Card de Arquivos */}
-      <Card className="p-6">
-        <div className="flex items-center gap-3 mb-4">
-          <div className="w-12 h-12 rounded-lg bg-orange-100 dark:bg-orange-950/40 flex items-center justify-center">
-            <FileText className="w-6 h-6 text-orange-600 dark:text-orange-400" />
-          </div>
-          <div>
-            <p className="text-sm text-gray-500 dark:text-gray-400">Total de Arquivos</p>
-            <p className="text-3xl font-bold text-gray-900 dark:text-white">{stats?.totalFiles ?? 0}</p>
-          </div>
-        </div>
-      </Card>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+        <Metric
+          label={channel === "all" ? "Mensagens no período" : `Mensagens ${channelLabel(channel)}`}
+          value={summary.totalMessages}
+          description="Eventos registrados"
+          icon={<MessageSquare size={20} aria-hidden="true" />}
+          tone="success"
+        />
+        <Metric
+          label="WhatsApp"
+          value={summary.whatsappMessages}
+          description="Eventos registrados"
+          icon={<Inbox size={20} aria-hidden="true" />}
+          tone="success"
+        />
+        <Metric
+          label="Telegram"
+          value={summary.telegramMessages}
+          description="Eventos registrados"
+          icon={<Send size={20} aria-hidden="true" />}
+          tone="info"
+        />
+        <Metric
+          label="Com IA"
+          value={summary.totalWithAi}
+          description="Eventos automatizados"
+          icon={<Bot size={20} aria-hidden="true" />}
+          tone="success"
+        />
+        <Metric
+          label="Sem IA"
+          value={summary.totalWithoutAi}
+          description="Eventos não automatizados"
+          icon={<ShieldOff size={20} aria-hidden="true" />}
+          tone="warning"
+        />
+        <Metric
+          label="Arquivos"
+          value={summary.totalKnowledgeFiles}
+          description="Base de conhecimento"
+          icon={<FileText size={20} aria-hidden="true" />}
+          tone="warning"
+        />
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_minmax(20rem,0.85fr)]">
+        <Section title="Tendência de mensagens" description="Volume agregado por dia dentro do período selecionado.">
+          <Panel className="p-5">
+            {hasMessages ? (
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center gap-4 text-sm text-slate-600 dark:text-slate-400">
+                  <StatusDot tone="success" label="WhatsApp" />
+                  <StatusDot tone="info" label="Telegram" />
+                  <span className="ml-auto inline-flex items-center gap-2">
+                    <Calendar size={16} aria-hidden="true" />
+                    {startDate} a {endDate}
+                  </span>
+                </div>
+                <div className="flex h-64 items-end gap-2 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/45">
+                  {timeline.map((item) => {
+                    const height = Math.max((item.count / maxTimelineCount) * 100, 6);
+                    return (
+                      <div key={item.date} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+                        <div className="flex h-52 w-full items-end">
+                          <div
+                            className="w-full rounded-t-md bg-emerald-500/85 dark:bg-emerald-400/80"
+                            style={{ height: `${height}%` }}
+                            title={`${formatDisplayDate(item.date)}: ${item.count} eventos`}
+                            aria-label={`${formatDisplayDate(item.date)}: ${item.count} eventos`}
+                          />
+                        </div>
+                        <span className="max-w-full truncate text-[11px] text-slate-500 dark:text-slate-500">{formatDisplayDate(item.date)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <EmptyState
+                icon={<Activity size={22} aria-hidden="true" />}
+                title="Sem mensagens no período"
+                description="Ajuste os filtros ou conecte um canal para começar a visualizar atividade."
+              />
+            )}
+          </Panel>
+        </Section>
+
+        <Section title="Atividade em destaque" description="Dias e canais com maior volume no filtro atual.">
+          <Panel className="p-4">
+            {topActivity.length > 0 ? (
+              <div className="divide-y divide-slate-200 dark:divide-slate-800">
+                {topActivity.map((item, index) => (
+                  <div key={`${item.date}-${item.channel}-${index}`} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-950 dark:text-slate-50">{formatDisplayDate(item.date)}</p>
+                      <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                        {channelLabel(item.channel)} · {item.inboundCount} entrada · {item.outboundCount} saída
+                      </p>
+                    </div>
+                    <div className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-semibold tabular-nums text-slate-900 dark:bg-slate-800 dark:text-slate-100">
+                      {item.totalCount}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptyState
+                title="Nenhuma atividade"
+                description="Ainda não existem registros para os filtros selecionados."
+                className="border-0 bg-transparent py-8"
+              />
+            )}
+          </Panel>
+        </Section>
+      </div>
     </div>
   );
 }

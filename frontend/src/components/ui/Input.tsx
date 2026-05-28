@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useId } from "react";
 
 interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -7,37 +7,44 @@ interface InputProps extends React.InputHTMLAttributes<HTMLInputElement> {
 }
 
 export const Input = React.forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, icon, className, ...props }, ref) => {
+  ({ label, error, icon, className, id, "aria-describedby": ariaDescribedBy, ...props }, ref) => {
+    const generatedId = useId();
+    const inputId = id ?? generatedId;
+    const errorId = `${inputId}-error`;
+
     return (
       <div className="w-full">
         {label && (
-          <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
+          <label htmlFor={inputId} className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300">
             {label}
           </label>
         )}
         <div className="relative">
           {icon && (
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500">
+            <div className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400">
               {icon}
             </div>
           )}
           <input
             ref={ref}
+            id={inputId}
+            aria-invalid={error ? true : undefined}
+            aria-describedby={error ? errorId : ariaDescribedBy}
             className={`
-              w-full rounded-xl border border-slate-200/80 bg-white/75 px-4 py-2.5 text-slate-900 placeholder-slate-400 backdrop-blur-xl
-              dark:border-slate-700/80 dark:bg-slate-900/50 dark:text-slate-100 dark:placeholder-slate-500
-              focus:outline-none focus:ring-2 focus:ring-blue-500/80 focus:border-blue-400/80 focus:shadow-[0_0_0_4px_rgba(59,130,246,0.12)]
-              disabled:bg-slate-100/70 disabled:text-slate-500 dark:disabled:bg-slate-900 dark:disabled:text-slate-500
-              transition-all duration-200
+              w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm placeholder-slate-500
+              transition-colors duration-200
+              focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25
+              disabled:bg-slate-100 disabled:text-slate-500
+              dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500 dark:focus:border-emerald-400 dark:focus:ring-emerald-400/25 dark:disabled:bg-slate-950 dark:disabled:text-slate-600
               ${icon ? "pl-10" : ""}
-              ${error ? "border-red-500 focus:ring-red-500 focus:border-red-500 focus:shadow-[0_0_0_4px_rgba(239,68,68,0.12)]" : ""}
+              ${error ? "border-red-500 focus:border-red-500 focus:ring-red-500/25 dark:border-red-500 dark:focus:border-red-400 dark:focus:ring-red-400/25" : ""}
               ${className || ""}
             `}
             {...props}
           />
         </div>
         {error && (
-          <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{error}</p>
+          <p id={errorId} className="mt-1.5 text-sm text-red-600 dark:text-red-400">{error}</p>
         )}
       </div>
     );
@@ -45,4 +52,3 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
 );
 
 Input.displayName = "Input";
-
