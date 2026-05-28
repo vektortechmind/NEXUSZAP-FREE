@@ -1,6 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../database/prisma";
-import { getOrCreatePrimaryInstance } from "./instance.service";
+import { getOrCreatePrimaryInstance, getPrimaryInstance } from "./instance.service";
 
 export class AgentEligibilityError extends Error {
   statusCode: number;
@@ -128,7 +128,8 @@ export async function getOrCreatePrimaryAgent() {
 }
 
 export async function getPrimaryAgent() {
-  const instance = await getOrCreatePrimaryInstance();
+  const instance = await getPrimaryInstance();
+  if (!instance) return null;
   return prisma.agent.findUnique({
     where: { instanceId: instance.id },
     include: { instance: true },

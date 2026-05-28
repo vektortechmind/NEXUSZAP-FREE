@@ -29,6 +29,7 @@ import {
   deleteInstance,
   getInstanceById,
   getOrCreatePrimaryInstance,
+  getPrimaryInstance,
   MaxWhatsAppInstancesError,
   listInstances,
 } from "../services/instance.service";
@@ -211,6 +212,43 @@ async function waitForQr(instanceId: string) {
 
 export async function agentRoutes(fastify: FastifyInstance) {
   fastify.addHook("preValidation", verifyJwt);
+
+  function buildEmptyConfigResponse() {
+    return {
+      id: "",
+      slot: 0,
+      name: "",
+      agentName: null,
+      status: "DISCONNECTED",
+      aiWhatsappEnabled: true,
+      aiTelegramEnabled: true,
+      typing: true,
+      delayMin: 4000,
+      delayMax: 7000,
+      systemPrompt: null,
+      telegramSystemPrompt: null,
+      chatProvider: null,
+      groqKey: null,
+      groqAudioKey: null,
+      geminiKey: null,
+      openrouterKey: null,
+      openrouterModel: null,
+      memoryLimit: 5,
+      createdAt: null,
+      updatedAt: null,
+      groqKeyConfigured: false,
+      groqKeyMasked: null,
+      groqAudioKeyConfigured: false,
+      groqAudioKeyMasked: null,
+      geminiKeyConfigured: false,
+      geminiKeyMasked: null,
+      openrouterKeyConfigured: false,
+      openrouterKeyMasked: null,
+      telegramBotTokenConfigured: false,
+      telegramBotTokenMasked: null,
+      agentWorkspaceId: null,
+    };
+  }
 
   async function getAgent() {
     return getOrCreatePrimaryInstance();
@@ -455,16 +493,16 @@ export async function agentRoutes(fastify: FastifyInstance) {
   });
 
   fastify.get("/config", async (_request, reply) => {
-    const agent = await getAgent();
-    const primaryAgent = await getPrimaryAgent();
-    if (!primaryAgent) {
-      return reply.status(404).send({ error: "Agente do Telegram não encontrado." });
+    const agent = await getPrimaryInstance();
+    if (!agent) {
+      return reply.send(buildEmptyConfigResponse());
     }
+    const primaryAgent = await getPrimaryAgent();
     return reply.send({
       ...sanitizeAgentConfigForResponse(agent),
-      systemPrompt: primaryAgent.systemPrompt ?? agent.systemPrompt ?? null,
-      telegramSystemPrompt: primaryAgent.telegramSystemPrompt ?? agent.telegramSystemPrompt ?? null,
-      agentWorkspaceId: primaryAgent.id,
+      systemPrompt: primaryAgent?.systemPrompt ?? agent.systemPrompt ?? null,
+      telegramSystemPrompt: primaryAgent?.telegramSystemPrompt ?? agent.telegramSystemPrompt ?? null,
+      agentWorkspaceId: primaryAgent?.id ?? null,
     });
   });
 
@@ -485,7 +523,19 @@ export async function agentRoutes(fastify: FastifyInstance) {
   fastify.get("/providers-health", {
     config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
   }, async (_request, reply) => {
-    const agent = await getAgent();
+    const agent = await getPrimaryInstance();
+    if (!agent) {
+      return reply.send({
+        preferredChatProvider: null,
+        results: [
+          { provider: "gemini", configured: false, ok: false as const },
+          { provider: "groq", configured: false, ok: false as const },
+          { provider: "openrouter", configured: false, ok: false as const },
+          { provider: "groq-audio", configured: false, ok: false as const },
+        ],
+      });
+    }
+    const primaryInstance = agent;
     const messages = [
       { role: "system" as const, content: "Você é um healthcheck. Responda apenas com 'OK'." },
       { role: "user" as const, content: "OK" },
@@ -502,7 +552,7 @@ export async function agentRoutes(fastify: FastifyInstance) {
       try {
         if (name === "gemini") await geminiChat(key, messages);
         if (name === "groq") await groqChat(key, messages);
-        if (name === "openrouter") await openRouterChat(key, messages, agent.openrouterModel);
+        if (name === "openrouter") await openRouterChat(key, messages, primaryInstance.openrouterModel);
         if (name === "groq-audio") await groqPingModels(key);
         return {
           provider: name,
@@ -522,21 +572,21 @@ export async function agentRoutes(fastify: FastifyInstance) {
     }
 
     const [gemini, groq, openrouter, groqAudio] = await Promise.all([
-      test("gemini", agent.geminiKey ? tryDecryptSecret(agent.geminiKey) : agent.geminiKey),
-      test("groq", agent.groqKey ? tryDecryptSecret(agent.groqKey) : agent.groqKey),
-      test("openrouter", agent.openrouterKey ? tryDecryptSecret(agent.openrouterKey) : agent.openrouterKey),
+      test("gemini", primaryInstance.geminiKey ? tryDecryptSecret(primaryInstance.geminiKey) : primaryInstance.geminiKey),
+      test("groq", primaryInstance.groqKey ? tryDecryptSecret(primaryInstance.groqKey) : primaryInstance.groqKey),
+      test("openrouter", primaryInstance.openrouterKey ? tryDecryptSecret(primaryInstance.openrouterKey) : primaryInstance.openrouterKey),
       test(
         "groq-audio",
-        agent.groqAudioKey
-          ? tryDecryptSecret(agent.groqAudioKey)
-          : agent.groqKey
-            ? tryDecryptSecret(agent.groqKey)
-            : agent.groqKey
+        primaryInstance.groqAudioKey
+          ? tryDecryptSecret(primaryInstance.groqAudioKey)
+          : primaryInstance.groqKey
+            ? tryDecryptSecret(primaryInstance.groqKey)
+            : primaryInstance.groqKey
       ),
     ]);
 
     return reply.send({
-      preferredChatProvider: agent.chatProvider ?? null,
+      preferredChatProvider: primaryInstance.chatProvider ?? null,
       results: [gemini, groq, openrouter, groqAudio],
     });
   });
@@ -544,11 +594,11 @@ export async function agentRoutes(fastify: FastifyInstance) {
   fastify.put("/config", {
     config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
   }, async (request, reply) => {
-    const agent = await getAgent();
-    const primaryAgent = await getPrimaryAgent();
-    if (!primaryAgent) {
-      return reply.status(404).send({ error: "Agente do Telegram não encontrado." });
+    const agent = await getPrimaryInstance();
+    if (!agent) {
+      return reply.status(409).send({ error: "Crie ao menos uma instância antes de salvar configurações." });
     }
+    const primaryAgent = await getPrimaryAgent();
     let data: z.infer<typeof updateSchema>;
 
     try {
@@ -570,7 +620,7 @@ export async function agentRoutes(fastify: FastifyInstance) {
           data: buildAgentConfigUpdateData(instanceConfig),
         });
 
-        if (systemPrompt !== undefined || telegramSystemPrompt !== undefined) {
+        if (primaryAgent && (systemPrompt !== undefined || telegramSystemPrompt !== undefined)) {
           await tx.agent.update({
             where: { id: primaryAgent.id },
             data: {
@@ -586,12 +636,12 @@ export async function agentRoutes(fastify: FastifyInstance) {
       return reply.send({
         ...sanitizeAgentConfigForResponse(updatedInstance),
         systemPrompt:
-          systemPrompt !== undefined ? systemPrompt : (primaryAgent.systemPrompt ?? updatedInstance.systemPrompt ?? null),
+          systemPrompt !== undefined ? systemPrompt : (primaryAgent?.systemPrompt ?? updatedInstance.systemPrompt ?? null),
         telegramSystemPrompt:
           telegramSystemPrompt !== undefined
             ? telegramSystemPrompt
-            : (primaryAgent.telegramSystemPrompt ?? updatedInstance.telegramSystemPrompt ?? null),
-        agentWorkspaceId: primaryAgent.id,
+            : (primaryAgent?.telegramSystemPrompt ?? updatedInstance.telegramSystemPrompt ?? null),
+        agentWorkspaceId: primaryAgent?.id ?? null,
       });
     } catch (e: any) {
       return handlePrismaError(e, reply, fastify);
