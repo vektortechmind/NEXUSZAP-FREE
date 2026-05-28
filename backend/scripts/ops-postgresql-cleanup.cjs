@@ -19,9 +19,7 @@ function assertNo(rel, patterns) {
 
 const activeFiles = [
   "README.md",
-  "install.bat",
   "install.sh",
-  "update.bat",
   "update.sh",
   "scripts/setup-env.sh",
   "docker-compose.yml",

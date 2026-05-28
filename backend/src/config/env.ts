@@ -19,6 +19,13 @@ const envSchema = z.object({
   ADMIN_PASSWORD: z.string().min(5),
   /** Origens extras para CORS (VPS), separadas por vírgula. Ex: https://app.seudominio.com */
   CORS_ORIGINS: z.string().optional(),
+  APP_URL: z.preprocess((val) => {
+    if (val === undefined || val === null || String(val).trim() === "") return undefined;
+    return val;
+  }, z.string().url().optional()),
+  SETUP_TOKEN: z.string().optional(),
+  ADMIN_SETUP_REQUIRED: z.string().optional(),
+  SETUP_COMPLETED: z.string().optional(),
   ENCRYPTION_KEY: z.string().optional(),
   GITHUB_REPO: z.string().optional(),
   /** Token real do BotFather (>=10). Valores curtos/placeholder são ignorados. */

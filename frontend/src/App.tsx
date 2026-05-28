@@ -9,6 +9,8 @@ import { Agente } from "./pages/Agente";
 import { Telegram } from "./pages/Telegram";
 import { Apis } from "./pages/Apis";
 import { Dashboard } from "./pages/Dashboard";
+import { DockerSetup } from "./pages/DockerSetup";
+import { CreateAdmin } from "./pages/CreateAdmin";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { ThemeProvider } from "./contexts/ThemeProvider";
@@ -63,9 +65,9 @@ const PrivateRoute = () => {
           <div className="mt-5 space-y-2 text-sm text-slate-600 dark:text-slate-400">
             <p className="font-semibold text-slate-900 dark:text-slate-100">Verificações rápidas</p>
             <ol className="list-inside list-decimal space-y-1">
-              <li>Confirme se o backend está rodando.</li>
-              <li>Na raiz, execute <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono dark:bg-slate-800">npm run dev</code>.</li>
-              <li>Ou rode <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono dark:bg-slate-800">npm run dev --prefix backend</code>.</li>
+              <li>Confirme se a stack Docker está rodando na VPS.</li>
+              <li>Verifique o container <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono dark:bg-slate-800">nexus-backend</code>.</li>
+              <li>Confira se o domínio informado no setup aponta para esta VPS.</li>
             </ol>
           </div>
           <Button onClick={() => window.location.reload()} className="mt-5 w-full" variant="danger">
@@ -101,6 +103,8 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/docker-setup" element={<DockerSetup />} />
+      <Route path="/criar-admin" element={<CreateAdmin />} />
       <Route path="/agent" element={<Navigate to="/agente" replace />} />
       <Route element={<PrivateRoute />}>
         <Route index element={<Instancia />} />
@@ -112,6 +116,7 @@ function AppRoutes() {
     </Routes>
   );
 }
+
 export default function App() {
   return (
     <ThemeProvider>

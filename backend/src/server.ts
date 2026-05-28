@@ -13,6 +13,7 @@ import { filesRoutes } from "./routes/files.routes";
 import { telegramFilesRoutes } from "./routes/telegram-files.routes";
 import { dashboardRoutes } from "./routes/dashboard.routes";
 import updateRoutes from "./routes/update.routes";
+import { setupRoutes } from "./routes/setup.routes";
 import { InstanceManager } from "./whatsapp/InstanceManager";
 import { TelegramBotManager } from "./telegram/TelegramBotManager";
 import { buildAllowedOrigins, createOriginGuard, verifyCsrf } from "./security/middlewares";
@@ -84,6 +85,7 @@ export async function buildServer() {
   await fastify.register(telegramFilesRoutes, { prefix: "/api/telegram-files" });
   await fastify.register(dashboardRoutes, { prefix: "/api/dashboard" });
   await fastify.register(updateRoutes, { prefix: "/api" });
+  await fastify.register(setupRoutes, { prefix: "/api/setup" });
 
   return fastify;
 }
