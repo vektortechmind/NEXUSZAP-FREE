@@ -2,6 +2,14 @@
 
 Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
+## [1.0.1] - 2026-05-28
+
+### Changed
+
+- Tela de login simplificada para exibir apenas o formulário de acesso e a versão do produto.
+- Removidos textos institucionais e descrições operacionais da tela de login.
+- Versão do frontend, backend e artefatos de documentação atualizada para `1.0.1`.
+
 ## [Unreleased] - Local em preparação para Git
 
 Base de comparação: `https://github.com/vektortechmind/NEXUSZAP-FREE.git` no commit `992a82d46fe94349d50bfcfe94fb494c46ba3f95` (`2026-04-03 04:44:55 -0300`).
