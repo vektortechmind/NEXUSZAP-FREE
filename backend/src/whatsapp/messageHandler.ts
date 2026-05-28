@@ -5,13 +5,13 @@ import {
   extractMessageContent,
   normalizeMessageContent,
   isJidStatusBroadcast,
-  downloadMediaMessage
+  downloadMediaMessage,
 } from "@whiskeysockets/baileys";
 import { prisma } from "../database/prisma";
-import { CHAT_MEMORY_MAX_MESSAGES } from "../ai/chatMemory";
 import { askChat, transcribeAudio } from "../ai/providerSelector";
 import { getResolvedAgentPrompt } from "../services/agentPrompt";
 import { buildCompleteSystemPrompt, resolveAgentDisplayName } from "../ai/systemPrompt";
+import { recordMessageEvent } from "../services/messageEvent.service";
 import { resolveContactPhoneDisplay } from "../utils/whatsappJid";
 import { recordLastMessageForChat } from "./lastMessageCache";
 import { globalMemoryManager } from "../utils/ai/memoryManager";
@@ -19,20 +19,15 @@ import { splitLongText } from "../utils/textSplitter";
 import { ensureKnowledgeExtracted, buildFileContextSuffix } from "../services/knowledgeService";
 import { safeLogError } from "../utils/redaction";
 
-// const chatMemory = new Map<string, { role: "user" | "assistant" | "system", content: string }[]>();
-
-/**
- * Baixa o áudio de uma mensagem do WhatsApp e retorna como Buffer.
- */
 async function downloadAudioFromMessage(sock: WASocket, m: proto.IWebMessageInfo): Promise<Buffer | null> {
   try {
     const buffer = await downloadMediaMessage(
-      m as any,
+      m as never,
       "buffer",
       {},
-      { 
-        logger: { trace() {}, debug() {}, info() {}, warn() {}, error() {} } as any,
-        reuploadRequest: sock.updateMediaMessage 
+      {
+        logger: { trace() {}, debug() {}, info() {}, warn() {}, error() {} } as never,
+        reuploadRequest: sock.updateMediaMessage,
       }
     );
     return buffer ? Buffer.from(buffer) : null;
@@ -46,7 +41,6 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** Mantém o indicador "digitando..." ativo durante esperas longas (o cliente costuma esconder se não houver renovação). */
 async function sleepWithComposingRefresh(sock: WASocket, remoteJid: string, totalMs: number) {
   if (totalMs <= 0) return;
   const step = 2500;
@@ -55,7 +49,7 @@ async function sleepWithComposingRefresh(sock: WASocket, remoteJid: string, tota
     try {
       await sock.sendPresenceUpdate("composing", remoteJid);
     } catch {
-      /* ignore */
+      // ignore presence refresh failures
     }
     const chunk = Math.min(step, totalMs - elapsed);
     await sleep(chunk);
@@ -63,16 +57,11 @@ async function sleepWithComposingRefresh(sock: WASocket, remoteJid: string, tota
   }
 }
 
-/** Composição imediata + renovação periódica enquanto a operação assíncrona roda (ex.: resposta da IA). */
-async function withComposingWhile<T>(
-  sock: WASocket,
-  remoteJid: string,
-  fn: () => Promise<T>
-): Promise<T> {
+async function withComposingWhile<T>(sock: WASocket, remoteJid: string, fn: () => Promise<T>): Promise<T> {
   try {
     await sock.sendPresenceUpdate("composing", remoteJid);
   } catch {
-    /* ignore */
+    // ignore composing failures
   }
   const id = setInterval(() => {
     void sock.sendPresenceUpdate("composing", remoteJid).catch(() => {});
@@ -94,15 +83,7 @@ function randomInt(min: number, max: number) {
   return Math.floor(Math.random() * (b - a + 1)) + a;
 }
 
-// function splitLongTextForWhatsApp
-
-// async function ensureKnowledgeExtracted
-
-export async function handleIncomingMessage(
-  sock: WASocket,
-  instanceId: string,
-  m: proto.IWebMessageInfo
-) {
+export async function handleIncomingMessage(sock: WASocket, instanceId: string, m: proto.IWebMessageInfo) {
   try {
     if (!m.message) return;
     const key = m.key;
@@ -110,7 +91,6 @@ export async function handleIncomingMessage(
 
     const remoteJid = key.remoteJid;
     if (!remoteJid || remoteJid.includes("@g.us")) return;
-    /** Stories / Status do WhatsApp — não tratar como conversa de cliente */
     if (isJidStatusBroadcast(remoteJid)) return;
 
     recordLastMessageForChat(instanceId, remoteJid, m);
@@ -118,7 +98,6 @@ export async function handleIncomingMessage(
     const instance = await prisma.instance.findUnique({ where: { id: instanceId } });
     if (!instance) return;
 
-    // Só marca como lida / presença quando a automação (IA) está ativa — senão o contato vê "visualização" instantânea sem atendimento automático.
     if (instance.aiWhatsappEnabled) {
       try {
         await sock.readMessages([key]);
@@ -129,8 +108,8 @@ export async function handleIncomingMessage(
     }
 
     const raw = m.message;
-    const norm = normalizeMessageContent(raw as any);
-    const content = extractMessageContent(norm as any) ?? norm;
+    const norm = normalizeMessageContent(raw as never);
+    const content = extractMessageContent(norm as never) ?? norm;
     if (!content) return;
 
     const textMsg =
@@ -139,19 +118,24 @@ export async function handleIncomingMessage(
       (content as { listResponseMessage?: { title?: string } }).listResponseMessage?.title ||
       "";
 
+    const audioMessage = content.audioMessage;
+    const hasSupportedInboundContent = Boolean(textMsg.trim() || audioMessage);
+    if (!hasSupportedInboundContent) return;
+
+    await recordMessageEvent({
+      instanceId,
+      channel: "WHATSAPP",
+      direction: "INBOUND",
+      usedAi: instance.aiWhatsappEnabled,
+    });
+
     if (!instance.aiWhatsappEnabled) return;
 
-    // Detectar e transcrever áudio (notas de voz do WhatsApp)
     let userContent: string | undefined = textMsg || undefined;
 
-    // Verificar se é mensagem de áudio (nota de voz)
-    const audioMessage = content.audioMessage;
-    if (audioMessage && instance.aiWhatsappEnabled) {
+    if (audioMessage) {
       try {
-        // Baixar sempre que houver audioMessage — fileEncSha256 é opcional no proto;
-        // exigir esse campo impedia o download em várias notas de voz.
         const audioBuffer = await downloadAudioFromMessage(sock, m);
-
         if (audioBuffer && audioBuffer.length > 0) {
           const mimeType = audioMessage.mimetype || "audio/ogg; codecs=opus";
           const transcribed = await transcribeAudio(instanceId, audioBuffer, mimeType, "pt");
@@ -171,7 +155,7 @@ export async function handleIncomingMessage(
       try {
         await sock.sendPresenceUpdate("composing", remoteJid);
       } catch {
-        /* ignore */
+        // ignore composing failures
       }
     }
 
@@ -186,34 +170,26 @@ export async function handleIncomingMessage(
     }
 
     const runAgentReply = async () => {
-      const phoneDisplay = await resolveContactPhoneDisplay(
-        sock,
-        remoteJid,
-        (key as WAMessageKey).remoteJidAlt
-      );
-      const pushName = m.pushName || undefined;
-
-      let memory = globalMemoryManager.getMemory(remoteJid);
+      await resolveContactPhoneDisplay(sock, remoteJid, (key as WAMessageKey).remoteJidAlt);
+      const memory = globalMemoryManager.getMemory(remoteJid);
       globalMemoryManager.addMessage(remoteJid, "user", userContent);
 
       const knowledgeFiles = await prisma.file.findMany({
         where: { instanceId, channel: "WHATSAPP" },
-        orderBy: { createdAt: "asc" }
+        orderBy: { createdAt: "asc" },
       });
-      await ensureKnowledgeExtracted(knowledgeFiles as Array<{ id: string; mimetype: string; data: Buffer; extracted: string | null }>);
+      await ensureKnowledgeExtracted(
+        knowledgeFiles as Array<{ id: string; mimetype: string; data: Buffer; extracted: string | null }>
+      );
       const combinedKnowledge = buildFileContextSuffix(knowledgeFiles) || "";
       const behavioral = await getResolvedAgentPrompt(instanceId);
       const systemContent = buildCompleteSystemPrompt({
         agentName: resolveAgentDisplayName(instance),
         behavioralPrompt: behavioral,
-        fileContextSuffix: combinedKnowledge.trim() || undefined
+        fileContextSuffix: combinedKnowledge.trim() || undefined,
       });
 
-      const messagesForAi = [
-        { role: "system" as const, content: systemContent },
-        ...memory
-      ];
-
+      const messagesForAi = [{ role: "system" as const, content: systemContent }, ...memory];
       return askChat(instanceId, messagesForAi);
     };
 
@@ -231,23 +207,28 @@ export async function handleIncomingMessage(
         try {
           await sock.sendPresenceUpdate("composing", remoteJid);
         } catch {
-          /* ignore */
+          // ignore composing failures
         }
         await sleep(randomInt(900, 1700));
       }
 
       const sent = await sock.sendMessage(remoteJid, { text: part });
       if (sent) recordLastMessageForChat(instanceId, remoteJid, sent);
+      await recordMessageEvent({
+        instanceId,
+        channel: "WHATSAPP",
+        direction: "OUTBOUND",
+        usedAi: true,
+      });
 
       if (instance.typing) {
         try {
           await sock.sendPresenceUpdate("paused", remoteJid);
         } catch {
-          /* ignore */
+          // ignore paused failures
         }
       }
 
-      // delay humano entre “frases”/partes (exceto na última)
       if (i < parts.length - 1) {
         await sleep(randomInt(4000, 7000));
       }
@@ -255,6 +236,6 @@ export async function handleIncomingMessage(
 
     globalMemoryManager.addMessage(remoteJid, "assistant", aiResponse);
   } catch (err) {
-    console.error(`[CRÍTICO] Falha no handleIncomingMessage:`, safeLogError(err));
+    console.error("[CRÍTICO] Falha no handleIncomingMessage:", safeLogError(err));
   }
 }

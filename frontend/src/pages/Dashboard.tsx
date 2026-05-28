@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../lib/axios";
-import { Activity, Calendar, FileText, Inbox, MessageSquare, RefreshCw, Send } from "lucide-react";
+import { Activity, Bot, Calendar, FileText, Inbox, MessageSquare, RefreshCw, Send, ShieldOff } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { Metric } from "../components/ui/Metric";
@@ -14,12 +14,27 @@ import { useToast } from "../contexts/ToastContext";
 type MessageStats = {
   date: string;
   channel: "WHATSAPP" | "TELEGRAM";
-  count: number;
+  inboundCount: number;
+  outboundCount: number;
+  withAiCount: number;
+  withoutAiCount: number;
+  totalCount: number;
+};
+
+type DashboardSummary = {
+  totalMessages: number;
+  totalInbound: number;
+  totalOutbound: number;
+  totalWithAi: number;
+  totalWithoutAi: number;
+  whatsappMessages: number;
+  telegramMessages: number;
+  totalKnowledgeFiles: number;
 };
 
 type FilterStats = {
   messages: MessageStats[];
-  totalFiles: number;
+  summary: DashboardSummary;
 };
 
 type ChannelFilter = "all" | MessageStats["channel"];
@@ -88,7 +103,21 @@ export function Dashboard() {
     const loadInitialStats = async () => {
       const loaded = await fetchStats(initialRange);
       if (!active) return;
-      if (!loaded) setStats({ messages: [], totalFiles: 0 });
+      if (!loaded) {
+        setStats({
+          messages: [],
+          summary: {
+            totalMessages: 0,
+            totalInbound: 0,
+            totalOutbound: 0,
+            totalWithAi: 0,
+            totalWithoutAi: 0,
+            whatsappMessages: 0,
+            telegramMessages: 0,
+            totalKnowledgeFiles: 0,
+          },
+        });
+      }
       setLoading(false);
     };
     void loadInitialStats();
@@ -112,19 +141,45 @@ export function Dashboard() {
     return channel === "all" ? messages : messages.filter((message) => message.channel === channel);
   }, [channel, stats?.messages]);
 
-  const channelTotals = useMemo(() => {
-    return (stats?.messages ?? []).reduce(
-      (acc, message) => {
-        acc[message.channel] += message.count;
-        return acc;
-      },
-      { WHATSAPP: 0, TELEGRAM: 0 } as Record<MessageStats["channel"], number>
-    );
-  }, [stats?.messages]);
+  const summary = useMemo(() => {
+    if (!stats) {
+      return {
+        totalMessages: 0,
+        totalInbound: 0,
+        totalOutbound: 0,
+        totalWithAi: 0,
+        totalWithoutAi: 0,
+        whatsappMessages: 0,
+        telegramMessages: 0,
+        totalKnowledgeFiles: 0,
+      } satisfies DashboardSummary;
+    }
 
-  const totalMessages = filteredMessages.reduce((sum, message) => sum + message.count, 0);
-  const hasMessages = filteredMessages.length > 0 && totalMessages > 0;
-  const totalFiles = stats?.totalFiles ?? 0;
+    if (channel === "all") return stats.summary;
+
+    return filteredMessages.reduce<DashboardSummary>((acc, message) => {
+      acc.totalMessages += message.totalCount;
+      acc.totalInbound += message.inboundCount;
+      acc.totalOutbound += message.outboundCount;
+      acc.totalWithAi += message.withAiCount;
+      acc.totalWithoutAi += message.withoutAiCount;
+      if (message.channel === "WHATSAPP") acc.whatsappMessages += message.totalCount;
+      if (message.channel === "TELEGRAM") acc.telegramMessages += message.totalCount;
+      acc.totalKnowledgeFiles = stats.summary.totalKnowledgeFiles;
+      return acc;
+    }, {
+      totalMessages: 0,
+      totalInbound: 0,
+      totalOutbound: 0,
+      totalWithAi: 0,
+      totalWithoutAi: 0,
+      whatsappMessages: 0,
+      telegramMessages: 0,
+      totalKnowledgeFiles: stats.summary.totalKnowledgeFiles,
+    });
+  }, [channel, filteredMessages, stats]);
+
+  const hasMessages = filteredMessages.length > 0 && summary.totalMessages > 0;
   const operationalStatus = [
     {
       label: "API de métricas",
@@ -134,28 +189,28 @@ export function Dashboard() {
     },
     {
       label: "WhatsApp",
-      detail: channelTotals.WHATSAPP > 0 ? "Com atividade" : "Sem atividade no período",
-      tone: channelTotals.WHATSAPP > 0 ? "success" : "neutral",
-      pulse: channelTotals.WHATSAPP > 0,
+      detail: summary.whatsappMessages > 0 ? `${summary.whatsappMessages} eventos no período` : "Sem atividade no período",
+      tone: summary.whatsappMessages > 0 ? "success" : "neutral",
+      pulse: summary.whatsappMessages > 0,
     },
     {
       label: "Telegram",
-      detail: channelTotals.TELEGRAM > 0 ? "Com atividade" : "Sem atividade no período",
-      tone: channelTotals.TELEGRAM > 0 ? "info" : "neutral",
-      pulse: channelTotals.TELEGRAM > 0,
+      detail: summary.telegramMessages > 0 ? `${summary.telegramMessages} eventos no período` : "Sem atividade no período",
+      tone: summary.telegramMessages > 0 ? "info" : "neutral",
+      pulse: summary.telegramMessages > 0,
     },
     {
       label: "IA",
-      detail: "Sem métrica dedicada no /stats",
-      tone: "warning",
-      pulse: false,
+      detail: summary.totalWithAi > 0 ? `${summary.totalWithAi} eventos com IA` : "Sem uso de IA no período",
+      tone: summary.totalWithAi > 0 ? "success" : "warning",
+      pulse: summary.totalWithAi > 0,
     },
   ] as const;
 
   const timeline = useMemo(() => {
     const byDate = new Map<string, number>();
     for (const message of filteredMessages) {
-      byDate.set(message.date, (byDate.get(message.date) ?? 0) + message.count);
+      byDate.set(message.date, (byDate.get(message.date) ?? 0) + message.totalCount);
     }
     return Array.from(byDate.entries())
       .sort(([a], [b]) => a.localeCompare(b))
@@ -165,7 +220,7 @@ export function Dashboard() {
   const maxTimelineCount = Math.max(...timeline.map((item) => item.count), 1);
   const topActivity = useMemo(() => {
     return [...filteredMessages]
-      .sort((a, b) => b.count - a.count)
+      .sort((a, b) => b.totalCount - a.totalCount)
       .slice(0, 6);
   }, [filteredMessages]);
 
@@ -230,31 +285,45 @@ export function Dashboard() {
         ))}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
         <Metric
           label={channel === "all" ? "Mensagens no período" : `Mensagens ${channelLabel(channel)}`}
-          value={totalMessages}
-          description="Total filtrado"
+          value={summary.totalMessages}
+          description="Eventos registrados"
           icon={<MessageSquare size={20} aria-hidden="true" />}
           tone="success"
         />
         <Metric
           label="WhatsApp"
-          value={channelTotals.WHATSAPP}
-          description="Mensagens registradas"
+          value={summary.whatsappMessages}
+          description="Eventos registrados"
           icon={<Inbox size={20} aria-hidden="true" />}
           tone="success"
         />
         <Metric
           label="Telegram"
-          value={channelTotals.TELEGRAM}
-          description="Mensagens registradas"
+          value={summary.telegramMessages}
+          description="Eventos registrados"
           icon={<Send size={20} aria-hidden="true" />}
           tone="info"
         />
         <Metric
+          label="Com IA"
+          value={summary.totalWithAi}
+          description="Eventos automatizados"
+          icon={<Bot size={20} aria-hidden="true" />}
+          tone="success"
+        />
+        <Metric
+          label="Sem IA"
+          value={summary.totalWithoutAi}
+          description="Eventos não automatizados"
+          icon={<ShieldOff size={20} aria-hidden="true" />}
+          tone="warning"
+        />
+        <Metric
           label="Arquivos"
-          value={totalFiles}
+          value={summary.totalKnowledgeFiles}
           description="Base de conhecimento"
           icon={<FileText size={20} aria-hidden="true" />}
           tone="warning"
@@ -283,8 +352,8 @@ export function Dashboard() {
                           <div
                             className="w-full rounded-t-md bg-emerald-500/85 dark:bg-emerald-400/80"
                             style={{ height: `${height}%` }}
-                            title={`${formatDisplayDate(item.date)}: ${item.count} mensagens`}
-                            aria-label={`${formatDisplayDate(item.date)}: ${item.count} mensagens`}
+                            title={`${formatDisplayDate(item.date)}: ${item.count} eventos`}
+                            aria-label={`${formatDisplayDate(item.date)}: ${item.count} eventos`}
                           />
                         </div>
                         <span className="max-w-full truncate text-[11px] text-slate-500 dark:text-slate-500">{formatDisplayDate(item.date)}</span>
@@ -311,10 +380,12 @@ export function Dashboard() {
                   <div key={`${item.date}-${item.channel}-${index}`} className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-slate-950 dark:text-slate-50">{formatDisplayDate(item.date)}</p>
-                      <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{channelLabel(item.channel)}</p>
+                      <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                        {channelLabel(item.channel)} · {item.inboundCount} entrada · {item.outboundCount} saída
+                      </p>
                     </div>
                     <div className="rounded-lg bg-slate-100 px-3 py-1.5 text-sm font-semibold tabular-nums text-slate-900 dark:bg-slate-800 dark:text-slate-100">
-                      {item.count}
+                      {item.totalCount}
                     </div>
                   </div>
                 ))}
