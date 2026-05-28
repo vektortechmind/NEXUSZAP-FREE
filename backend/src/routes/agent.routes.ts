@@ -1,20 +1,48 @@
 import { FastifyInstance } from "fastify";
-import { verifyJwt } from "../security/middlewares";
-import { prisma } from "../database/prisma";
-import { InstanceManager } from "../whatsapp/InstanceManager";
-import { getLabelsForInstance } from "../whatsapp/labelsCache";
 import { z } from "zod";
+import { prisma } from "../database/prisma";
 import { geminiChat } from "../ai/gemini";
 import { groqChat, groqPingModels } from "../ai/groq";
+import {
+  CHAT_PROVIDER_OPTIONS,
+  describeRuntimeFallback,
+  isChatProviderId,
+  MAX_INSTANCE_MEMORY_LIMIT,
+  normalizeMemoryLimit,
+} from "../ai/chatRuntime";
+import {
+  describeVoiceSelection,
+  isVoiceProviderId,
+  normalizeVoiceModel,
+  VOICE_PROVIDER_OPTIONS,
+} from "../ai/voiceRuntime";
 import { openRouterChat } from "../ai/openrouter";
 import { fetchOpenRouterModelsGrouped } from "../ai/openrouterModels";
+import { buildAgentConfigUpdateData, sanitizeAgentConfigForResponse } from "../services/agentConfigSecrets";
+import {
+  AgentEligibilityError,
+  createAgent,
+  getOrCreatePrimaryAgent,
+  getAgentById,
+  listAgents,
+  listEligibleInstances,
+  updateAgentWorkspace,
+} from "../services/agent.service";
+import {
+  createInstance,
+  getInstanceById,
+  getOrCreatePrimaryInstance,
+  MaxWhatsAppInstancesError,
+  listInstances,
+} from "../services/instance.service";
+import { tryDecryptSecret } from "../services/crypto.service";
 import { TelegramBotManager } from "../telegram/TelegramBotManager";
 import { handlePrismaError } from "../utils/prismaErrorHandler";
-import { buildAgentConfigUpdateData, sanitizeAgentConfigForResponse } from "../services/agentConfigSecrets";
-import { tryDecryptSecret } from "../services/crypto.service";
 import { safeErrorMessage, safeLogError } from "../utils/redaction";
+import { verifyJwt } from "../security/middlewares";
+import { getLabelsForInstance } from "../whatsapp/labelsCache";
+import { InstanceManager } from "../whatsapp/InstanceManager";
 
-/** String vazia → null; undefined permanece (campo omitido no JSON). */
 const emptyToNull = (v: unknown) => {
   if (v === undefined) return undefined;
   if (v === null) return null;
@@ -34,68 +62,417 @@ const updateSchema = z.object({
   telegramSystemPrompt: z.preprocess(emptyToNull, z.string().nullable().optional()),
   chatProvider: z.preprocess(emptyToNull, z.string().nullable().optional()),
   groqKey: z.preprocess(emptyToNull, z.string().nullable().optional()),
-  groqAudioKey: z.preprocess(emptyToNull, z.string().nullable().optional()),  // ← Chave separada para áudio
+  groqAudioKey: z.preprocess(emptyToNull, z.string().nullable().optional()),
   geminiKey: z.preprocess(emptyToNull, z.string().nullable().optional()),
   openrouterKey: z.preprocess(emptyToNull, z.string().nullable().optional()),
   openrouterModel: z.preprocess(emptyToNull, z.string().nullable().optional()),
 }).superRefine((val, ctx) => {
-  if (typeof val.delayMin === "number" && typeof val.delayMax === "number") {
-    if (val.delayMax < val.delayMin) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["delayMax"],
-        message: "delayMax não pode ser menor que delayMin"
-      });
-    }
+  if (typeof val.delayMin === "number" && typeof val.delayMax === "number" && val.delayMax < val.delayMin) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["delayMax"],
+      message: "delayMax não pode ser menor que delayMin",
+    });
   }
 });
+
+const createInstanceSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+});
+
+const updateInstanceSchema = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+  aiWhatsappEnabled: z.coerce.boolean().optional(),
+  chatProvider: z.preprocess(emptyToNull, z.string().nullable().optional()),
+  openrouterModel: z.preprocess(emptyToNull, z.string().nullable().optional()),
+  memoryLimit: z.coerce.number().int().min(1).max(MAX_INSTANCE_MEMORY_LIMIT).optional(),
+});
+
+const createAgentSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  instanceId: z.string().uuid("Instância inválida"),
+});
+
+const updateAgentWorkspaceSchema = z.object({
+  name: z.string().trim().min(1).max(80).optional(),
+  systemPrompt: z.preprocess(emptyToNull, z.string().nullable().optional()),
+  voiceEnabled: z.coerce.boolean().optional(),
+  voiceProvider: z.preprocess(emptyToNull, z.string().nullable().optional()),
+  voiceModel: z.preprocess(emptyToNull, z.string().nullable().optional()),
+  voicePersona: z.preprocess(emptyToNull, z.string().trim().max(280).nullable().optional()),
+}).superRefine((val, ctx) => {
+  if (val.voiceProvider !== undefined && val.voiceProvider !== null && !isVoiceProviderId(val.voiceProvider)) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["voiceProvider"],
+      message: "Provider de voz inválido",
+    });
+  }
+
+  if (val.voiceEnabled === true && !isVoiceProviderId(val.voiceProvider ?? undefined)) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["voiceProvider"],
+      message: "Selecione um provider de voz antes de ativar a voz do agente",
+    });
+  }
+});
+
+function serializeInstanceStatus(instance: {
+  id: string;
+  slot: number;
+  name: string;
+  status: string;
+  aiWhatsappEnabled: boolean;
+  chatProvider?: string | null;
+  openrouterModel?: string | null;
+  memoryLimit?: number;
+  agent?: { id: string; name: string } | null;
+}) {
+  const active = InstanceManager.isRunning(instance.id);
+  const connected = instance.status === "CONNECTED";
+  const occupied = connected && !!instance.agent;
+
+  const fallback = describeRuntimeFallback({
+    chatProvider: instance.chatProvider,
+    openrouterModel: instance.openrouterModel,
+  });
+
+  return {
+    id: instance.id,
+    slot: instance.slot,
+    name: instance.name,
+    status: instance.status,
+    qr: InstanceManager.getLastQr(instance.id),
+    active,
+    connected,
+    available: connected && !occupied,
+    occupied,
+    agent: instance.agent
+      ? {
+          id: instance.agent.id,
+          name: instance.agent.name,
+        }
+      : null,
+    aiWhatsappEnabled: instance.aiWhatsappEnabled,
+    chatProvider: isChatProviderId(instance.chatProvider) ? instance.chatProvider : null,
+    openrouterModel: instance.openrouterModel ?? null,
+    memoryLimit: normalizeMemoryLimit(instance.memoryLimit),
+    providerFallback: fallback.providerFallback,
+    providerFallbackLabel: fallback.providerFallbackLabel,
+    modelFallback: fallback.modelFallback,
+    modelFallbackLabel: fallback.modelFallbackLabel,
+  };
+}
+
+function serializeAgent(agent: {
+  id: string;
+  name: string;
+  telegramEnabled: boolean;
+  systemPrompt?: string | null;
+  voiceEnabled?: boolean;
+  voiceProvider?: string | null;
+  voiceModel?: string | null;
+  voicePersona?: string | null;
+  createdAt: Date;
+  instance: {
+    id: string;
+    slot: number;
+    name: string;
+    status: string;
+    chatProvider?: string | null;
+    openrouterModel?: string | null;
+  };
+}) {
+  const voiceSelection = describeVoiceSelection({
+    voiceEnabled: agent.voiceEnabled ?? false,
+    voiceProvider: agent.voiceProvider,
+    voiceModel: agent.voiceModel,
+  });
+
+  return {
+    id: agent.id,
+    name: agent.name,
+    telegramEnabled: agent.telegramEnabled,
+    voiceEnabled: agent.voiceEnabled ?? false,
+    voiceProvider: isVoiceProviderId(agent.voiceProvider) ? agent.voiceProvider : null,
+    voiceModel: voiceSelection.effectiveModel,
+    voicePersona: agent.voicePersona?.trim() || null,
+    voiceModelFallback: voiceSelection.modelFallback,
+    createdAt: agent.createdAt,
+    instanceId: agent.instance.id,
+    instanceName: agent.instance.name,
+    instanceSlot: agent.instance.slot,
+    instanceStatus: agent.instance.status,
+    instanceChatProvider: isChatProviderId(agent.instance.chatProvider) ? agent.instance.chatProvider : null,
+    instanceOpenrouterModel: agent.instance.openrouterModel ?? null,
+    systemPrompt: agent.systemPrompt ?? null,
+  };
+}
+
+async function waitForQr(instanceId: string) {
+  let finalQr = "";
+  const deadline = Date.now() + 3500;
+
+  while (Date.now() < deadline) {
+    const q = InstanceManager.getLastQr(instanceId);
+    if (q) {
+      finalQr = q;
+      break;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+
+  return finalQr || InstanceManager.getLastQr(instanceId) || "";
+}
 
 export async function agentRoutes(fastify: FastifyInstance) {
   fastify.addHook("preValidation", verifyJwt);
 
-  /** Pega o agente único (ou cria se não existir) */
   async function getAgent() {
-    let agent = await prisma.instance.findFirst();
-    if (!agent) {
-      agent = await prisma.instance.create({
-        data: { name: "Agente Principal", typing: true, delayMin: 4000, delayMax: 7000 }
-      });
-    }
-    return agent;
+    return getOrCreatePrimaryInstance();
   }
+
+  fastify.get("/instances", async (_request, reply) => {
+    const instances = await prisma.instance.findMany({
+      orderBy: { slot: "asc" },
+      include: {
+        agent: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+    return reply.send(instances.map(serializeInstanceStatus));
+  });
+
+  fastify.get("/instances/runtime-options", async (_request, reply) => {
+    return reply.send({
+      providers: CHAT_PROVIDER_OPTIONS,
+      defaults: {
+        memoryLimit: normalizeMemoryLimit(undefined),
+      },
+    });
+  });
+
+  fastify.get("/agents", async (_request, reply) => {
+    const agents = await listAgents();
+    return reply.send(agents.map(serializeAgent));
+  });
+
+  fastify.get("/agents/eligible-instances", async (_request, reply) => {
+    const instances = await listEligibleInstances();
+    return reply.send(instances.map((instance) => serializeInstanceStatus({ ...instance, agent: null })));
+  });
+
+  fastify.get("/agents/voice-options", async (_request, reply) => {
+    return reply.send({
+      providers: VOICE_PROVIDER_OPTIONS,
+      defaults: {
+        voiceEnabled: false,
+      },
+    });
+  });
+
+  fastify.get("/agents/:agentId", async (request, reply) => {
+    const { agentId } = request.params as { agentId: string };
+    const agent = await getAgentById(agentId);
+    if (!agent) {
+      return reply.status(404).send({ error: "Agente não encontrado." });
+    }
+    return reply.send(serializeAgent(agent));
+  });
+
+  fastify.post("/agents", {
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+  }, async (request, reply) => {
+    try {
+      const body = createAgentSchema.parse(request.body);
+      const agent = await createAgent(body);
+      return reply.status(201).send(serializeAgent(agent));
+    } catch (err) {
+      if (err instanceof AgentEligibilityError) {
+        return reply.status(err.statusCode).send({ error: err.message });
+      }
+      if (err instanceof z.ZodError) {
+        const msg = err.issues.map((issue) => issue.message).join("; ");
+        return reply.status(400).send({ error: msg || "Payload inválido" });
+      }
+      throw err;
+    }
+  });
+
+  fastify.put("/agents/:agentId", {
+    config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+  }, async (request, reply) => {
+    const { agentId } = request.params as { agentId: string };
+    try {
+      const body = updateAgentWorkspaceSchema.parse(request.body);
+      const normalizedVoiceProvider = body.voiceProvider === undefined
+        ? undefined
+        : (isVoiceProviderId(body.voiceProvider) ? body.voiceProvider : null);
+      const normalizedVoiceModel = body.voiceModel === undefined
+        ? undefined
+        : normalizeVoiceModel(normalizedVoiceProvider ?? null, body.voiceModel);
+      const agent = await updateAgentWorkspace(agentId, {
+        ...body,
+        voiceProvider: normalizedVoiceProvider,
+        voiceModel: normalizedVoiceModel,
+      });
+      return reply.send(serializeAgent(agent));
+    } catch (err) {
+      if (err instanceof AgentEligibilityError) {
+        return reply.status(err.statusCode).send({ error: err.message });
+      }
+      if (err instanceof z.ZodError) {
+        const msg = err.issues.map((issue) => issue.message).join("; ");
+        return reply.status(400).send({ error: msg || "Payload inválido" });
+      }
+      throw err;
+    }
+  });
+
+  fastify.post("/instances", {
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+  }, async (request, reply) => {
+    try {
+      const body = createInstanceSchema.parse(request.body);
+      const instance = await createInstance({ name: body.name });
+      return reply.status(201).send(serializeInstanceStatus(instance));
+    } catch (err) {
+      if (err instanceof MaxWhatsAppInstancesError) {
+        return reply.status(409).send({ error: err.message });
+      }
+      if (err instanceof z.ZodError) {
+        const msg = err.issues.map((issue) => issue.message).join("; ");
+        return reply.status(400).send({ error: msg || "Payload inválido" });
+      }
+      throw err;
+    }
+  });
+
+  fastify.get("/instances/:instanceId/status", async (request, reply) => {
+    const { instanceId } = request.params as { instanceId: string };
+    const instance = await prisma.instance.findUnique({
+      where: { id: instanceId },
+      include: {
+        agent: {
+          select: { id: true, name: true },
+        },
+      },
+    });
+    if (!instance) {
+      return reply.status(404).send({ error: "Instância não encontrada." });
+    }
+    return reply.send(serializeInstanceStatus(instance));
+  });
+
+  fastify.put("/instances/:instanceId/config", {
+    config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+  }, async (request, reply) => {
+    const { instanceId } = request.params as { instanceId: string };
+    const instance = await getInstanceById(instanceId);
+    if (!instance) {
+      return reply.status(404).send({ error: "Instância não encontrada." });
+    }
+
+    try {
+      const body = updateInstanceSchema.parse(request.body);
+      const updated = await prisma.instance.update({
+        where: { id: instanceId },
+        data: {
+          ...(body.name !== undefined ? { name: body.name } : {}),
+          ...(body.aiWhatsappEnabled !== undefined ? { aiWhatsappEnabled: body.aiWhatsappEnabled } : {}),
+          ...(body.chatProvider !== undefined ? { chatProvider: isChatProviderId(body.chatProvider) ? body.chatProvider : null } : {}),
+          ...(body.openrouterModel !== undefined ? { openrouterModel: body.openrouterModel } : {}),
+          ...(body.memoryLimit !== undefined ? { memoryLimit: normalizeMemoryLimit(body.memoryLimit) } : {}),
+        },
+        include: {
+          agent: {
+            select: { id: true, name: true },
+          },
+        },
+      });
+      return reply.send(serializeInstanceStatus(updated));
+    } catch (err) {
+      if (err instanceof z.ZodError) {
+        const msg = err.issues.map((issue) => issue.message).join("; ");
+        return reply.status(400).send({ error: msg || "Payload inválido" });
+      }
+      throw err;
+    }
+  });
+
+  fastify.post("/instances/:instanceId/start", {
+    config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
+  }, async (request, reply) => {
+    const { instanceId } = request.params as { instanceId: string };
+    const instance = await getInstanceById(instanceId);
+    if (!instance) {
+      return reply.status(404).send({ error: "Instância não encontrada." });
+    }
+
+    try {
+      await InstanceManager.start(instance.id, undefined, { userInitiated: true });
+      const qr = await waitForQr(instance.id);
+      return reply.send({ success: true, qr });
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: "Falha ao iniciar conexão WhatsApp." });
+    }
+  });
+
+  fastify.post("/instances/:instanceId/stop", {
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+  }, async (request, reply) => {
+    const { instanceId } = request.params as { instanceId: string };
+    const instance = await getInstanceById(instanceId);
+    if (!instance) {
+      return reply.status(404).send({ error: "Instância não encontrada." });
+    }
+
+    try {
+      await InstanceManager.stop(instance.id);
+      return reply.send({ success: true });
+    } catch (err) {
+      fastify.log.error(err);
+      return reply.status(500).send({ error: "Falha ao parar a instância." });
+    }
+  });
 
   fastify.get("/status", async (_request, reply) => {
     const agent = await getAgent();
     const telegram = TelegramBotManager.getStatus();
     return reply.send({
       id: agent.id,
+      slot: agent.slot,
       name: agent.name,
       status: agent.status,
-      qr: InstanceManager.getLastQr(),
-      active: InstanceManager.isRunning(),
+      qr: InstanceManager.getLastQr(agent.id),
+      active: InstanceManager.isRunning(agent.id),
       aiWhatsappEnabled: agent.aiWhatsappEnabled,
       aiTelegramEnabled: agent.aiTelegramEnabled,
-      telegram
+      telegram,
     });
   });
 
   fastify.get("/config", async (_request, reply) => {
     const agent = await getAgent();
-    return reply.send(sanitizeAgentConfigForResponse(agent));
+    const primaryAgent = await getOrCreatePrimaryAgent();
+    return reply.send({
+      ...sanitizeAgentConfigForResponse(agent),
+      systemPrompt: primaryAgent.systemPrompt ?? agent.systemPrompt ?? null,
+      telegramSystemPrompt: primaryAgent.telegramSystemPrompt ?? agent.telegramSystemPrompt ?? null,
+      agentWorkspaceId: primaryAgent.id,
+    });
   });
 
   fastify.post("/openrouter-models", {
-    config: { rateLimit: { max: 20, timeWindow: "1 minute" } }
+    config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
   }, async (request, reply) => {
     const body = z.object({ openrouterKey: z.string().min(8, "Chave muito curta") }).parse(request.body);
     try {
       const { free, paid } = await fetchOpenRouterModelsGrouped(body.openrouterKey);
-      return reply.send({
-        free,
-        paid,
-        totalFree: free.length,
-        totalPaid: paid.length
-      });
+      return reply.send({ free, paid, totalFree: free.length, totalPaid: paid.length });
     } catch (err: unknown) {
       const msg = safeErrorMessage(err, "Falha ao listar modelos");
       fastify.log.warn({ err: safeLogError(err) }, "[openrouter-models]");
@@ -104,13 +481,12 @@ export async function agentRoutes(fastify: FastifyInstance) {
   });
 
   fastify.get("/providers-health", {
-    config: { rateLimit: { max: 10, timeWindow: "1 minute" } }
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
   }, async (_request, reply) => {
     const agent = await getAgent();
-
     const messages = [
       { role: "system" as const, content: "Você é um healthcheck. Responda apenas com 'OK'." },
-      { role: "user" as const, content: "OK" }
+      { role: "user" as const, content: "OK" },
     ];
 
     async function test(
@@ -125,23 +501,20 @@ export async function agentRoutes(fastify: FastifyInstance) {
         if (name === "gemini") await geminiChat(key, messages);
         if (name === "groq") await groqChat(key, messages);
         if (name === "openrouter") await openRouterChat(key, messages, agent.openrouterModel);
-        // groq-audio: GET /v1/models (leve, OpenAI-compatible) — antes o bloco estava vazio e dava sempre 0ms
         if (name === "groq-audio") await groqPingModels(key);
         return {
           provider: name,
           configured: true,
           ok: true as const,
-          latencyMs: Math.round(performance.now() - t0)
+          latencyMs: Math.round(performance.now() - t0),
         };
       } catch (err: unknown) {
-        const msg =
-          safeErrorMessage(err, "Falha desconhecida");
         return {
           provider: name,
           configured: true,
           ok: false as const,
           latencyMs: Math.round(performance.now() - t0),
-          error: msg.slice(0, 300)
+          error: safeErrorMessage(err, "Falha desconhecida").slice(0, 300),
         };
       }
     }
@@ -157,103 +530,119 @@ export async function agentRoutes(fastify: FastifyInstance) {
           : agent.groqKey
             ? tryDecryptSecret(agent.groqKey)
             : agent.groqKey
-      )  // Usa audioKey ou fallback para groqKey
+      ),
     ]);
 
     return reply.send({
       preferredChatProvider: agent.chatProvider ?? null,
-      results: [gemini, groq, openrouter, groqAudio]
+      results: [gemini, groq, openrouter, groqAudio],
     });
   });
 
   fastify.put("/config", {
-    config: { rateLimit: { max: 60, timeWindow: "1 minute" } }
+    config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
   }, async (request, reply) => {
     const agent = await getAgent();
+    const primaryAgent = await getOrCreatePrimaryAgent();
     let data: z.infer<typeof updateSchema>;
+
     try {
       data = updateSchema.parse(request.body);
     } catch (err) {
       if (err instanceof z.ZodError) {
-        const msg = err.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+        const msg = err.issues.map((issue) => `${issue.path.join(".")}: ${issue.message}`).join("; ");
         return reply.status(400).send({ error: msg || "Payload inválido" });
       }
       throw err;
     }
+
     try {
-      const updated = await prisma.instance.update({
-        where: { id: agent.id },
-        data: buildAgentConfigUpdateData(data)
+      const { systemPrompt, telegramSystemPrompt, ...instanceConfig } = data;
+
+      const updatedInstance = await prisma.$transaction(async (tx) => {
+        const nextInstance = await tx.instance.update({
+          where: { id: agent.id },
+          data: buildAgentConfigUpdateData(instanceConfig),
+        });
+
+        if (systemPrompt !== undefined || telegramSystemPrompt !== undefined) {
+          await tx.agent.update({
+            where: { id: primaryAgent.id },
+            data: {
+              ...(systemPrompt !== undefined ? { systemPrompt } : {}),
+              ...(telegramSystemPrompt !== undefined ? { telegramSystemPrompt } : {}),
+            },
+          });
+        }
+
+        return nextInstance;
       });
-      return reply.send(sanitizeAgentConfigForResponse(updated));
+
+      return reply.send({
+        ...sanitizeAgentConfigForResponse(updatedInstance),
+        systemPrompt:
+          systemPrompt !== undefined ? systemPrompt : (primaryAgent.systemPrompt ?? updatedInstance.systemPrompt ?? null),
+        telegramSystemPrompt:
+          telegramSystemPrompt !== undefined
+            ? telegramSystemPrompt
+            : (primaryAgent.telegramSystemPrompt ?? updatedInstance.telegramSystemPrompt ?? null),
+        agentWorkspaceId: primaryAgent.id,
+      });
     } catch (e: any) {
       return handlePrismaError(e, reply, fastify);
     }
   });
 
   fastify.post("/start", {
-    config: { rateLimit: { max: 5, timeWindow: "1 minute" } }
-  }, async (request, reply) => {
-    let finalQr = "";
+    config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
+  }, async (_request, reply) => {
+    const agent = await getAgent();
     try {
-      await InstanceManager.start(
-        (qr) => {
-          finalQr = qr;
-        },
-        { userInitiated: true }
-      );
+      await InstanceManager.start(agent.id, undefined, { userInitiated: true });
+      const qr = await waitForQr(agent.id);
+      return reply.send({ success: true, qr });
     } catch (err) {
       fastify.log.error(err);
       return reply.status(500).send({ error: "Falha ao iniciar conexão WhatsApp." });
     }
-    const deadline = Date.now() + 3500;
-    while (Date.now() < deadline) {
-      const q = InstanceManager.getLastQr();
-      if (q) {
-        finalQr = q;
-        break;
-      }
-      await new Promise((r) => setTimeout(r, 150));
-    }
-    finalQr = finalQr || InstanceManager.getLastQr() || "";
-    return reply.send({ success: true, qr: finalQr });
   });
 
   fastify.post("/stop", {
-    config: { rateLimit: { max: 10, timeWindow: "1 minute" } }
-  }, async (request, reply) => {
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+  }, async (_request, reply) => {
+    const agent = await getAgent();
     try {
-      await InstanceManager.stop();
+      await InstanceManager.stop(agent.id);
+      return reply.send({ success: true });
     } catch (err) {
       fastify.log.error(err);
       return reply.status(500).send({ error: "Falha ao parar o agente." });
     }
-    return reply.send({ success: true });
   });
 
   fastify.get("/whatsapp-labels", async (_request, reply) => {
     const agent = await getAgent();
-    if (!InstanceManager.isRunning()) {
+    if (!InstanceManager.isRunning(agent.id)) {
       return reply.status(503).send({
         error: "Conecte o agente para sincronizar etiquetas.",
-        labels: []
+        labels: [],
       });
     }
-    const labels = getLabelsForInstance(agent.id).map((l) => ({
-      id: l.id,
-      name: l.name,
-      color: l.color
+
+    const labels = getLabelsForInstance(agent.id).map((label) => ({
+      id: label.id,
+      name: label.name,
+      color: label.color,
     }));
+
     return reply.send({ labels });
   });
 
   fastify.post("/telegram/save-token", {
-    config: { rateLimit: { max: 10, timeWindow: "1 minute" } }
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
   }, async (request, reply) => {
     const agent = await getAgent();
-    const body = z.object({
-      token: z.string().min(20, "Token inválido")
-    }).parse(request.body);
+    const body = z.object({ token: z.string().min(20, "Token inválido") }).parse(request.body);
 
     const result = await TelegramBotManager.saveAndStart(agent.id, body.token);
     if (!result.success) {
@@ -263,18 +652,18 @@ export async function agentRoutes(fastify: FastifyInstance) {
     return reply.send({
       success: true,
       message: "Token do Telegram salvo e bot iniciado!",
-      status: TelegramBotManager.getStatus()
+      status: TelegramBotManager.getStatus(),
     });
   });
 
   fastify.delete("/telegram/token", {
-    config: { rateLimit: { max: 10, timeWindow: "1 minute" } }
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
   }, async (_request, reply) => {
     const agent = await getAgent();
     await TelegramBotManager.stop();
     await prisma.instance.update({
       where: { id: agent.id },
-      data: { telegramBotToken: null }
+      data: { telegramBotToken: null },
     });
     return reply.send({ success: true, message: "Token removido e bot parado." });
   });
@@ -282,20 +671,13 @@ export async function agentRoutes(fastify: FastifyInstance) {
   fastify.get("/telegram/status", async (_request, reply) => {
     const agent = await getAgent();
     const isConfigured = await TelegramBotManager.isConfigured(agent.id);
-    return reply.send({
-      configured: isConfigured,
-      ...TelegramBotManager.getStatus()
-    });
+    return reply.send({ configured: isConfigured, ...TelegramBotManager.getStatus() });
   });
 
   fastify.post("/telegram/validate-token", {
-    config: { rateLimit: { max: 10, timeWindow: "1 minute" } }
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
   }, async (request, reply) => {
-    const body = z.object({
-      token: z.string().min(20, "Token inválido")
-    }).parse(request.body);
-
-    const result = await TelegramBotManager.validateToken(body.token);
-    return reply.send(result);
+    const body = z.object({ token: z.string().min(20, "Token inválido") }).parse(request.body);
+    return reply.send(await TelegramBotManager.validateToken(body.token));
   });
 }

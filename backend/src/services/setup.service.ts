@@ -34,11 +34,12 @@ function readEnvFile(): string[] {
 }
 
 export function readEnvValue(key: string): string | undefined {
+  if (process.env[key] !== undefined) return process.env[key];
   for (const line of readEnvFile()) {
     const parsed = parseEnvLine(line);
     if (parsed?.key === key) return parsed.value;
   }
-  return process.env[key];
+  return undefined;
 }
 
 export function updateEnvFile(updates: EnvUpdates): void {

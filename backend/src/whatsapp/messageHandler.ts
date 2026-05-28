@@ -7,6 +7,7 @@ import {
   isJidStatusBroadcast,
   downloadMediaMessage,
 } from "@whiskeysockets/baileys";
+import type { Instance } from "@prisma/client";
 import { prisma } from "../database/prisma";
 import { askChat, transcribeAudio } from "../ai/providerSelector";
 import { getResolvedAgentPrompt } from "../services/agentPrompt";
@@ -16,7 +17,11 @@ import { resolveContactPhoneDisplay } from "../utils/whatsappJid";
 import { recordLastMessageForChat } from "./lastMessageCache";
 import { globalMemoryManager } from "../utils/ai/memoryManager";
 import { splitLongText } from "../utils/textSplitter";
-import { ensureKnowledgeExtracted, buildFileContextSuffix } from "../services/knowledgeService";
+import {
+  ensureKnowledgeExtracted,
+  buildFileContextSuffix,
+  listKnowledgeFilesByInstance,
+} from "../services/knowledgeService";
 import { safeLogError } from "../utils/redaction";
 
 async function downloadAudioFromMessage(sock: WASocket, m: proto.IWebMessageInfo): Promise<Buffer | null> {
@@ -95,7 +100,7 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
 
     recordLastMessageForChat(instanceId, remoteJid, m);
 
-    const instance = await prisma.instance.findUnique({ where: { id: instanceId } });
+    const instance = (await prisma.instance.findUnique({ where: { id: instanceId } })) as Instance | null;
     if (!instance) return;
 
     if (instance.aiWhatsappEnabled) {
@@ -169,15 +174,14 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
       await sleepWithComposingRefresh(sock, remoteJid, randomInt(4000, 7000));
     }
 
+    const memoryKey = `${instanceId}:${remoteJid}`;
+
     const runAgentReply = async () => {
       await resolveContactPhoneDisplay(sock, remoteJid, (key as WAMessageKey).remoteJidAlt);
-      const memory = globalMemoryManager.getMemory(remoteJid);
-      globalMemoryManager.addMessage(remoteJid, "user", userContent);
+      globalMemoryManager.addMessage(memoryKey, "user", userContent);
+      const memory = globalMemoryManager.getMemory(memoryKey, instance.memoryLimit);
 
-      const knowledgeFiles = await prisma.file.findMany({
-        where: { instanceId, channel: "WHATSAPP" },
-        orderBy: { createdAt: "asc" },
-      });
+      const knowledgeFiles = (await listKnowledgeFilesByInstance(instanceId, "WHATSAPP")) ?? [];
       await ensureKnowledgeExtracted(
         knowledgeFiles as Array<{ id: string; mimetype: string; data: Buffer; extracted: string | null }>
       );
@@ -234,7 +238,7 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
       }
     }
 
-    globalMemoryManager.addMessage(remoteJid, "assistant", aiResponse);
+    globalMemoryManager.addMessage(memoryKey, "assistant", aiResponse);
   } catch (err) {
     console.error("[CRÍTICO] Falha no handleIncomingMessage:", safeLogError(err));
   }

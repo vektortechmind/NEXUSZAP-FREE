@@ -7,6 +7,61 @@ import {
   normalizeUntrustedText
 } from "../ai/promptGuard";
 
+type KnowledgeChannel = "WHATSAPP" | "TELEGRAM";
+
+export async function getKnowledgeOwnerByAgent(agentId: string) {
+  return prisma.agent.findUnique({
+    where: { id: agentId },
+    select: { id: true, instanceId: true },
+  });
+}
+
+export async function listKnowledgeFilesByAgent(agentId: string, channel: KnowledgeChannel) {
+  const owner = await getKnowledgeOwnerByAgent(agentId);
+  if (!owner) return null;
+
+  return prisma.file.findMany({
+    where: {
+      channel,
+      OR: [
+        { agentId: owner.id },
+        { agentId: null, instanceId: owner.instanceId },
+      ],
+    },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
+export async function listKnowledgeFilesByInstance(instanceId: string, channel: KnowledgeChannel) {
+  const instance = await prisma.instance.findUnique({
+    where: { id: instanceId },
+    select: {
+      id: true,
+      agent: { select: { id: true } },
+    },
+  });
+
+  if (!instance) return null;
+
+  if (instance.agent) {
+    return prisma.file.findMany({
+      where: {
+        channel,
+        OR: [
+          { agentId: instance.agent.id },
+          { agentId: null, instanceId },
+        ],
+      },
+      orderBy: { createdAt: "asc" },
+    });
+  }
+
+  return prisma.file.findMany({
+    where: { instanceId, channel },
+    orderBy: { createdAt: "asc" },
+  });
+}
+
 export async function ensureKnowledgeExtracted(
   files: Array<{ id: string; mimetype: string; data: Buffer; extracted: string | null; channel?: string }>,
   logger?: { warn: (obj: unknown, msg?: string) => void }

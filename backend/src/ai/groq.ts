@@ -10,7 +10,7 @@ export type { ChatMessage } from "./systemPrompt";
 const GROQ_MODEL = "llama-3.3-70b-versatile";
 
 /** Modelo Whisper para transcrição de áudio na Groq */
-const GROQ_WHISPER_MODEL = "whisper-large-v3-turbo";
+export const GROQ_WHISPER_MODEL = "whisper-large-v3-turbo";
 
 const GROQ_OPENAI_BASE = "https://api.groq.com/openai/v1";
 
@@ -61,7 +61,8 @@ export async function groqWhisper(
   apiKey: string,
   audioBuffer: Buffer,
   mimeType: string = "audio/ogg",
-  language: string = "pt" // ISO-639-1 — ver https://console.groq.com/docs/speech-to-text
+  language: string = "pt", // ISO-639-1 — ver https://console.groq.com/docs/speech-to-text
+  model: string = GROQ_WHISPER_MODEL
 ) {
   if (!audioBuffer || audioBuffer.length === 0) {
     throw new Error("Groq Whisper: arquivo de áudio vazio");
@@ -100,7 +101,7 @@ export async function groqWhisper(
   const filename = `audio.${ext}`;
   const blob = new Blob([new Uint8Array(audioBuffer)], { type: mediaType });
   formData.append("file", blob, filename);
-  formData.append("model", GROQ_WHISPER_MODEL);
+  formData.append("model", model);
   formData.append("language", language);
   formData.append("response_format", "json");
   formData.append("temperature", "0");

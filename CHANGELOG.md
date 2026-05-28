@@ -2,6 +2,20 @@
 
 Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
+## [1.0.2] - 2026-05-28
+
+### Added
+
+- Configuração de voz por agente com persistência dedicada em `Agent.voiceEnabled`, `Agent.voiceProvider`, `Agent.voiceModel` e `Agent.voicePersona`.
+- Catálogo operacional de voz em `GET /api/agent/agents/voice-options`, inicialmente limitado ao suporte real de `Groq Audio` com `whisper-large-v3-turbo`.
+- Nova seção `Voz do agente` na UI com separação explícita entre provedor textual da instância e provedor de voz do agente.
+
+### Changed
+
+- Fluxo de transcrição de áudio passou a respeitar a configuração de voz do agente sem sobrescrever o runtime textual da instância WhatsApp.
+- Stories `011` e `012` foram validadas em QA e fechadas no backlog de documentação.
+- Versão do frontend, backend, `backend/VERSION`, `README` e artefatos de release atualizada para `1.0.2`.
+
 ## [1.0.1] - 2026-05-28
 
 ### Changed
