@@ -6,8 +6,6 @@ Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
 ### Changed
 
-- Tela de login simplificada para exibir apenas o formulário de acesso e a versão do produto.
-- Removidos textos institucionais e descrições operacionais da tela de login.
 - Versão do frontend, backend e artefatos de documentação atualizada para `1.0.1`.
 
 ## [Unreleased] - Local em preparação para Git
