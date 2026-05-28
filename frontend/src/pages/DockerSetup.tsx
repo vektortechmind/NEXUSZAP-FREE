@@ -9,7 +9,12 @@ import { ThemeToggle } from "../components/ThemeToggle";
 
 function apiError(err: unknown, fallback: string): string {
   if (!isAxiosError(err)) return fallback;
+  if (!err.response) return "A API nao respondeu. Confira se o dominio aponta para o container NexusZAP e se /api esta roteando para o backend.";
   return (err.response?.data as { error?: string } | undefined)?.error ?? fallback;
+}
+
+function normalizeDomainInput(value: string): string {
+  return value.trim().replace(/^https?:\/\//i, "").replace(/\/+$/, "");
 }
 
 export function DockerSetup() {
@@ -26,7 +31,7 @@ export function DockerSetup() {
     setError("");
     setNextUrl("");
     try {
-      const res = await api.post<{ nextUrl: string }>("/setup/docker", { domain, token });
+      const res = await api.post<{ nextUrl: string }>("/setup/docker", { domain: normalizeDomainInput(domain), token });
       setNextUrl(res.data.nextUrl);
     } catch (err) {
       setError(apiError(err, "Não foi possível salvar a configuração."));
@@ -48,7 +53,7 @@ export function DockerSetup() {
             Conecte o Docker ao domínio público.
           </h1>
           <p className="mt-5 max-w-xl text-base text-slate-600 dark:text-slate-400">
-            Informe o domínio que vai abrir o painel. O instalador ajusta `APP_URL`, origens permitidas e prepara o próximo passo do administrador.
+            Informe o domínio que vai abrir o painel. O instalador ajusta APP_URL, origens permitidas e prepara o próximo passo do administrador.
           </p>
           <div className="mt-10 grid gap-3 sm:grid-cols-3">
             {["APP_URL", "CORS", "Admin"].map((item) => (
@@ -64,7 +69,7 @@ export function DockerSetup() {
           <div className="w-full rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-8">
             <div className="mb-6">
               <h2 id="docker-setup-title" className="text-2xl font-semibold text-slate-950 dark:text-slate-50">Docker setup</h2>
-              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">Use `seudominio.com` ou `https://seudominio.com`.</p>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">Informe somente o domínio, sem http:// ou https://.</p>
             </div>
 
             {!token && (
@@ -83,10 +88,10 @@ export function DockerSetup() {
             <form onSubmit={submit} className="mt-6 space-y-5">
               <Input
                 label="Domínio público"
-                placeholder="seudominio.com"
+                placeholder="free.nexuszappro.site"
                 icon={<Globe2 size={18} />}
                 value={domain}
-                onChange={(event) => setDomain(event.target.value)}
+                onChange={(event) => setDomain(normalizeDomainInput(event.target.value))}
                 disabled={loading}
                 required
               />
