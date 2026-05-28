@@ -28,7 +28,21 @@ git --version
 
 ## Instalacao com um comando
 
-Clone o repositorio oficial e rode o instalador:
+Na VPS/Linux, rode a instalacao completa com um unico comando:
+
+```bash
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/vektortechmind/NEXUSZAP-FREE/main/install.sh)"
+```
+
+Se preferir auditar o script antes de executar, baixe e rode manualmente:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/vektortechmind/NEXUSZAP-FREE/main/install.sh -o install.sh
+chmod +x install.sh
+sudo ./install.sh
+```
+
+No Windows, clone o repositorio oficial e rode o instalador:
 
 ```bash
 git clone https://github.com/vektortechmind/NEXUSZAP-FREE.git
@@ -36,11 +50,11 @@ cd NEXUSZAP-FREE
 install.bat
 ```
 
-No Windows, use `install.bat`. Na VPS/Linux, use `install.sh`:
+Em um clone Git existente na VPS/Linux, use `install.sh`:
 
 ```bash
 chmod +x install.sh update.sh
-./install.sh
+sudo ./install.sh
 ```
 
 O instalador faz o fluxo completo:
