@@ -72,8 +72,8 @@ export function Dashboard() {
 
   const fetchStats = useCallback(async (range: { start: string; end: string }) => {
     try {
-      const { data } = await api.get<FilterStats>("/stats", {
-        params: { start: range.start, end: range.end },
+      const { data } = await api.get<FilterStats>("/dashboard/stats", {
+        params: { startDate: range.start, endDate: range.end },
       });
       setStats(data);
       return true;
@@ -86,8 +86,10 @@ export function Dashboard() {
   useEffect(() => {
     let active = true;
     const loadInitialStats = async () => {
-      await fetchStats(initialRange);
-      if (active) setLoading(false);
+      const loaded = await fetchStats(initialRange);
+      if (!active) return;
+      if (!loaded) setStats({ messages: [], totalFiles: 0 });
+      setLoading(false);
     };
     void loadInitialStats();
     return () => {

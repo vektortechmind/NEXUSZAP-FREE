@@ -24,18 +24,18 @@ export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
   const [toasts, setToasts] = React.useState<Toast[]>([]);
   const toastIdSeq = useRef(0);
 
-  const addToast = (message: string, type: ToastType = "info", duration = 3000) => {
+  const removeToast = React.useCallback((id: string) => {
+    setToasts((prev) => prev.filter((toast) => toast.id !== id));
+  }, []);
+
+  const addToast = React.useCallback((message: string, type: ToastType = "info", duration = 3000) => {
     const id = `toast-${++toastIdSeq.current}`;
     setToasts((prev) => [...prev, { id, type, message, duration }]);
 
     if (duration) {
       setTimeout(() => removeToast(id), duration);
     }
-  };
-
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((toast) => toast.id !== id));
-  };
+  }, [removeToast]);
 
   const getIcon = (type: ToastType) => {
     const iconProps = { className: "w-5 h-5" };
