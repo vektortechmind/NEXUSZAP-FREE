@@ -249,13 +249,8 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; 
   if [[ "$update_stack" == "true" ]]; then
     docker compose up -d --build
   else
-    if [[ "$update_backend" == "true" ]]; then
-      docker compose build backend
-      docker compose up -d --no-deps backend
-    fi
-    if [[ "$update_frontend" == "true" ]]; then
-      docker compose build frontend
-      docker compose up -d --no-deps frontend
+    if [[ "$update_backend" == "true" || "$update_frontend" == "true" ]]; then
+      docker compose up -d --build backend frontend
     fi
     if [[ "$update_backend" != "true" && "$update_frontend" != "true" && -n "$CHANGED_FILES" ]]; then
       echo "Mudancas sem impacto em containers. Nenhum restart Docker necessario."
