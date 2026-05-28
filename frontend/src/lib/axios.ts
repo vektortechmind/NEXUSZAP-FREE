@@ -1,13 +1,14 @@
 import axios from "axios";
 
 const configuredBase = import.meta.env.VITE_API_URL;
-const localProdFallback = `http://127.0.0.1:${import.meta.env.VITE_LOCAL_API_PORT || "3000"}/api`;
-const base = configuredBase || (import.meta.env.DEV ? "/api" : localProdFallback);
+const base = configuredBase || "/api";
+
+const publicPaths = new Set(["/login", "/docker-setup", "/criar-admin"]);
 
 const authRedirect = (err: unknown) => {
   if (axios.isAxiosError(err) && err.response?.status === 401) {
     const path = window.location.pathname;
-    if (path !== "/login") {
+    if (!publicPaths.has(path)) {
       window.location.href = "/login";
     }
   }

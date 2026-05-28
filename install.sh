@@ -3,6 +3,8 @@ set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
+REPO_URL="https://github.com/vektortechmind/NEXUSZAP-FREE.git"
+APP_DIR="NEXUSZAP-FREE"
 
 echo ""
 echo "========================================"
@@ -17,6 +19,26 @@ require() {
     echo "ERRO: $message" >&2
     exit 1
   fi
+}
+
+ensure_repo_checkout() {
+  if [[ -f "package.json" && -d "backend" && -d "frontend" ]]; then
+    return 0
+  fi
+
+  require git "Instale Git antes de rodar a instalacao remota."
+
+  if [[ -d "$APP_DIR/.git" ]]; then
+    echo "Repositorio existente encontrado em $APP_DIR. Atualizando..."
+    git -C "$APP_DIR" fetch origin
+    git -C "$APP_DIR" pull --ff-only
+  else
+    echo "Clonando repositorio oficial em $APP_DIR..."
+    git clone "$REPO_URL" "$APP_DIR"
+  fi
+
+  cd "$APP_DIR"
+  exec bash ./install.sh
 }
 
 sudo_cmd() {
@@ -98,6 +120,17 @@ random_password() {
   node -e "console.log(require('crypto').randomBytes(18).toString('base64').replace(/[+/=]/g,'A')+'a1!')"
 }
 
+public_ip() {
+  local ip=""
+  if command -v curl >/dev/null 2>&1; then
+    ip="$(curl -fsSL --max-time 4 https://api.ipify.org 2>/dev/null || true)"
+  fi
+  if [[ -z "$ip" ]]; then
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+  fi
+  echo "${ip:-SEU_IP}"
+}
+
 ensure_env() {
   if [[ -f "backend/.env" ]]; then
     echo "backend/.env ja existe. Mantendo configuracao atual."
@@ -106,10 +139,11 @@ ensure_env() {
 
   mkdir -p backend
 
-  local jwt_secret encryption_key admin_password
+  local jwt_secret encryption_key admin_password setup_token
   jwt_secret="$(random_key)"
   encryption_key="$(random_key)"
   admin_password="$(random_password)"
+  setup_token="$(random_key)"
 
   cat > backend/.env <<EOF
 NODE_ENV="production"
@@ -119,7 +153,11 @@ JWT_SECRET="$jwt_secret"
 ENCRYPTION_KEY="$encryption_key"
 ADMIN_EMAIL="admin@nexuszap.com"
 ADMIN_PASSWORD="$admin_password"
+ADMIN_SETUP_REQUIRED="true"
 CORS_ORIGINS="http://localhost,http://localhost:5173,http://localhost:4173"
+APP_URL=""
+SETUP_TOKEN="$setup_token"
+SETUP_COMPLETED="false"
 GITHUB_REPO="vektortechmind/NEXUSZAP-FREE"
 EOF
 
@@ -128,6 +166,7 @@ EOF
   echo "backend/.env criado automaticamente."
   echo "Login inicial: admin@nexuszap.com"
   echo "Senha inicial: $admin_password"
+  echo "Token de setup: $setup_token"
 }
 
 load_env() {
@@ -144,6 +183,8 @@ load_env() {
 remove_ps1() {
   find "$ROOT" -type f -name '*.ps1' -delete
 }
+
+ensure_repo_checkout
 
 require node "Instale Node.js 18+ antes de continuar."
 require npm "Instale npm antes de continuar."
@@ -186,9 +227,17 @@ echo "[5/5] Subindo stack Docker, se Docker estiver disponivel..."
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   load_env
   docker compose up -d --build
-  echo "Stack Docker iniciada. Painel: http://localhost  API: http://localhost:3000"
+  SETUP_URL="http://$(public_ip)/docker-setup?token=${SETUP_TOKEN:-}"
+  ADMIN_URL="http://$(public_ip)/criar-admin?token=${SETUP_TOKEN:-}"
+  echo "Stack Docker iniciada."
+  echo ""
+  echo "Abra a configuracao inicial no navegador:"
+  echo "$SETUP_URL"
+  echo ""
+  echo "Depois crie o primeiro administrador:"
+  echo "$ADMIN_URL"
 else
-  echo "Docker Compose nao encontrado. Instalacao concluida; configure PostgreSQL e rode npm run dev ou use seu process manager."
+  echo "Docker Compose nao encontrado. Instale Docker Compose e rode install.sh novamente na VPS."
 fi
 
 remove_ps1

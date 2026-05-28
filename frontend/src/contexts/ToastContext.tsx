@@ -10,6 +10,7 @@ interface Toast {
   message: string;
   duration?: number;
 }
+
 interface ToastContextType {
   toasts: Toast[];
   addToast: (messageParam: string, typeParam?: ToastType, durationParam?: number) => void;
