@@ -9,8 +9,6 @@ services:
       POSTGRES_USER: nexus
       POSTGRES_PASSWORD: nexus_secret
       POSTGRES_DB: nexus_chatbot_db
-    ports:
-      - "5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U nexus"]
       interval: 5s
@@ -37,8 +35,8 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set a strong ADMIN_PASSWORD}
       CORS_ORIGINS: ${CORS_ORIGINS:?Set frontend origin, for example https://app.example.com}
       GITHUB_REPO: vektortechmind/NEXUSZAP-FREE
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
 
   frontend:
     build: ./frontend
