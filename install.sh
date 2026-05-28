@@ -140,6 +140,64 @@ public_ip() {
   echo "${ip:-SEU_IP}"
 }
 
+env_set() {
+  local key="$1"
+  local value="$2"
+  if [[ ! -f "backend/.env" ]]; then
+    return 0
+  fi
+
+  if grep -q "^${key}=" backend/.env; then
+    sed -i "s|^${key}=.*|${key}=\"${value}\"|" backend/.env
+  else
+    printf '%s="%s"\n' "$key" "$value" >> backend/.env
+  fi
+  export "$key=$value"
+}
+
+port_in_use() {
+  local port="$1"
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltnH "sport = :${port}" | grep -q .
+    return $?
+  fi
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1
+    return $?
+  fi
+  return 1
+}
+
+ensure_frontend_port() {
+  local preferred="${FRONTEND_HTTP_PORT:-80}"
+  if ! port_in_use "$preferred"; then
+    env_set FRONTEND_HTTP_PORT "$preferred"
+    return 0
+  fi
+
+  local candidate
+  for candidate in 8080 8081 8082 8090; do
+    if ! port_in_use "$candidate"; then
+      echo "Porta ${preferred} ocupada. Usando porta ${candidate} para o painel."
+      env_set FRONTEND_HTTP_PORT "$candidate"
+      return 0
+    fi
+  done
+
+  echo "ERRO: nao encontrei porta HTTP livre entre ${preferred}, 8080, 8081, 8082 e 8090." >&2
+  exit 1
+}
+
+public_base_url() {
+  local ip="$1"
+  local port="${FRONTEND_HTTP_PORT:-80}"
+  if [[ "$port" == "80" ]]; then
+    echo "http://${ip}"
+  else
+    echo "http://${ip}:${port}"
+  fi
+}
+
 ensure_env() {
   if [[ -f "backend/.env" ]]; then
     echo "backend/.env ja existe. Mantendo configuracao atual."
@@ -167,6 +225,7 @@ CORS_ORIGINS="http://localhost,http://localhost:5173,http://localhost:4173"
 APP_URL=""
 SETUP_TOKEN="$setup_token"
 SETUP_COMPLETED="false"
+FRONTEND_HTTP_PORT="80"
 GITHUB_REPO="vektortechmind/NEXUSZAP-FREE"
 EOF
 
@@ -235,9 +294,11 @@ echo ""
 echo "[5/5] Subindo stack Docker, se Docker estiver disponivel..."
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   load_env
+  ensure_frontend_port
   docker compose up -d --build
-  SETUP_URL="http://$(public_ip)/docker-setup?token=${SETUP_TOKEN:-}"
-  ADMIN_URL="http://$(public_ip)/criar-admin?token=${SETUP_TOKEN:-}"
+  PUBLIC_BASE_URL="$(public_base_url "$(public_ip)")"
+  SETUP_URL="${PUBLIC_BASE_URL}/docker-setup?token=${SETUP_TOKEN:-}"
+  ADMIN_URL="${PUBLIC_BASE_URL}/criar-admin?token=${SETUP_TOKEN:-}"
   echo "Stack Docker iniciada."
   echo ""
   echo "Abra a configuracao inicial no navegador:"
