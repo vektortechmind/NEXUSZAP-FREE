@@ -1,0 +1,9 @@
+node_modules
+.git
+.env
+.env.*
+dist
+*.db
+*.md
+.gitignore
+README.md

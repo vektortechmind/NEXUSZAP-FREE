@@ -17,6 +17,8 @@ export type GitHubRelease = {
   tarball_url: string;
 };
 
+import { redactSensitiveText } from "../utils/redaction";
+
 const GITHUB_API = "https://api.github.com";
 const HEADERS = {
   Accept: "application/vnd.github+json",
@@ -41,7 +43,7 @@ export async function getLatestRelease(
   if (!res.ok) {
     const error = await res.json().catch(() => ({}));
     throw new Error(
-      `GitHub API error: ${res.status} - ${JSON.stringify(error)}`
+      `GitHub API error: ${res.status} - ${redactSensitiveText(JSON.stringify(error), 180)}`
     );
   }
   return res.json();
@@ -58,7 +60,7 @@ export async function getReleaseByTag(
   if (!res.ok) {
     const error = await res.json().catch(() => ({}));
     throw new Error(
-      `GitHub API error: ${res.status} - ${JSON.stringify(error)}`
+      `GitHub API error: ${res.status} - ${redactSensitiveText(JSON.stringify(error), 180)}`
     );
   }
   return res.json();

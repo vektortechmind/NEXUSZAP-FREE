@@ -30,10 +30,13 @@ function getKey(): Buffer {
       return key;
     }
   }
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("ENCRYPTION_KEY valida e obrigatoria em producao.");
+  }
   return getOrCreateKey();
 }
 
-export function encryptToken(plaintext: string): string {
+export function encryptSecret(plaintext: string): string {
   const key = getKey();
   const iv = randomBytes(IV_LENGTH);
   const cipher = createCipheriv(ALGORITHM, key, iv);
@@ -45,9 +48,12 @@ export function encryptToken(plaintext: string): string {
   return Buffer.concat([iv, tag, encrypted]).toString("base64");
 }
 
-export function decryptToken(encrypted: string): string {
+export function decryptSecret(encrypted: string): string {
   const key = getKey();
   const data = Buffer.from(encrypted, "base64");
+  if (data.length <= IV_LENGTH + TAG_LENGTH) {
+    throw new Error("Segredo criptografado invalido.");
+  }
   const iv = data.subarray(0, IV_LENGTH);
   const tag = data.subarray(IV_LENGTH, IV_LENGTH + TAG_LENGTH);
   const encryptedText = data.subarray(IV_LENGTH + TAG_LENGTH);
@@ -59,7 +65,31 @@ export function decryptToken(encrypted: string): string {
   ]).toString("utf8");
 }
 
-export function maskToken(token: string): string {
+export function tryDecryptSecret(value: string): string {
+  try {
+    return decryptSecret(value);
+  } catch {
+    return value;
+  }
+}
+
+export function maskSecret(token: string): string {
   if (!token || token.length < 8) return "****";
   return token.slice(0, 4) + "****" + token.slice(-4);
+}
+
+export function maskStoredSecret(value: string): string {
+  return maskSecret(tryDecryptSecret(value));
+}
+
+export function encryptToken(plaintext: string): string {
+  return encryptSecret(plaintext);
+}
+
+export function decryptToken(encrypted: string): string {
+  return decryptSecret(encrypted);
+}
+
+export function maskToken(token: string): string {
+  return maskSecret(token);
 }

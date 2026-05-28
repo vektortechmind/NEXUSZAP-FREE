@@ -1,35 +1,36 @@
-import * as fs from "fs";
-import * as path from "path";
-import { createWriteStream } from "fs";
-import { pipeline } from "stream/promises";
-import { Extract } from "unzipper";
 import { prisma } from "../database/prisma";
+import fs from "node:fs";
+import path from "node:path";
 import {
   getLatestRelease,
-  getReleaseByTag,
   parseVersion,
   hasUpdate,
 } from "./github.service";
-import { encryptToken, decryptToken, maskToken } from "./crypto.service";
+import { encryptToken, maskToken, maskStoredSecret, tryDecryptSecret } from "./crypto.service";
 
-const UPDATE_DIR = process.env.UPDATE_DIR || "./updates";
-const BACKUP_DIR = process.env.BACKUP_DIR || "./backups";
-const EXCLUDE_PATTERNS = [
-  ".env",
-  "*.db",
-  "*.db-journal",
-  "node_modules",
-  "backups",
-  "updates",
-  ".git",
-  "*.log",
-  ".encryption_key",
-];
+function readVersionFile(): string | null {
+  const candidates = [
+    path.resolve(process.cwd(), "VERSION"),
+    path.resolve(__dirname, "..", "..", "VERSION"),
+  ];
 
-const CURRENT_VERSION = process.env.APP_VERSION || "v0.0.0";
-const GITHUB_REPO = process.env.GITHUB_REPO || "owner/repo";
+  for (const filePath of candidates) {
+    if (!fs.existsSync(filePath)) continue;
+    const version = fs.readFileSync(filePath, "utf8").trim();
+    if (version) return version;
+  }
+
+  return null;
+}
+
+const CURRENT_VERSION = readVersionFile() || process.env.APP_VERSION || "v0.0.0";
+const GITHUB_REPO = process.env.GITHUB_REPO || (process.env.NODE_ENV === "production" ? "" : "owner/repo");
 
 function getRepoParts(): { owner: string; repo: string } {
+  if (process.env.NODE_ENV === "production" && (!GITHUB_REPO || GITHUB_REPO === "owner/repo")) {
+    throw new Error("GITHUB_REPO e obrigatorio em producao para consulta de versao.");
+  }
+
   const [owner, repo] = GITHUB_REPO.split("/");
   if (!owner || !repo) {
     throw new Error(`GITHUB_REPO mal formatado: ${GITHUB_REPO}`);
@@ -51,7 +52,7 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
   });
 
   const token = settings?.githubToken
-    ? decryptToken(settings.githubToken)
+    ? tryDecryptSecret(settings.githubToken)
     : undefined;
 
   const { owner, repo } = getRepoParts();
@@ -137,216 +138,7 @@ export async function getTokenStatus(): Promise<{
   if (!settings?.githubToken) {
     return { configured: false, masked: null };
   }
-  const decrypted = decryptToken(settings.githubToken);
-  return { configured: true, masked: maskToken(decrypted) };
-}
-
-function ensureDir(dir: string): void {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
-}
-
-function shouldExclude(filePath: string): boolean {
-  const normalized = filePath.replace(/\\/g, "/");
-  return EXCLUDE_PATTERNS.some((pattern) => {
-    if (pattern.startsWith("*")) {
-      const ext = pattern.slice(1);
-      return normalized.endsWith(ext);
-    }
-    return normalized.includes(pattern);
-  });
-}
-
-export async function applyUpdate(version: string): Promise<{
-  success: boolean;
-  newVersion: string;
-  message: string;
-}> {
-  const settings = await prisma.settings.findUnique({
-    where: { id: "github_update_settings" },
-  });
-
-  const token = settings?.githubToken
-    ? decryptToken(settings.githubToken)
-    : undefined;
-
-  const { owner, repo } = getRepoParts();
-
-  ensureDir(UPDATE_DIR);
-  ensureDir(BACKUP_DIR);
-
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const backupPath = path.join(BACKUP_DIR, `backup-${timestamp}`);
-
-  const rootDir = path.resolve(".");
-
-  await backupCurrent(rootDir, backupPath);
-
-  try {
-    const zipPath = await downloadZipball(owner, repo, version, token);
-    await extractZip(zipPath, rootDir);
-    await cleanupDownload(zipPath);
-
-    await cleanupOldBackups();
-
-    return {
-      success: true,
-      newVersion: parseVersion(version),
-      message:
-        "Update aplicado com sucesso. Por favor, reinicie o servidor.",
-    };
-  } catch (error) {
-    await restoreBackup(backupPath, rootDir);
-    throw error;
-  }
-}
-
-async function cleanupOldBackups(): Promise<void> {
-  const entries = fs.readdirSync(BACKUP_DIR, { withFileTypes: true });
-  const backups = entries
-    .filter((e) => e.isDirectory() && e.name.startsWith("backup-"))
-    .map((e) => ({
-      name: e.name,
-      time: fs.statSync(path.join(BACKUP_DIR, e.name)).mtime.getTime(),
-    }))
-    .sort((a, b) => b.time - a.time);
-
-  const toDelete = backups.slice(2);
-  for (const backup of toDelete) {
-    fs.rmSync(path.join(BACKUP_DIR, backup.name), { recursive: true });
-  }
-}
-
-async function backupCurrent(source: string, dest: string): Promise<void> {
-  ensureDir(dest);
-  const entries = fs.readdirSync(source, { withFileTypes: true });
-
-  for (const entry of entries) {
-    if (shouldExclude(entry.name)) continue;
-
-    const srcPath = path.join(source, entry.name);
-    const destPath = path.join(dest, entry.name);
-
-    if (entry.isDirectory()) {
-      await backupCurrent(srcPath, destPath);
-    } else {
-      const destDir = path.dirname(destPath);
-      ensureDir(destDir);
-      fs.copyFileSync(srcPath, destPath);
-    }
-  }
-}
-
-async function downloadZipball(
-  owner: string,
-  repo: string,
-  tag: string,
-  token?: string
-): Promise<string> {
-  const url = `https://api.github.com/repos/${owner}/${repo}/zipball/${tag}`;
-  const headers: Record<string, string> = {
-    Accept: "application/vnd.github+json",
-    "X-GitHub-Api-Version": "2022-11-28",
-  };
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  const response = await fetch(url, { headers });
-  if (!response.ok) {
-    throw new Error(`Falha ao baixar: ${response.status}`);
-  }
-
-  const destPath = path.join(UPDATE_DIR, `${repo}-${tag}.zip`);
-  const fileStream = createWriteStream(destPath);
-
-  if (!response.body) {
-    throw new Error("Resposta sem body");
-  }
-
-  await pipeline(response.body, fileStream);
-  return destPath;
-}
-
-async function extractZip(zipPath: string, targetDir: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    fs.createReadStream(zipPath)
-      .pipe(Extract({ path: targetDir }))
-      .on("close", () => {
-        const extractedRoot = findExtractedRoot(targetDir);
-        if (extractedRoot) {
-          moveContents(extractedRoot, targetDir);
-          fs.rmSync(extractedRoot, { recursive: true });
-        }
-        resolve();
-      })
-      .on("error", reject);
-  });
-}
-
-function findExtractedRoot(targetDir: string): string | null {
-  const entries = fs.readdirSync(targetDir, { withFileTypes: true });
-  const repoDirs = entries.filter(
-    (e) =>
-      e.isDirectory() &&
-      e.name.includes("-") &&
-      (e.name.endsWith("-zipball") || /-\w+-\w+$/.test(e.name))
-  );
-
-  if (repoDirs.length === 1) {
-    return path.join(targetDir, repoDirs[0].name);
-  }
-  return null;
-}
-
-function moveContents(source: string, dest: string): void {
-  const entries = fs.readdirSync(source, { withFileTypes: true });
-
-  for (const entry of entries) {
-    const srcPath = path.join(source, entry.name);
-    const destPath = path.join(dest, entry.name);
-
-    if (shouldExclude(entry.name)) continue;
-
-    if (entry.isDirectory()) {
-      if (fs.existsSync(destPath)) {
-        fs.rmSync(destPath, { recursive: true });
-      }
-      fs.renameSync(srcPath, destPath);
-    } else {
-      if (fs.existsSync(destPath)) {
-        fs.unlinkSync(destPath);
-      }
-      fs.renameSync(srcPath, destPath);
-    }
-  }
-}
-
-async function cleanupDownload(zipPath: string): Promise<void> {
-  try {
-    fs.unlinkSync(zipPath);
-  } catch {
-    // ignore
-  }
-}
-
-async function restoreBackup(backupPath: string, targetDir: string): Promise<void> {
-  if (!fs.existsSync(backupPath)) return;
-
-  const entries = fs.readdirSync(backupPath, { withFileTypes: true });
-  for (const entry of entries) {
-    const srcPath = path.join(backupPath, entry.name);
-    const destPath = path.join(targetDir, entry.name);
-
-    if (entry.isDirectory()) {
-      await restoreBackup(srcPath, destPath);
-    } else {
-      const destDir = path.dirname(destPath);
-      ensureDir(destDir);
-      fs.copyFileSync(srcPath, destPath);
-    }
-  }
+  return { configured: true, masked: maskStoredSecret(settings.githubToken) };
 }
 
 export { getRepoParts, CURRENT_VERSION, GITHUB_REPO };

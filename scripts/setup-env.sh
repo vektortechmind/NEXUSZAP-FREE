@@ -70,21 +70,16 @@ read_default "Senha do admin" "" ADMIN_PASSWORD
 # Repositório GitHub
 echo ""
 echo -e "${CYAN}[2/5] GitHub${NC}"
-read_default "Usuário/Repo (ex: usuario/chatbot)" "vektortechmind/CHATBOT" GITHUB_REPO
-
-# Versão
-echo ""
-echo -e "${CYAN}[3/5] Versão${NC}"
-read_default "Versão do sistema" "v1.0.0" APP_VERSION
+read_default "Usuário/Repo (ex: usuario/chatbot)" "vektortechmind/NEXUSZAP-FREE" GITHUB_REPO
 
 # Porta
 echo ""
-echo -e "${CYAN}[4/5] Servidor${NC}"
+echo -e "${CYAN}[3/4] Servidor${NC}"
 read_default "Porta do servidor" "3000" PORT
 
 # CORS
 echo ""
-echo -e "${CYAN}[5/5] CORS (pressione Enter para pular)${NC}"
+echo -e "${CYAN}[4/4] CORS (pressione Enter para pular)${NC}"
 read -p "Domínios permitidos (ex: https://app.exemplo.com): " CORS_ORIGINS
 
 # Gerar chaves
@@ -109,7 +104,7 @@ NODE_ENV="production"
 # ===========================================
 # BANCO DE DADOS
 # ===========================================
-DATABASE_URL="file:./chatbot.db"
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/chatbot?schema=public"
 
 # ===========================================
 # SERVIDOR
@@ -158,7 +153,6 @@ cat >> "$ENV_FILE" << EOF
 # AUTO-UPDATE (GitHub)
 # ===========================================
 GITHUB_REPO="$GITHUB_REPO"
-APP_VERSION="$APP_VERSION"
 EOF
 
 # Permissões
@@ -182,7 +176,7 @@ echo ""
 echo -e "  📋 Próximos passos:"
 echo -e "     1. npm install"
 echo -e "     2. npx prisma generate"
-echo -e "     3. npx prisma db push"
+echo -e "     3. npx prisma migrate deploy"
 echo -e "     4. npm run build"
 echo ""
 

@@ -1,27 +1,16 @@
 "use strict";
 
 /**
- * Copia o SQLite definido em DATABASE_URL para backend/backups/.
- * Caminhos relativos em file: seguem o Prisma (relativos à pasta prisma/).
+ * Backup PostgreSQL usando pg_dump. Requer pg_dump no PATH e DATABASE_URL PostgreSQL.
  */
+const { spawnSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
 
 const dbUrl = process.env.DATABASE_URL;
-if (!dbUrl || !dbUrl.startsWith("file:")) {
-  console.error("backup-db: DATABASE_URL deve começar com file: (SQLite).");
-  process.exit(1);
-}
-
-const rawPath = dbUrl.slice("file:".length);
-const prismaDir = path.join(__dirname, "..", "prisma");
-const dbPath = path.isAbsolute(rawPath)
-  ? rawPath
-  : path.join(prismaDir, rawPath.replace(/^\.\//, ""));
-
-if (!fs.existsSync(dbPath)) {
-  console.error("backup-db: arquivo não encontrado:", dbPath);
+if (!dbUrl || !/^postgres(?:ql)?:\/\//i.test(dbUrl)) {
+  console.error("backup-db: DATABASE_URL deve ser PostgreSQL (postgresql://...).");
   process.exit(1);
 }
 
@@ -29,17 +18,21 @@ const backupRoot = path.join(__dirname, "..", "backups");
 fs.mkdirSync(backupRoot, { recursive: true });
 
 const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-const baseName = path.basename(dbPath, path.extname(dbPath)) || "chatbot";
-const dest = path.join(backupRoot, `${baseName}-${stamp}.db`);
+const dest = path.join(backupRoot, `postgres-${stamp}.dump`);
 
-fs.copyFileSync(dbPath, dest);
-console.log("backup-db:", dest);
+const result = spawnSync("pg_dump", [dbUrl, "--format=custom", "--file", dest], {
+  stdio: "inherit",
+  shell: process.platform === "win32",
+});
 
-const extras = [`${dbPath}-shm`, `${dbPath}-wal`];
-for (const extra of extras) {
-  if (fs.existsSync(extra)) {
-    const d = dest + extra.slice(dbPath.length);
-    fs.copyFileSync(extra, d);
-    console.log("backup-db:", d);
-  }
+if (result.error) {
+  console.error("backup-db: falha ao executar pg_dump:", result.error.message);
+  process.exit(1);
 }
+
+if (result.status !== 0) {
+  console.error(`backup-db: pg_dump finalizou com status ${result.status}`);
+  process.exit(result.status || 1);
+}
+
+console.log("backup-db:", dest);

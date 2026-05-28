@@ -1,16 +1,12 @@
 import { useCallback, useState } from "react";
 import { api } from "../lib/axios";
-import {
-  GitFork,
-  Download,
-  RefreshCw,
-  Check,
-  AlertCircle,
-  ExternalLink,
-} from "lucide-react";
-import { Button } from "../components/ui/Button";
-import { Card } from "../components/ui/Card";
-import { useToast } from "../contexts/ToastContext";
+import { AlertCircle, Check, ExternalLink, GitFork, RefreshCw, Shield } from "lucide-react";
+import { Button } from "./ui/Button";
+import { EmptyState } from "./ui/EmptyState";
+import { InlineAlert } from "./ui/InlineAlert";
+import { Panel } from "./ui/Panel";
+import { Section } from "./ui/Section";
+import { StatusDot } from "./ui/StatusDot";
 
 type UpdateStatus = {
   currentVersion: string;
@@ -24,9 +20,7 @@ type UpdateStatus = {
 export function UpdateSection() {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const [loading, setLoading] = useState(false);
-  const [applying, setApplying] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { addToast } = useToast();
 
   const checkUpdate = useCallback(async () => {
     setLoading(true);
@@ -42,137 +36,84 @@ export function UpdateSection() {
     }
   }, []);
 
-  const applyUpdate = async () => {
-    if (!status?.latestVersion) return;
-    if (
-      !confirm(
-        `Atualizar para ${status.latestVersion}? Será feito um backup antes.`
-      )
-    )
-      return;
-
-    setApplying(true);
-    try {
-      const res = await api.post<{ success: boolean; message: string }>(
-        "/update/apply",
-        { version: status.latestVersion }
-      );
-      addToast(res.data.message, "success");
-    } catch (err: unknown) {
-      const msg =
-        (err as { response?: { data?: { error?: string } } })?.response?.data
-          ?.error || "Erro ao aplicar update";
-      addToast(msg, "error");
-    } finally {
-      setApplying(false);
-    }
-  };
-
   return (
-    <Card>
-      <div className="flex items-center gap-3 mb-6 pb-6 border-b border-gray-200 dark:border-slate-700">
-        <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">
-          <GitFork className="w-5 h-5 text-slate-700 dark:text-slate-300" />
-        </div>
-        <div className="flex-1">
-          <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-            Atualização
-          </h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
-            Verificar novas versões
-          </p>
-        </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => void checkUpdate()}
-          disabled={loading}
-          loading={loading}
-        >
-          <RefreshCw className="w-4 h-4 mr-2" />
+    <Section
+      title="Update Center"
+      description="Consulta segura de versão. Aplicação remota permanece desabilitada por segurança."
+      actions={
+        <Button variant="secondary" size="sm" onClick={() => void checkUpdate()} disabled={loading} loading={loading}>
+          <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
           Verificar
         </Button>
-      </div>
+      }
+    >
+      <Panel className="p-4">
+        {error && (
+          <InlineAlert tone="danger" className="mb-4" icon={<AlertCircle size={16} aria-hidden="true" />}>
+            {error}
+          </InlineAlert>
+        )}
 
-      {error && (
-        <div className="mb-4 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 p-3 flex items-center gap-2 text-red-700 dark:text-red-300 text-sm">
-          <AlertCircle className="w-4 h-4 shrink-0" />
-          {error}
-        </div>
-      )}
-
-      {!status ? (
-        <div className="text-center py-8 text-gray-500 dark:text-gray-400">
-          <GitFork className="w-12 h-12 mx-auto mb-3 opacity-50" />
-          <p className="text-sm">Clique em "Verificar" para buscar atualizações</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Versão atual
-              </p>
-              <p className="text-xl font-bold text-gray-900 dark:text-white">
-                {status.currentVersion}
-              </p>
-            </div>
-            <div className="text-right">
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                Última versão
-              </p>
-              <p className="text-xl font-bold text-emerald-600 dark:text-emerald-400">
-                {status.latestVersion}
-              </p>
-            </div>
-          </div>
-
-          {status.hasUpdate ? (
-            <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <Check className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
-                <span className="font-semibold text-emerald-800 dark:text-emerald-200">
-                  Nova versão disponível!
-                </span>
+        {!status ? (
+          <EmptyState
+            icon={<GitFork size={22} aria-hidden="true" />}
+            title="Atualizações ainda não verificadas"
+            description="Consulte o repositório configurado para comparar a versão instalada com a última release."
+            action={
+              <Button variant="secondary" size="sm" onClick={() => void checkUpdate()} disabled={loading} loading={loading}>
+                <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+                Verificar agora
+              </Button>
+            }
+          />
+        ) : (
+          <div className="space-y-4">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/45">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Versão atual</p>
+                <p className="mt-2 text-lg font-semibold text-slate-950 dark:text-slate-50">{status.currentVersion}</p>
               </div>
-              <div className="mb-4">
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  Changelog:
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/45">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Última release</p>
+                <p className="mt-2 text-lg font-semibold text-slate-950 dark:text-slate-50">{status.latestVersion}</p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/45">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Estado</p>
+                <p className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-slate-950 dark:text-slate-50">
+                  <StatusDot tone={status.hasUpdate ? "warning" : "success"} pulse={status.hasUpdate} />
+                  {status.hasUpdate ? "Update disponível" : "Atualizado"}
                 </p>
-                <pre className="text-xs text-gray-600 dark:text-gray-400 whitespace-pre-wrap bg-white/60 dark:bg-slate-900/60 p-2 rounded-lg max-h-32 overflow-y-auto">
-                  {status.changelog}
-                </pre>
               </div>
-              <div className="flex gap-2">
-                <Button
-                  onClick={() => void applyUpdate()}
-                  disabled={applying}
-                  loading={applying}
-                  size="sm"
-                >
-                  <Download className="w-4 h-4 mr-2" />
-                  Atualizar
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="sm"
-                  onClick={() => window.open(status.releaseUrl, "_blank")}
-                >
-                  <ExternalLink className="w-4 h-4 mr-2" />
-                  Ver no GitHub
-                </Button>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/45">
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Token GitHub</p>
+                <p className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-slate-950 dark:text-slate-50">
+                  <StatusDot tone="neutral" />
+                  Não exposto no frontend
+                </p>
               </div>
             </div>
-          ) : (
-            <div className="rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 p-4 text-center">
-              <Check className="w-8 h-8 text-slate-400 mx-auto mb-2" />
-              <p className="text-sm text-slate-600 dark:text-slate-400">
-                Você já está na versão mais recente
-              </p>
-            </div>
-          )}
-        </div>
-      )}
-    </Card>
+
+            {status.hasUpdate ? (
+              <InlineAlert tone="warning" icon={<Shield size={17} aria-hidden="true" />} title="Ação manual necessária">
+                <div className="space-y-3">
+                  <p>Aplicação remota está desabilitada. Atualize pela VPS usando o runbook ou `update.sh`.</p>
+                  {status.changelog && (
+                    <pre className="max-h-36 overflow-y-auto rounded-lg bg-white/70 p-3 text-xs text-slate-700 dark:bg-slate-900/65 dark:text-slate-300">{status.changelog}</pre>
+                  )}
+                  <Button variant="secondary" size="sm" onClick={() => window.open(status.releaseUrl, "_blank", "noopener,noreferrer")}>
+                    <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
+                    Ver release no GitHub
+                  </Button>
+                </div>
+              </InlineAlert>
+            ) : (
+              <InlineAlert tone="success" icon={<Check size={17} aria-hidden="true" />}>
+                A instalação está na versão mais recente disponível para `{status.githubRepo}`.
+              </InlineAlert>
+            )}
+          </div>
+        )}
+      </Panel>
+    </Section>
   );
 }

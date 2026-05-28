@@ -1,14 +1,6 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
-
-export type Theme = "light" | "dark";
-
-export type ThemeContextValue = {
-  theme: Theme;
-  setTheme: (t: Theme) => void;
-  toggleTheme: () => void;
-};
-
-export const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
+import React, { useEffect, useState } from "react";
+import { ThemeContext } from "./ThemeContext";
+import type { Theme } from "./ThemeContext";
 
 const STORAGE_KEY = "nexus-theme";
 
@@ -39,7 +31,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     }
   }, [theme]);
 
-  const setTheme = (t: Theme) => setThemeState(t);
+  const setTheme = (newTheme: Theme) => setThemeState(newTheme);
   const toggleTheme = () =>
     setThemeState((prev) => (prev === "dark" ? "light" : "dark"));
 
@@ -50,10 +42,4 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function useTheme() {
-  const ctx = useContext(ThemeContext);
-  if (!ctx) {
-    throw new Error("useTheme deve ser usado dentro de ThemeProvider");
-  }
-  return ctx;
-}
+
