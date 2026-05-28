@@ -44,6 +44,26 @@ function sameOriginFromRequest(request: FastifyRequest): string | null {
   return `${proto}://${host}`;
 }
 
+function hostnameFromHost(host: string | undefined): string | null {
+  if (!host) return null;
+  try {
+    return new URL(`http://${host}`).hostname;
+  } catch {
+    return null;
+  }
+}
+
+function originHostMatchesRequest(request: FastifyRequest, requestOrigin: string): boolean {
+  try {
+    const originHostname = new URL(requestOrigin).hostname;
+    const hostHostname = hostnameFromHost(getHeaderValue(request.headers.host));
+    const forwardedHostHostname = hostnameFromHost(getHeaderValue(request.headers["x-forwarded-host"]));
+    return Boolean(originHostname && (originHostname === hostHostname || originHostname === forwardedHostHostname));
+  } catch {
+    return false;
+  }
+}
+
 function headerOrigin(headerValue: string | string[] | undefined): string | null {
   const raw = getHeaderValue(headerValue);
   if (!raw) return null;
@@ -82,10 +102,25 @@ export function createOriginGuard(
     }
 
     const sameOrigin = sameOriginFromRequest(request);
-    if (allowedOrigins.has(requestOrigin) || requestOrigin === sameOrigin) return;
+    if (allowedOrigins.has(requestOrigin) || requestOrigin === sameOrigin || originHostMatchesRequest(request, requestOrigin)) return;
 
     return reply.status(403).send({ error: "Origem da requisição não permitida" });
   };
+}
+
+export function isCorsOriginAllowedForRequest(
+  request: FastifyRequest,
+  allowedOrigins: Set<string>,
+  env: "development" | "test" | "production"
+): boolean {
+  const origin = headerOrigin(request.headers.origin);
+  if (!origin) return true;
+  if (allowedOrigins.has(origin) || originHostMatchesRequest(request, origin)) return true;
+  if (env !== "production") {
+    const hostname = new URL(origin).hostname;
+    return hostname === "localhost" || hostname === "127.0.0.1";
+  }
+  return false;
 }
 
 export async function verifyCsrf(request: FastifyRequest, reply: FastifyReply) {

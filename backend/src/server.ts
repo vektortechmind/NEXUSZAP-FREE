@@ -1,10 +1,12 @@
 import Fastify from "fastify";
+import type { FastifyInstance } from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import jwt from "@fastify/jwt";
 import cookie from "@fastify/cookie";
 import multipart from "@fastify/multipart";
 import rateLimit from "@fastify/rate-limit";
+import type { FastifyCorsOptions, FastifyCorsOptionsDelegate } from "@fastify/cors";
 import { env } from "./config/env";
 import { prisma } from "./database/prisma";
 import { authRoutes } from "./routes/auth.routes";
@@ -16,7 +18,7 @@ import updateRoutes from "./routes/update.routes";
 import { setupRoutes } from "./routes/setup.routes";
 import { InstanceManager } from "./whatsapp/InstanceManager";
 import { TelegramBotManager } from "./telegram/TelegramBotManager";
-import { buildAllowedOrigins, createOriginGuard, verifyCsrf } from "./security/middlewares";
+import { buildAllowedOrigins, createOriginGuard, isCorsOriginAllowedForRequest, verifyCsrf } from "./security/middlewares";
 import { safeLogError } from "./utils/redaction";
 
 export async function buildServer() {
@@ -36,13 +38,21 @@ export async function buildServer() {
       .filter(Boolean) ?? [];
   const corsOrigins = [...defaultOrigins, ...extraOrigins];
 
-  await fastify.register(cors, {
-    origin: corsOrigins,
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+  const allowedOrigins = buildAllowedOrigins(corsOrigins, env.NODE_ENV);
+
+  await fastify.register(cors, (_instance: FastifyInstance): FastifyCorsOptionsDelegate => {
+    return (request, callback) => {
+      const corsOptions: FastifyCorsOptions = {
+        origin: isCorsOriginAllowedForRequest(request, allowedOrigins, env.NODE_ENV),
+        credentials: true,
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+      };
+      callback(null, {
+        ...corsOptions
+      });
+    };
   });
 
-  const allowedOrigins = buildAllowedOrigins(corsOrigins, env.NODE_ENV);
   fastify.addHook("preValidation", createOriginGuard(allowedOrigins, env.NODE_ENV));
   fastify.addHook("preValidation", verifyCsrf);
 
