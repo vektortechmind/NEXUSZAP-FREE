@@ -17,6 +17,14 @@ export type GitHubRelease = {
   tarball_url: string;
 };
 
+export type GitHubContentFile = {
+  type: "file";
+  encoding: "base64" | string;
+  content: string;
+  html_url: string;
+  path: string;
+};
+
 import { redactSensitiveText } from "../utils/redaction";
 
 const GITHUB_API = "https://api.github.com";
@@ -47,6 +55,31 @@ export async function getLatestRelease(
     );
   }
   return res.json();
+}
+
+export async function getRepoFile(
+  owner: string,
+  repo: string,
+  filePath: string,
+  ref = "main",
+  token?: string
+): Promise<GitHubContentFile> {
+  const url = `${GITHUB_API}/repos/${owner}/${repo}/contents/${filePath}?ref=${encodeURIComponent(ref)}`;
+  const res = await fetch(url, { headers: buildHeaders(token) });
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({}));
+    throw new Error(
+      `GitHub API error: ${res.status} - ${redactSensitiveText(JSON.stringify(error), 180)}`
+    );
+  }
+  return res.json();
+}
+
+export function decodeGitHubFileContent(file: GitHubContentFile): string {
+  if (file.encoding !== "base64") {
+    throw new Error(`Encoding nao suportado para ${file.path}: ${file.encoding}`);
+  }
+  return Buffer.from(file.content, "base64").toString("utf8").trim();
 }
 
 export async function getReleaseByTag(

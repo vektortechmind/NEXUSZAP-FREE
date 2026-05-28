@@ -2,6 +2,8 @@ import { prisma } from "../database/prisma";
 import fs from "node:fs";
 import path from "node:path";
 import {
+  decodeGitHubFileContent,
+  getRepoFile,
   getLatestRelease,
   parseVersion,
   hasUpdate,
@@ -56,18 +58,36 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
     : undefined;
 
   const { owner, repo } = getRepoParts();
-  const release = await getLatestRelease(owner, repo, token);
-
-  const latestVersion = parseVersion(release.tag_name);
   const currentVersion = parseVersion(CURRENT_VERSION);
 
-  return {
-    currentVersion,
-    latestVersion,
-    hasUpdate: hasUpdate(currentVersion, latestVersion),
-    releaseUrl: release.html_url,
-    changelog: release.body || "Sem changelog disponível.",
-  };
+  try {
+    const release = await getLatestRelease(owner, repo, token);
+    const latestVersion = parseVersion(release.tag_name);
+
+    return {
+      currentVersion,
+      latestVersion,
+      hasUpdate: hasUpdate(currentVersion, latestVersion),
+      releaseUrl: release.html_url,
+      changelog: release.body || "Sem changelog disponivel.",
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("GitHub API error: 404")) {
+      throw error;
+    }
+
+    const versionFile = await getRepoFile(owner, repo, "backend/VERSION", "main", token);
+    const latestVersion = parseVersion(decodeGitHubFileContent(versionFile));
+
+    return {
+      currentVersion,
+      latestVersion,
+      hasUpdate: hasUpdate(currentVersion, latestVersion),
+      releaseUrl: `https://github.com/${owner}/${repo}`,
+      changelog: "Repositorio sem GitHub Release publicada. Comparacao feita pelo arquivo backend/VERSION no branch main.",
+    };
+  }
 }
 
 export async function validateGitHubToken(

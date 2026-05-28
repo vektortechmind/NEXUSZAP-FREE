@@ -1,4 +1,5 @@
 import { useCallback, useState } from "react";
+import { isAxiosError } from "axios";
 import { api } from "../lib/axios";
 import { AlertCircle, Check, ExternalLink, GitFork, RefreshCw, Shield } from "lucide-react";
 import { Button } from "./ui/Button";
@@ -29,7 +30,10 @@ export function UpdateSection() {
       const res = await api.get<UpdateStatus>("/update/status");
       setStatus(res.data);
     } catch (err) {
-      setError("Não foi possível verificar atualizações");
+      const message = isAxiosError(err)
+        ? (err.response?.data as { error?: string } | undefined)?.error ?? "Não foi possível verificar atualizações"
+        : "Não foi possível verificar atualizações";
+      setError(message);
       console.error(err);
     } finally {
       setLoading(false);
@@ -58,7 +62,7 @@ export function UpdateSection() {
           <EmptyState
             icon={<GitFork size={22} aria-hidden="true" />}
             title="Atualizações ainda não verificadas"
-            description="Consulte o repositório configurado para comparar a versão instalada com a última release."
+            description="Consulte o repositório configurado para comparar a versão instalada com a versão publicada no GitHub."
             action={
               <Button variant="secondary" size="sm" onClick={() => void checkUpdate()} disabled={loading} loading={loading}>
                 <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -74,7 +78,7 @@ export function UpdateSection() {
                 <p className="mt-2 text-lg font-semibold text-slate-950 dark:text-slate-50">{status.currentVersion}</p>
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/45">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Última release</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Última versão</p>
                 <p className="mt-2 text-lg font-semibold text-slate-950 dark:text-slate-50">{status.latestVersion}</p>
               </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/45">
