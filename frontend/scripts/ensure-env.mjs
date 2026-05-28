@@ -23,7 +23,6 @@ function readEnvValue(filePath, key) {
   return null;
 }
 
-/** Porta da API local: override explícito > PORT em backend/.env > 3000 */
 function resolveLocalApiPort() {
   const fromShell = process.env.VITE_LOCAL_API_PORT?.trim();
   if (fromShell && /^\d+$/.test(fromShell)) return fromShell;
@@ -51,24 +50,12 @@ function readViteApiUrl(filePath) {
 
 const fromEnv = process.env.VITE_API_URL?.trim();
 const fromProd = readViteApiUrl(path.join(frontendRoot, ".env.production"));
-const fromLocal = readViteApiUrl(path.join(frontendRoot, ".env.production.local"));
-const resolved = fromEnv || fromProd || fromLocal;
-
-const isCi = process.env.CI === "true";
-const localPort = resolveLocalApiPort();
-const defaultLocal = `http://127.0.0.1:${localPort}/api`;
+const resolved = fromEnv || fromProd;
 
 if (!resolved) {
-  if (isCi) {
-    console.error(
-      "Erro: VITE_API_URL é obrigatório no build (CI). Defina a variável ou crie frontend/.env.production."
-    );
-    process.exit(1);
-  }
-  const target = path.join(frontendRoot, ".env.production.local");
-  fs.writeFileSync(target, `VITE_API_URL=${defaultLocal}\n`, "utf8");
+  const localPort = resolveLocalApiPort();
   console.warn(
-    `VITE_API_URL não definido: criado ${path.relative(frontendRoot, target)} com ${defaultLocal} (porta: ${localPort} — lida de backend/.env PORT ou VITE_LOCAL_API_PORT; padrão 3000). Na VPS use install-vps.sh ou defina VITE_API_URL.`
+    `VITE_API_URL nao definido; build usara fallback local http://127.0.0.1:${localPort}/api. Em producao, defina VITE_API_URL no ambiente ou em frontend/.env.production.`
   );
 } else {
   console.log("Env check OK (VITE_API_URL definido).");

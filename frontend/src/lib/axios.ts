@@ -1,11 +1,8 @@
 import axios from "axios";
 
-/** Dev: proxy do Vite usa /api; build sem proxy pode usar URL absoluta no .env. */
 const configuredBase = import.meta.env.VITE_API_URL;
-if (!import.meta.env.DEV && !configuredBase) {
-  throw new Error("VITE_API_URL é obrigatório no build de produção.");
-}
-const base = configuredBase || "/api";
+const localProdFallback = `http://127.0.0.1:${import.meta.env.VITE_LOCAL_API_PORT || "3000"}/api`;
+const base = configuredBase || (import.meta.env.DEV ? "/api" : localProdFallback);
 
 const authRedirect = (err: unknown) => {
   if (axios.isAxiosError(err) && err.response?.status === 401) {
@@ -21,6 +18,9 @@ const authRedirect = (err: unknown) => {
 export const api = axios.create({
   baseURL: base,
   withCredentials: true,
+  withXSRFToken: true,
+  xsrfCookieName: "csrfToken",
+  xsrfHeaderName: "x-csrf-token",
   timeout: 45_000
 });
 
@@ -28,6 +28,9 @@ export const api = axios.create({
 export const apiLong = axios.create({
   baseURL: base,
   withCredentials: true,
+  withXSRFToken: true,
+  xsrfCookieName: "csrfToken",
+  xsrfHeaderName: "x-csrf-token",
   timeout: 120_000
 });
 

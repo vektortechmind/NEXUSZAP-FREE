@@ -3,30 +3,71 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+@theme {
+  --font-sans: "Inter", "Segoe UI", sans-serif;
+  --color-nexus-accent: #12b76a;
+  --color-nexus-info: #2e90fa;
+  --color-nexus-warning: #f79009;
+  --color-nexus-danger: #f04438;
+}
+
 :root {
+  --nexus-bg: #f7f8fa;
+  --nexus-surface: #ffffff;
+  --nexus-surface-muted: #f1f3f5;
+  --nexus-surface-raised: #ffffff;
+  --nexus-border: #d9dee7;
+  --nexus-border-strong: #c9d0dc;
+  --nexus-text: #101828;
+  --nexus-text-muted: #667085;
+  --nexus-text-soft: #98a2b3;
+  --nexus-accent: #12b76a;
+  --nexus-info: #2e90fa;
+  --nexus-warning: #f79009;
+  --nexus-danger: #f04438;
+  --nexus-radius-sm: 6px;
+  --nexus-radius-md: 8px;
+  --nexus-radius-lg: 10px;
+  --nexus-shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
+  --nexus-shadow-md: 0 12px 28px -24px rgba(16, 24, 40, 0.45);
+  --nexus-ring: 0 0 0 3px rgba(18, 183, 106, 0.18);
   font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   line-height: 1.6;
   font-weight: 400;
   color-scheme: light;
 }
 
+html.dark {
+  --nexus-bg: #090a0f;
+  --nexus-surface: #111318;
+  --nexus-surface-muted: #181b22;
+  --nexus-surface-raised: #171a21;
+  --nexus-border: #262a33;
+  --nexus-border-strong: #353a46;
+  --nexus-text: #f5f7fa;
+  --nexus-text-muted: #98a2b3;
+  --nexus-text-soft: #667085;
+  --nexus-accent: #32d583;
+  --nexus-info: #53b1fd;
+  --nexus-warning: #fdb022;
+  --nexus-danger: #f97066;
+  --nexus-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.24);
+  --nexus-shadow-md: 0 18px 38px -28px rgba(0, 0, 0, 0.8);
+  --nexus-ring: 0 0 0 3px rgba(50, 213, 131, 0.22);
+}
+
 body {
   margin: 0;
   min-height: 100vh;
-  background:
-    radial-gradient(1200px 600px at 8% -10%, rgba(56, 189, 248, 0.12), transparent 58%),
-    radial-gradient(1000px 520px at 100% 0%, rgba(147, 51, 234, 0.12), transparent 55%),
-    #f5f7ff;
-  color: #0f172a;
+  overflow-x: hidden;
+  background: var(--nexus-bg);
+  color: var(--nexus-text);
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 html.dark body {
-  background:
-    radial-gradient(1200px 700px at 10% -10%, rgba(37, 99, 235, 0.2), transparent 60%),
-    radial-gradient(1000px 650px at 100% 0%, rgba(126, 34, 206, 0.2), transparent 58%),
-    #020617;
-  color: #f1f5f9;
+  background: var(--nexus-bg);
+  color: var(--nexus-text);
   color-scheme: dark;
 }
 
@@ -35,7 +76,12 @@ html.dark body {
 }
 
 ::selection {
-  background: rgba(59, 130, 246, 0.25);
+  background: rgba(18, 183, 106, 0.24);
+}
+
+:focus-visible {
+  outline: 2px solid var(--nexus-accent);
+  outline-offset: 2px;
 }
 
 /* Scrollbar */
@@ -84,3 +130,13 @@ html.dark ::-webkit-scrollbar-thumb:hover {
   animation: slideIn 0.3s ease-out;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}

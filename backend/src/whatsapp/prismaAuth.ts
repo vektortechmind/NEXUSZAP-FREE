@@ -7,6 +7,7 @@ import {
   proto
 } from "@whiskeysockets/baileys";
 import { prisma } from "../database/prisma";
+import { safeLogError } from "../utils/redaction";
 
 /**
  * Adaptador customizado para armazenar o estado de autenticação do Baileys no Prisma.
@@ -38,7 +39,7 @@ export async function usePrismaAuthState(instanceId: string): Promise<{ state: A
       if (key === "creds") console.log(`[PrismaAuth] ✅ Credenciais encontradas para ${instanceId}`);
       return JSON.parse(session.value, BufferJSON.reviver);
     } catch (error) {
-      console.error(`[PrismaAuth] ❌ Erro ao ler chave ${key}:`, error);
+      console.error(`[PrismaAuth] ❌ Erro ao ler chave ${key}:`, safeLogError(error));
       return null;
     }
   };

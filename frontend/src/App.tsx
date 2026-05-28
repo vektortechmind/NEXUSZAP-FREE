@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
+import { AlertTriangle } from "lucide-react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ToastProvider } from "./contexts/ToastContext";
 import { Login } from "./pages/Login";
@@ -10,7 +11,10 @@ import { Apis } from "./pages/Apis";
 import { Dashboard } from "./pages/Dashboard";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
-import { ThemeProvider } from "./contexts/ThemeContext";
+import { ThemeProvider } from "./contexts/ThemeProvider";
+import { AppShell } from "./components/ui/AppShell";
+import { Button } from "./components/ui/Button";
+import { InlineAlert } from "./components/ui/InlineAlert";
 
 /** Layout único para rotas autenticadas — evita remontar Sidebar/Header a cada troca de página. */
 const PrivateRoute = () => {
@@ -27,12 +31,23 @@ const PrivateRoute = () => {
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
+  useEffect(() => {
+    if (!mobileSidebarOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMobileSidebarOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mobileSidebarOpen]);
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen w-full bg-gray-50 dark:bg-slate-950">
+      <div className="flex h-screen w-full items-center justify-center bg-[var(--nexus-bg)]">
         <div className="text-center">
-          <div className="w-12 h-12 border-4 border-gray-300 dark:border-gray-600 border-t-blue-600 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-gray-600 dark:text-gray-400">Validando... espere</p>
+          <div className="mx-auto mb-4 h-10 w-10 rounded-full border-2 border-slate-300 border-t-emerald-600 motion-safe:animate-spin dark:border-slate-700 dark:border-t-emerald-400" />
+          <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Validando sessão...</p>
         </div>
       </div>
     );
@@ -40,31 +55,22 @@ const PrivateRoute = () => {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-screen w-full bg-gray-50 dark:bg-slate-950">
-        <div className="max-w-md p-6 rounded-xl border border-red-200 dark:border-red-800 bg-white dark:bg-slate-900 shadow-xl">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="w-10 h-10 rounded-full bg-red-100 dark:bg-red-950/50 flex items-center justify-center">
-              <svg className="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-              </svg>
-            </div>
-            <h2 className="text-lg font-bold text-red-700 dark:text-red-400">Erro de Conexão</h2>
-          </div>
-          <p className="text-sm text-gray-700 dark:text-gray-300 mb-4">{error}</p>
-          <div className="space-y-2 text-xs text-gray-600 dark:text-gray-400">
-            <p><strong>Solução:</strong></p>
-            <ol className="list-decimal list-inside space-y-1">
-              <li>Verifique se o backend está rodando</li>
-              <li>Execute: <code className="bg-gray-100 dark:bg-slate-800 px-2 py-1 rounded">npm run dev</code> na raiz</li>
-              <li>Ou: <code className="bg-gray-100 dark:bg-slate-800 px-2 py-1 rounded">cd backend && npm run dev</code></li>
+      <div className="flex min-h-screen w-full items-center justify-center bg-[var(--nexus-bg)] p-4">
+        <div className="w-full max-w-lg rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <InlineAlert tone="danger" icon={<AlertTriangle size={18} />} title="Erro de conexão">
+            {error}
+          </InlineAlert>
+          <div className="mt-5 space-y-2 text-sm text-slate-600 dark:text-slate-400">
+            <p className="font-semibold text-slate-900 dark:text-slate-100">Verificações rápidas</p>
+            <ol className="list-inside list-decimal space-y-1">
+              <li>Confirme se o backend está rodando.</li>
+              <li>Na raiz, execute <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono dark:bg-slate-800">npm run dev</code>.</li>
+              <li>Ou rode <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono dark:bg-slate-800">npm run dev --prefix backend</code>.</li>
             </ol>
           </div>
-          <button
-            onClick={() => window.location.reload()}
-            className="mt-4 w-full py-2 px-4 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors"
-          >
-            Recarregar Página
-          </button>
+          <Button onClick={() => window.location.reload()} className="mt-5 w-full" variant="danger">
+            Recarregar página
+          </Button>
         </div>
       </div>
     );
@@ -75,20 +81,19 @@ const PrivateRoute = () => {
   }
 
   return (
-    <div className="flex h-screen bg-transparent">
-      <Sidebar
-        mobileOpen={mobileSidebarOpen}
-        onCloseMobile={() => setMobileSidebarOpen(false)}
-      />
-      <div className="flex-1 flex flex-col overflow-hidden">
-        <Header onOpenMobileSidebar={() => setMobileSidebarOpen(true)} />
-        <main className="flex-1 overflow-y-auto">
-          <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
-            <Outlet />
-          </div>
-        </main>
+    <AppShell
+      sidebar={(
+        <Sidebar
+          mobileOpen={mobileSidebarOpen}
+          onCloseMobile={() => setMobileSidebarOpen(false)}
+        />
+      )}
+      header={<Header onOpenMobileSidebar={() => setMobileSidebarOpen(true)} />}
+    >
+      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+        <Outlet />
       </div>
-    </div>
+    </AppShell>
   );
 };
 
@@ -107,7 +112,6 @@ function AppRoutes() {
     </Routes>
   );
 }
-
 export default function App() {
   return (
     <ThemeProvider>

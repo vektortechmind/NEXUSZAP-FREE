@@ -1,4 +1,5 @@
 import type { ChatMessage } from "./systemPrompt";
+import { redactSensitiveText } from "../utils/redaction";
 
 /**
  * Mensagens chegam como `ChatMessage[]` (system primeiro) via `askChat` → `normalizeMessagesForChatApi`.
@@ -23,7 +24,7 @@ export async function groqPingModels(apiKey: string): Promise<void> {
   });
   const raw = await res.text();
   if (!res.ok) {
-    throw new Error(`Groq API: ${res.status} ${raw.slice(0, 200)}`);
+    throw new Error(`Groq API: ${res.status} ${redactSensitiveText(raw, 160)}`);
   }
 }
 
@@ -35,8 +36,9 @@ export async function groqChat(apiKey: string, messages: ChatMessage[]) {
   });
   const raw = await res.text();
   if (!res.ok) {
-    console.error("[groqChat] HTTP", res.status, raw.slice(0, 600));
-    throw new Error(`Groq API error: ${res.status} ${raw.slice(0, 400)}`);
+    const safeBody = redactSensitiveText(raw, 180);
+    console.error("[groqChat] HTTP", res.status, safeBody);
+    throw new Error(`Groq API error: ${res.status} ${safeBody}`);
   }
   const data = JSON.parse(raw) as { choices?: { message?: { role?: string; content?: string } }[] };
   const text = data.choices?.[0]?.message?.content;
@@ -114,14 +116,15 @@ export async function groqWhisper(
 
   const raw = await res.text();
   if (!res.ok) {
-    console.error("[groqWhisper] HTTP", res.status, raw.slice(0, 600));
-    throw new Error(`Groq Whisper error: ${res.status} - ${raw.slice(0, 400)}`);
+    const safeBody = redactSensitiveText(raw, 180);
+    console.error("[groqWhisper] HTTP", res.status, safeBody);
+    throw new Error(`Groq Whisper error: ${res.status} - ${safeBody}`);
   }
 
   const data = JSON.parse(raw) as { text?: string; error?: { message?: string } };
   
   if (data.error) {
-    throw new Error(`Groq Whisper: ${data.error.message || "Erro desconhecido"}`);
+    throw new Error(`Groq Whisper: ${redactSensitiveText(data.error.message || "Erro desconhecido")}`);
   }
 
   if (typeof data.text !== "string" || !data.text.trim()) {

@@ -14,9 +14,12 @@ import { getResolvedAgentPrompt } from "../services/agentPrompt";
 import { buildCompleteSystemPrompt, resolveAgentDisplayName } from "../ai/systemPrompt";
 import { resolveContactPhoneDisplay } from "../utils/whatsappJid";
 import { recordLastMessageForChat } from "./lastMessageCache";
-import { extractTextFromBuffer } from "../services/fileExtractor";
+import { globalMemoryManager } from "../utils/ai/memoryManager";
+import { splitLongText } from "../utils/textSplitter";
+import { ensureKnowledgeExtracted, buildFileContextSuffix } from "../services/knowledgeService";
+import { safeLogError } from "../utils/redaction";
 
-const chatMemory = new Map<string, { role: "user" | "assistant" | "system", content: string }[]>();
+// const chatMemory = new Map<string, { role: "user" | "assistant" | "system", content: string }[]>();
 
 /**
  * Baixa o áudio de uma mensagem do WhatsApp e retorna como Buffer.
@@ -28,13 +31,13 @@ async function downloadAudioFromMessage(sock: WASocket, m: proto.IWebMessageInfo
       "buffer",
       {},
       { 
-        logger: console as any,
+        logger: { trace() {}, debug() {}, info() {}, warn() {}, error() {} } as any,
         reuploadRequest: sock.updateMediaMessage 
       }
     );
     return buffer ? Buffer.from(buffer) : null;
   } catch (err) {
-    console.error("[downloadAudioFromMessage] Erro:", err);
+    console.error("[downloadAudioFromMessage] Erro:", safeLogError(err));
     return null;
   }
 }
@@ -91,71 +94,9 @@ function randomInt(min: number, max: number) {
   return Math.floor(Math.random() * (b - a + 1)) + a;
 }
 
-function splitLongTextForWhatsApp(text: string, maxChunkLen = 800): string[] {
-  const t = String(text ?? "").trim();
-  if (!t) return [];
+// function splitLongTextForWhatsApp
 
-  // 1) quebra por parágrafos
-  const paragraphs = t.split(/\n{2,}/g).map((p) => p.trim()).filter(Boolean);
-
-  const chunks: string[] = [];
-  const push = (s: string) => {
-    const v = s.trim();
-    if (!v) return;
-    if (v.length <= maxChunkLen) {
-      chunks.push(v);
-      return;
-    }
-    // 2) se ainda estiver grande, quebra por frases
-    const sentences = v.split(/(?<=[.!?])\s+/g);
-    let cur = "";
-    for (const sentence of sentences) {
-      const candidate = cur ? `${cur} ${sentence}` : sentence;
-      if (candidate.length <= maxChunkLen) {
-        cur = candidate;
-      } else {
-        if (cur) chunks.push(cur.trim());
-        cur = sentence;
-        // 3) fallback: quebra “na marra”
-        while (cur.length > maxChunkLen) {
-          chunks.push(cur.slice(0, maxChunkLen));
-          cur = cur.slice(maxChunkLen);
-        }
-      }
-    }
-    if (cur.trim()) chunks.push(cur.trim());
-  };
-
-  for (const p of paragraphs) push(p);
-  return chunks;
-}
-
-async function ensureKnowledgeExtracted(
-  files: Array<{ id: string; mimetype: string; data: Buffer; extracted: string | null }>
-) {
-  for (const f of files) {
-    if (f.extracted && f.extracted.trim()) continue;
-    const canExtract = [
-      "application/pdf",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "application/json",
-      "text/plain"
-    ].includes(f.mimetype);
-    if (!canExtract) continue;
-    try {
-      const text = await extractTextFromBuffer(Buffer.from(f.data), f.mimetype);
-      if (text && text.trim()) {
-        await prisma.file.update({
-          where: { id: f.id },
-          data: { extracted: text }
-        });
-        f.extracted = text;
-      }
-    } catch {
-      // Mantém sem extracted caso o arquivo seja inválido/ilegível.
-    }
-  }
-}
+// async function ensureKnowledgeExtracted
 
 export async function handleIncomingMessage(
   sock: WASocket,
@@ -183,7 +124,7 @@ export async function handleIncomingMessage(
         await sock.readMessages([key]);
         await sock.sendPresenceUpdate("available", remoteJid);
       } catch (e) {
-        console.warn("[Baileys] readMessages / available:", e);
+        console.warn("[Baileys] readMessages / available:", safeLogError(e));
       }
     }
 
@@ -215,12 +156,12 @@ export async function handleIncomingMessage(
           const mimeType = audioMessage.mimetype || "audio/ogg; codecs=opus";
           const transcribed = await transcribeAudio(instanceId, audioBuffer, mimeType, "pt");
           userContent = `[Áudio transcrito]: ${transcribed}`;
-          console.log(`[WhatsApp] Áudio transcrito: ${transcribed.slice(0, 100)}...`);
+          console.log("[WhatsApp] Áudio transcrito com sucesso.");
         } else {
           console.warn("[WhatsApp] Áudio: download retornou buffer vazio ou nulo");
         }
       } catch (err) {
-        console.error("[WhatsApp] Erro ao transcrever áudio:", err);
+        console.error("[WhatsApp] Erro ao transcrever áudio:", safeLogError(err));
       }
     }
 
@@ -252,36 +193,15 @@ export async function handleIncomingMessage(
       );
       const pushName = m.pushName || undefined;
 
-      let memory = chatMemory.get(remoteJid) || [];
-
-      let lastAssistantContent: string | null = null;
-      for (let i = memory.length - 1; i >= 0; i--) {
-        if (memory[i].role === "assistant") {
-          lastAssistantContent = memory[i].content;
-          break;
-        }
-      }
-
-      memory.push({ role: "user", content: userContent });
-      if (memory.length > CHAT_MEMORY_MAX_MESSAGES) memory.shift();
-      chatMemory.set(remoteJid, memory);
+      let memory = globalMemoryManager.getMemory(remoteJid);
+      globalMemoryManager.addMessage(remoteJid, "user", userContent);
 
       const knowledgeFiles = await prisma.file.findMany({
         where: { instanceId, channel: "WHATSAPP" },
         orderBy: { createdAt: "asc" }
       });
       await ensureKnowledgeExtracted(knowledgeFiles as Array<{ id: string; mimetype: string; data: Buffer; extracted: string | null }>);
-
-      const extractedParts = knowledgeFiles
-        .map((f) => f.extracted)
-        .filter((t): t is string => typeof t === "string" && t.trim().length > 0);
-      let combinedKnowledge = "";
-      if (extractedParts.length > 0) {
-        combinedKnowledge =
-          "\n[CONTEXTO DE ARQUIVOS (priorize quando relevante)]:\n" +
-          extractedParts.join("\n---\n") +
-          "\n[FIM DO CONTEXTO]\n";
-      }
+      const combinedKnowledge = buildFileContextSuffix(knowledgeFiles) || "";
       const behavioral = await getResolvedAgentPrompt(instanceId);
       const systemContent = buildCompleteSystemPrompt({
         agentName: resolveAgentDisplayName(instance),
@@ -301,7 +221,7 @@ export async function handleIncomingMessage(
       ? await withComposingWhile(sock, remoteJid, runAgentReply)
       : await runAgentReply();
 
-    const parts = splitLongTextForWhatsApp(aiResponse, 800);
+    const parts = splitLongText(aiResponse, 800);
     if (parts.length === 0) return;
 
     for (let i = 0; i < parts.length; i++) {
@@ -333,11 +253,8 @@ export async function handleIncomingMessage(
       }
     }
 
-    let mem = chatMemory.get(remoteJid) || [];
-    mem.push({ role: "assistant", content: aiResponse });
-    if (mem.length > CHAT_MEMORY_MAX_MESSAGES) mem.shift();
-    chatMemory.set(remoteJid, mem);
+    globalMemoryManager.addMessage(remoteJid, "assistant", aiResponse);
   } catch (err) {
-    console.error(`[CRÍTICO] Falha no handleIncomingMessage:`, err);
+    console.error(`[CRÍTICO] Falha no handleIncomingMessage:`, safeLogError(err));
   }
 }

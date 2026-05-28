@@ -1,10 +1,9 @@
 import { PrismaClient } from "@prisma/client";
 
 /**
- * Configuração otimizada do Prisma para SQLite em produção (VPS):
+ * Configuração otimizada do Prisma em produção (VPS):
  * - Pool de conexões eficiente
  * - Logs em produção apenas para erros
- * - Timeout de conexão adequado para SQLite
  */
 export const prisma = new PrismaClient({
   datasources: {

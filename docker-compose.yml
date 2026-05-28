@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: nexus-postgres
+    restart: unless-stopped
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: nexus
+      POSTGRES_PASSWORD: nexus_secret
+      POSTGRES_DB: nexus_chatbot_db
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexus"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: nexus-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://nexus:nexus_secret@postgres:5432/nexus_chatbot_db?schema=public
+      PORT: 3000
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET with at least 32 random characters}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:?Set ADMIN_EMAIL}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set a strong ADMIN_PASSWORD}
+      CORS_ORIGINS: ${CORS_ORIGINS:?Set frontend origin, for example https://app.example.com}
+      GITHUB_REPO: vektortechmind/NEXUSZAP-FREE
+    ports:
+      - "3000:3000"
+
+  frontend:
+    build: ./frontend
+    container_name: nexus-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+
+volumes:
+  pgdata:
