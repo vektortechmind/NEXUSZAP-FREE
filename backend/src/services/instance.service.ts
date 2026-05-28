@@ -1,4 +1,5 @@
 import { prisma } from "../database/prisma";
+import { InstanceManager } from "../whatsapp/InstanceManager";
 
 export const MAX_WHATSAPP_INSTANCES = 3;
 
@@ -68,4 +69,38 @@ export async function createInstance(input: CreateInstanceInput) {
 
 export async function getInstanceById(instanceId: string) {
   return prisma.instance.findUnique({ where: { id: instanceId } });
+}
+
+export async function deleteInstance(instanceId: string) {
+  const instance = await prisma.instance.findUnique({
+    where: { id: instanceId },
+    include: {
+      agent: {
+        select: { id: true },
+      },
+    },
+  });
+
+  if (!instance) {
+    return null;
+  }
+
+  if (InstanceManager.isRunning(instanceId) || instance.status === "CONNECTED" || instance.status === "RECONNECTING") {
+    await InstanceManager.stop(instanceId);
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.session.deleteMany({ where: { instanceId } });
+
+    if (instance.agent) {
+      await tx.file.updateMany({
+        where: { agentId: instance.agent.id },
+        data: { agentId: null },
+      });
+    }
+
+    await tx.instance.delete({ where: { id: instanceId } });
+  });
+
+  return instance;
 }

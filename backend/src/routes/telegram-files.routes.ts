@@ -16,7 +16,7 @@ import {
   listKnowledgeFilesByAgent,
   listKnowledgeFilesByInstance,
 } from "../services/knowledgeService";
-import { getOrCreatePrimaryAgent } from "../services/agent.service";
+import { getPrimaryAgent } from "../services/agent.service";
 
 async function extractKnowledgeText(
   fastify: FastifyInstance,
@@ -131,7 +131,10 @@ export async function telegramFilesRoutes(fastify: FastifyInstance) {
       config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
     },
     async (request, reply) => {
-      const primaryAgent = await getOrCreatePrimaryAgent();
+      const primaryAgent = await getPrimaryAgent();
+      if (!primaryAgent) {
+        return reply.status(404).send({ error: "Agente do Telegram não encontrado." });
+      }
       const parts = request.parts();
       let savedFile = null;
 

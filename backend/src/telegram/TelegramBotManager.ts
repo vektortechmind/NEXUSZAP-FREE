@@ -1,7 +1,7 @@
 import type { Instance } from "@prisma/client";
 import { Context, Telegraf } from "telegraf";
 import { prisma } from "../database/prisma";
-import { askChat, transcribeAudio } from "../ai/providerSelector";
+import { askChat, getKeys, isAudioTranscriptionEnabled, transcribeAudio } from "../ai/providerSelector";
 import { getResolvedTelegramPrompt } from "../services/agentPrompt";
 import { encryptToken, tryDecryptSecret } from "../services/crypto.service";
 import { recordMessageEvent } from "../services/messageEvent.service";
@@ -85,7 +85,7 @@ async function handleTelegramMessage(ctx: Context) {
     userContent = message.text.trim();
   }
 
-  if (!userContent && hasAudioMessage && "audio" in message && message.audio) {
+  if (!userContent && hasAudioMessage && "audio" in message && message.audio && await isAudioTranscriptionEnabled(instance.id)) {
     try {
       const audioFile = message.audio;
       const file = await ctx.telegram.getFile(audioFile.file_id);
@@ -101,7 +101,7 @@ async function handleTelegramMessage(ctx: Context) {
     }
   }
 
-  if (!userContent && hasVoiceMessage && "voice" in message && message.voice) {
+  if (!userContent && hasVoiceMessage && "voice" in message && message.voice && await isAudioTranscriptionEnabled(instance.id)) {
     try {
       const voiceFile = message.voice;
       const file = await ctx.telegram.getFile(voiceFile.file_id);
@@ -134,7 +134,8 @@ async function handleTelegramMessage(ctx: Context) {
 
   const memoryKey = `${instance.id}:${fromId}`;
   globalMemoryManager.addMessage(memoryKey, "user", userContent);
-  const memory = globalMemoryManager.getMemory(memoryKey, instance.memoryLimit);
+  const { memoryLimit } = await getKeys(instance.id);
+  const memory = globalMemoryManager.getMemory(memoryKey, memoryLimit);
 
   if (instance.typing) {
     const min = clamp(instance.delayMin ?? 4000, 4000, 7000);

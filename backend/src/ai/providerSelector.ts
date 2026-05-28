@@ -9,7 +9,6 @@ import { normalizeMessagesForChatApi } from "./systemPrompt";
 import type { ChatMessage } from "./systemPrompt";
 import { openRouterChat } from "./openrouter";
 import { sanitizeBotResponse } from "./promptGuard";
-import { isVoiceProviderId, normalizeVoiceModel } from "./voiceRuntime";
 
 type ChatProviderFn = (key: string, messages: ChatMessage[]) => Promise<string>;
 
@@ -21,13 +20,6 @@ type EffectiveInstanceKeys = {
   openrouterModel: string | null;
   groqAudioKey: string | null | undefined;
   memoryLimit: number;
-};
-
-type EffectiveVoiceConfig = {
-  voiceEnabled: boolean;
-  voiceProvider: string | null;
-  voiceModel: string | null;
-  voicePersona: string | null;
 };
 
 function isLikelyQuotaOrRateLimit(err: unknown): boolean {
@@ -83,37 +75,35 @@ export async function getKeys(instanceId?: string): Promise<EffectiveInstanceKey
   const instance = instanceId
     ? ((await prisma.instance.findUnique({ where: { id: instanceId } })) as Instance | null)
     : primary;
+  const agent = instanceId
+    ? await prisma.agent.findFirst({
+        where: { instanceId },
+        select: { chatProvider: true, openrouterModel: true, memoryLimit: true },
+      })
+    : null;
 
   const current = instance ?? primary;
 
   return {
-    chatProvider: current?.chatProvider ?? null,
+    chatProvider: agent?.chatProvider ?? current?.chatProvider ?? null,
     groqKey: decryptNullableSecret(pickInstanceValue(current?.groqKey, primary?.groqKey)),
     geminiKey: decryptNullableSecret(pickInstanceValue(current?.geminiKey, primary?.geminiKey)),
     openrouterKey: decryptNullableSecret(pickInstanceValue(current?.openrouterKey, primary?.openrouterKey)),
-    openrouterModel: current?.openrouterModel ?? null,
+    openrouterModel: agent?.openrouterModel ?? current?.openrouterModel ?? null,
     groqAudioKey: decryptNullableSecret(pickInstanceValue(current?.groqAudioKey, primary?.groqAudioKey ?? primary?.groqKey)),
-    memoryLimit: current?.memoryLimit ?? 5,
+    memoryLimit: agent?.memoryLimit ?? current?.memoryLimit ?? 5,
   };
 }
 
-async function getVoiceConfig(instanceId: string): Promise<EffectiveVoiceConfig> {
+export async function isAudioTranscriptionEnabled(instanceId: string): Promise<boolean> {
   const agent = await prisma.agent.findUnique({
     where: { instanceId },
     select: {
-      voiceEnabled: true,
-      voiceProvider: true,
-      voiceModel: true,
-      voicePersona: true,
+      audioTranscriptionEnabled: true,
     },
   });
 
-  return {
-    voiceEnabled: agent?.voiceEnabled ?? false,
-    voiceProvider: agent?.voiceProvider ?? null,
-    voiceModel: agent?.voiceModel ?? null,
-    voicePersona: agent?.voicePersona?.trim() || null,
-  };
+  return agent?.audioTranscriptionEnabled ?? false;
 }
 
 export async function askChat(instanceId: string, messages: unknown[]) {
@@ -162,15 +152,8 @@ export async function transcribeAudio(
   mimeType: string = "audio/ogg",
   language: string = "pt"
 ): Promise<string> {
-  const [keys, voiceConfig] = await Promise.all([getKeys(instanceId), getVoiceConfig(instanceId)]);
+  const keys = await getKeys(instanceId);
   const audioKey = keys.groqAudioKey || keys.groqKey;
-  const selectedVoiceProvider = voiceConfig.voiceEnabled && isVoiceProviderId(voiceConfig.voiceProvider)
-    ? voiceConfig.voiceProvider
-    : null;
-
-  if (selectedVoiceProvider && selectedVoiceProvider !== "groq") {
-    throw new Error(`[transcribeAudio] ADMIN: provider de voz '${selectedVoiceProvider}' ainda nao suportado em runtime.`);
-  }
 
   if (!audioKey) {
     throw new Error(
@@ -185,7 +168,7 @@ export async function transcribeAudio(
       audioBuffer,
       mimeType,
       language,
-      normalizeVoiceModel(selectedVoiceProvider, voiceConfig.voiceModel) ?? undefined
+      undefined
     );
   } catch (err) {
     throw new Error(safeErrorMessage(err, "Falha ao transcrever audio"));

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Bot, Boxes, KeyRound, LayoutDashboard, LogOut, Send, X } from "lucide-react";
+import { Bot, Boxes, KeyRound, LayoutDashboard, LogOut, X } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { APP_VERSION } from "../version";
 
@@ -27,7 +27,6 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
       label: "Inteligência",
       items: [
         { name: "Agente IA", path: "/agente", icon: <Bot size={18} /> },
-        { name: "Telegram IA", path: "/telegram", icon: <Send size={18} /> },
       ],
     },
     {

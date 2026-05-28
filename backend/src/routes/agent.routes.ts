@@ -10,18 +10,14 @@ import {
   MAX_INSTANCE_MEMORY_LIMIT,
   normalizeMemoryLimit,
 } from "../ai/chatRuntime";
-import {
-  describeVoiceSelection,
-  isVoiceProviderId,
-  normalizeVoiceModel,
-  VOICE_PROVIDER_OPTIONS,
-} from "../ai/voiceRuntime";
 import { openRouterChat } from "../ai/openrouter";
 import { fetchOpenRouterModelsGrouped } from "../ai/openrouterModels";
 import { buildAgentConfigUpdateData, sanitizeAgentConfigForResponse } from "../services/agentConfigSecrets";
 import {
   AgentEligibilityError,
   createAgent,
+  deleteAgent,
+  getPrimaryAgent,
   getOrCreatePrimaryAgent,
   getAgentById,
   listAgents,
@@ -30,6 +26,7 @@ import {
 } from "../services/agent.service";
 import {
   createInstance,
+  deleteInstance,
   getInstanceById,
   getOrCreatePrimaryInstance,
   MaxWhatsAppInstancesError,
@@ -96,24 +93,16 @@ const createAgentSchema = z.object({
 const updateAgentWorkspaceSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   systemPrompt: z.preprocess(emptyToNull, z.string().nullable().optional()),
-  voiceEnabled: z.coerce.boolean().optional(),
-  voiceProvider: z.preprocess(emptyToNull, z.string().nullable().optional()),
-  voiceModel: z.preprocess(emptyToNull, z.string().nullable().optional()),
-  voicePersona: z.preprocess(emptyToNull, z.string().trim().max(280).nullable().optional()),
+  chatProvider: z.preprocess(emptyToNull, z.string().nullable().optional()),
+  openrouterModel: z.preprocess(emptyToNull, z.string().nullable().optional()),
+  memoryLimit: z.coerce.number().int().min(1).max(MAX_INSTANCE_MEMORY_LIMIT).optional(),
+  audioTranscriptionEnabled: z.coerce.boolean().optional(),
 }).superRefine((val, ctx) => {
-  if (val.voiceProvider !== undefined && val.voiceProvider !== null && !isVoiceProviderId(val.voiceProvider)) {
+  if (val.chatProvider !== undefined && val.chatProvider !== null && !isChatProviderId(val.chatProvider)) {
     ctx.addIssue({
       code: "custom",
-      path: ["voiceProvider"],
-      message: "Provider de voz inválido",
-    });
-  }
-
-  if (val.voiceEnabled === true && !isVoiceProviderId(val.voiceProvider ?? undefined)) {
-    ctx.addIssue({
-      code: "custom",
-      path: ["voiceProvider"],
-      message: "Selecione um provider de voz antes de ativar a voz do agente",
+      path: ["chatProvider"],
+      message: "Provider de IA inválido",
     });
   }
 });
@@ -127,19 +116,20 @@ function serializeInstanceStatus(instance: {
   chatProvider?: string | null;
   openrouterModel?: string | null;
   memoryLimit?: number;
-  agent?: { id: string; name: string } | null;
+  agent?: { id: string; name: string; chatProvider?: string | null; openrouterModel?: string | null; memoryLimit?: number } | null;
 }) {
   const active = InstanceManager.isRunning(instance.id);
   const connected = instance.status === "CONNECTED";
   const occupied = connected && !!instance.agent;
 
   const fallback = describeRuntimeFallback({
-    chatProvider: instance.chatProvider,
-    openrouterModel: instance.openrouterModel,
+    chatProvider: instance.agent?.chatProvider ?? instance.chatProvider,
+    openrouterModel: instance.agent?.openrouterModel ?? instance.openrouterModel,
   });
 
   return {
     id: instance.id,
+    channel: "WHATSAPP" as const,
     slot: instance.slot,
     name: instance.name,
     status: instance.status,
@@ -155,9 +145,9 @@ function serializeInstanceStatus(instance: {
         }
       : null,
     aiWhatsappEnabled: instance.aiWhatsappEnabled,
-    chatProvider: isChatProviderId(instance.chatProvider) ? instance.chatProvider : null,
-    openrouterModel: instance.openrouterModel ?? null,
-    memoryLimit: normalizeMemoryLimit(instance.memoryLimit),
+    chatProvider: isChatProviderId(instance.agent?.chatProvider ?? instance.chatProvider) ? (instance.agent?.chatProvider ?? instance.chatProvider ?? null) : null,
+    openrouterModel: instance.agent?.openrouterModel ?? instance.openrouterModel ?? null,
+    memoryLimit: normalizeMemoryLimit(instance.agent?.memoryLimit ?? instance.memoryLimit),
     providerFallback: fallback.providerFallback,
     providerFallbackLabel: fallback.providerFallbackLabel,
     modelFallback: fallback.modelFallback,
@@ -170,10 +160,10 @@ function serializeAgent(agent: {
   name: string;
   telegramEnabled: boolean;
   systemPrompt?: string | null;
-  voiceEnabled?: boolean;
-  voiceProvider?: string | null;
-  voiceModel?: string | null;
-  voicePersona?: string | null;
+  chatProvider?: string | null;
+  openrouterModel?: string | null;
+  memoryLimit?: number;
+  audioTranscriptionEnabled?: boolean;
   createdAt: Date;
   instance: {
     id: string;
@@ -184,28 +174,21 @@ function serializeAgent(agent: {
     openrouterModel?: string | null;
   };
 }) {
-  const voiceSelection = describeVoiceSelection({
-    voiceEnabled: agent.voiceEnabled ?? false,
-    voiceProvider: agent.voiceProvider,
-    voiceModel: agent.voiceModel,
-  });
-
   return {
     id: agent.id,
     name: agent.name,
     telegramEnabled: agent.telegramEnabled,
-    voiceEnabled: agent.voiceEnabled ?? false,
-    voiceProvider: isVoiceProviderId(agent.voiceProvider) ? agent.voiceProvider : null,
-    voiceModel: voiceSelection.effectiveModel,
-    voicePersona: agent.voicePersona?.trim() || null,
-    voiceModelFallback: voiceSelection.modelFallback,
+    audioTranscriptionEnabled: agent.audioTranscriptionEnabled ?? false,
+    chatProvider: isChatProviderId(agent.chatProvider) ? agent.chatProvider : null,
+    openrouterModel: agent.openrouterModel ?? null,
+    memoryLimit: normalizeMemoryLimit(agent.memoryLimit),
     createdAt: agent.createdAt,
     instanceId: agent.instance.id,
     instanceName: agent.instance.name,
     instanceSlot: agent.instance.slot,
     instanceStatus: agent.instance.status,
-    instanceChatProvider: isChatProviderId(agent.instance.chatProvider) ? agent.instance.chatProvider : null,
-    instanceOpenrouterModel: agent.instance.openrouterModel ?? null,
+    instanceChatProvider: isChatProviderId(agent.chatProvider) ? agent.chatProvider : null,
+    instanceOpenrouterModel: agent.openrouterModel ?? null,
     systemPrompt: agent.systemPrompt ?? null,
   };
 }
@@ -238,7 +221,7 @@ export async function agentRoutes(fastify: FastifyInstance) {
       orderBy: { slot: "asc" },
       include: {
         agent: {
-          select: { id: true, name: true },
+          select: { id: true, name: true, chatProvider: true, openrouterModel: true, memoryLimit: true },
         },
       },
     });
@@ -262,15 +245,6 @@ export async function agentRoutes(fastify: FastifyInstance) {
   fastify.get("/agents/eligible-instances", async (_request, reply) => {
     const instances = await listEligibleInstances();
     return reply.send(instances.map((instance) => serializeInstanceStatus({ ...instance, agent: null })));
-  });
-
-  fastify.get("/agents/voice-options", async (_request, reply) => {
-    return reply.send({
-      providers: VOICE_PROVIDER_OPTIONS,
-      defaults: {
-        voiceEnabled: false,
-      },
-    });
   });
 
   fastify.get("/agents/:agentId", async (request, reply) => {
@@ -307,16 +281,13 @@ export async function agentRoutes(fastify: FastifyInstance) {
     const { agentId } = request.params as { agentId: string };
     try {
       const body = updateAgentWorkspaceSchema.parse(request.body);
-      const normalizedVoiceProvider = body.voiceProvider === undefined
-        ? undefined
-        : (isVoiceProviderId(body.voiceProvider) ? body.voiceProvider : null);
-      const normalizedVoiceModel = body.voiceModel === undefined
-        ? undefined
-        : normalizeVoiceModel(normalizedVoiceProvider ?? null, body.voiceModel);
       const agent = await updateAgentWorkspace(agentId, {
         ...body,
-        voiceProvider: normalizedVoiceProvider,
-        voiceModel: normalizedVoiceModel,
+        chatProvider: body.chatProvider === undefined
+          ? undefined
+          : (isChatProviderId(body.chatProvider) ? body.chatProvider : null),
+        openrouterModel: body.openrouterModel,
+        memoryLimit: body.memoryLimit !== undefined ? normalizeMemoryLimit(body.memoryLimit) : undefined,
       });
       return reply.send(serializeAgent(agent));
     } catch (err) {
@@ -326,6 +297,21 @@ export async function agentRoutes(fastify: FastifyInstance) {
       if (err instanceof z.ZodError) {
         const msg = err.issues.map((issue) => issue.message).join("; ");
         return reply.status(400).send({ error: msg || "Payload inválido" });
+      }
+      throw err;
+    }
+  });
+
+  fastify.delete("/agents/:agentId", {
+    config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
+  }, async (request, reply) => {
+    const { agentId } = request.params as { agentId: string };
+    try {
+      const deleted = await deleteAgent(agentId);
+      return reply.send({ success: true, ...deleted });
+    } catch (err) {
+      if (err instanceof AgentEligibilityError) {
+        return reply.status(err.statusCode).send({ error: err.message });
       }
       throw err;
     }
@@ -356,7 +342,7 @@ export async function agentRoutes(fastify: FastifyInstance) {
       where: { id: instanceId },
       include: {
         agent: {
-          select: { id: true, name: true },
+          select: { id: true, name: true, chatProvider: true, openrouterModel: true, memoryLimit: true },
         },
       },
     });
@@ -388,7 +374,7 @@ export async function agentRoutes(fastify: FastifyInstance) {
         },
         include: {
           agent: {
-            select: { id: true, name: true },
+            select: { id: true, name: true, chatProvider: true, openrouterModel: true, memoryLimit: true },
           },
         },
       });
@@ -439,6 +425,19 @@ export async function agentRoutes(fastify: FastifyInstance) {
     }
   });
 
+  fastify.delete("/instances/:instanceId", {
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+  }, async (request, reply) => {
+    const { instanceId } = request.params as { instanceId: string };
+    const deleted = await deleteInstance(instanceId);
+
+    if (!deleted) {
+      return reply.status(404).send({ error: "Instância não encontrada." });
+    }
+
+    return reply.send({ success: true, id: deleted.id, name: deleted.name });
+  });
+
   fastify.get("/status", async (_request, reply) => {
     const agent = await getAgent();
     const telegram = TelegramBotManager.getStatus();
@@ -457,7 +456,10 @@ export async function agentRoutes(fastify: FastifyInstance) {
 
   fastify.get("/config", async (_request, reply) => {
     const agent = await getAgent();
-    const primaryAgent = await getOrCreatePrimaryAgent();
+    const primaryAgent = await getPrimaryAgent();
+    if (!primaryAgent) {
+      return reply.status(404).send({ error: "Agente do Telegram não encontrado." });
+    }
     return reply.send({
       ...sanitizeAgentConfigForResponse(agent),
       systemPrompt: primaryAgent.systemPrompt ?? agent.systemPrompt ?? null,
@@ -543,7 +545,10 @@ export async function agentRoutes(fastify: FastifyInstance) {
     config: { rateLimit: { max: 60, timeWindow: "1 minute" } },
   }, async (request, reply) => {
     const agent = await getAgent();
-    const primaryAgent = await getOrCreatePrimaryAgent();
+    const primaryAgent = await getPrimaryAgent();
+    if (!primaryAgent) {
+      return reply.status(404).send({ error: "Agente do Telegram não encontrado." });
+    }
     let data: z.infer<typeof updateSchema>;
 
     try {
@@ -656,6 +661,27 @@ export async function agentRoutes(fastify: FastifyInstance) {
     });
   });
 
+  fastify.post("/telegram/start", {
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+  }, async (_request, reply) => {
+    const agent = await getAgent();
+    const isConfigured = await TelegramBotManager.isConfigured(agent.id);
+
+    if (!isConfigured) {
+      return reply.status(400).send({ error: "Configure o token do Telegram antes de conectar." });
+    }
+
+    await TelegramBotManager.restartForInstance(agent.id);
+    return reply.send({ success: true, status: TelegramBotManager.getStatus() });
+  });
+
+  fastify.post("/telegram/stop", {
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+  }, async (_request, reply) => {
+    await TelegramBotManager.stop();
+    return reply.send({ success: true, status: TelegramBotManager.getStatus() });
+  });
+
   fastify.delete("/telegram/token", {
     config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
   }, async (_request, reply) => {
@@ -671,7 +697,12 @@ export async function agentRoutes(fastify: FastifyInstance) {
   fastify.get("/telegram/status", async (_request, reply) => {
     const agent = await getAgent();
     const isConfigured = await TelegramBotManager.isConfigured(agent.id);
-    return reply.send({ configured: isConfigured, ...TelegramBotManager.getStatus() });
+    return reply.send({
+      ...TelegramBotManager.getStatus(),
+      configured: isConfigured,
+      instanceName: agent.name,
+      channel: "TELEGRAM" as const,
+    });
   });
 
   fastify.post("/telegram/validate-token", {

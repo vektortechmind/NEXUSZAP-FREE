@@ -9,7 +9,7 @@ import {
 } from "@whiskeysockets/baileys";
 import type { Instance } from "@prisma/client";
 import { prisma } from "../database/prisma";
-import { askChat, transcribeAudio } from "../ai/providerSelector";
+import { askChat, getKeys, isAudioTranscriptionEnabled, transcribeAudio } from "../ai/providerSelector";
 import { getResolvedAgentPrompt } from "../services/agentPrompt";
 import { buildCompleteSystemPrompt, resolveAgentDisplayName } from "../ai/systemPrompt";
 import { recordMessageEvent } from "../services/messageEvent.service";
@@ -138,7 +138,7 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
 
     let userContent: string | undefined = textMsg || undefined;
 
-    if (audioMessage) {
+    if (audioMessage && await isAudioTranscriptionEnabled(instanceId)) {
       try {
         const audioBuffer = await downloadAudioFromMessage(sock, m);
         if (audioBuffer && audioBuffer.length > 0) {
@@ -179,7 +179,8 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
     const runAgentReply = async () => {
       await resolveContactPhoneDisplay(sock, remoteJid, (key as WAMessageKey).remoteJidAlt);
       globalMemoryManager.addMessage(memoryKey, "user", userContent);
-      const memory = globalMemoryManager.getMemory(memoryKey, instance.memoryLimit);
+      const { memoryLimit } = await getKeys(instanceId);
+      const memory = globalMemoryManager.getMemory(memoryKey, memoryLimit);
 
       const knowledgeFiles = (await listKnowledgeFilesByInstance(instanceId, "WHATSAPP")) ?? [];
       await ensureKnowledgeExtracted(

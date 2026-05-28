@@ -92,7 +92,10 @@ export async function ensureAgentForInstanceTx(
         telegramEnabled: true,
         systemPrompt: instance.systemPrompt,
         telegramSystemPrompt: instance.telegramSystemPrompt,
-        voiceEnabled: false,
+        chatProvider: instance.chatProvider,
+        openrouterModel: instance.openrouterModel,
+        memoryLimit: instance.memoryLimit,
+        audioTranscriptionEnabled: false,
       },
       include: { instance: true },
     });
@@ -124,6 +127,14 @@ export async function getOrCreatePrimaryAgent() {
   return ensureAgentForInstance(instance.id);
 }
 
+export async function getPrimaryAgent() {
+  const instance = await getOrCreatePrimaryInstance();
+  return prisma.agent.findUnique({
+    where: { instanceId: instance.id },
+    include: { instance: true },
+  });
+}
+
 export async function createAgent(input: { name: string; instanceId: string }) {
   return prisma.$transaction(async (tx) => {
     const instance = await tx.instance.findUnique({
@@ -150,7 +161,10 @@ export async function createAgent(input: { name: string; instanceId: string }) {
         telegramEnabled: true,
         systemPrompt: instance.systemPrompt,
         telegramSystemPrompt: instance.telegramSystemPrompt,
-        voiceEnabled: false,
+        chatProvider: instance.chatProvider,
+        openrouterModel: instance.openrouterModel,
+        memoryLimit: instance.memoryLimit,
+        audioTranscriptionEnabled: false,
       },
       include: {
         instance: true,
@@ -183,10 +197,10 @@ export async function updateAgentWorkspace(
   input: {
     name?: string;
     systemPrompt?: string | null;
-    voiceEnabled?: boolean;
-    voiceProvider?: string | null;
-    voiceModel?: string | null;
-    voicePersona?: string | null;
+    chatProvider?: string | null;
+    openrouterModel?: string | null;
+    memoryLimit?: number;
+    audioTranscriptionEnabled?: boolean;
   }
 ) {
   return prisma.$transaction(async (tx) => {
@@ -205,10 +219,10 @@ export async function updateAgentWorkspace(
       data: {
         ...(nextName ? { name: nextName } : {}),
         ...(input.systemPrompt !== undefined ? { systemPrompt: input.systemPrompt } : {}),
-        ...(input.voiceEnabled !== undefined ? { voiceEnabled: input.voiceEnabled } : {}),
-        ...(input.voiceProvider !== undefined ? { voiceProvider: input.voiceProvider } : {}),
-        ...(input.voiceModel !== undefined ? { voiceModel: input.voiceModel } : {}),
-        ...(input.voicePersona !== undefined ? { voicePersona: input.voicePersona } : {}),
+        ...(input.chatProvider !== undefined ? { chatProvider: input.chatProvider } : {}),
+        ...(input.openrouterModel !== undefined ? { openrouterModel: input.openrouterModel } : {}),
+        ...(input.memoryLimit !== undefined ? { memoryLimit: input.memoryLimit } : {}),
+        ...(input.audioTranscriptionEnabled !== undefined ? { audioTranscriptionEnabled: input.audioTranscriptionEnabled } : {}),
       },
     });
 
@@ -223,5 +237,38 @@ export async function updateAgentWorkspace(
       where: { id: agentId },
       include: { instance: true },
     });
+  });
+}
+
+export async function deleteAgent(agentId: string) {
+  return prisma.$transaction(async (tx) => {
+    const agent = await tx.agent.findUnique({
+      where: { id: agentId },
+      include: { instance: true },
+    });
+
+    if (!agent) {
+      throw new AgentEligibilityError("Agente não encontrado.", 404);
+    }
+
+    await tx.file.deleteMany({
+      where: { agentId: agent.id },
+    });
+
+    await tx.agent.delete({
+      where: { id: agent.id },
+    });
+
+    await tx.instance.update({
+      where: { id: agent.instanceId },
+      data: { agentName: null },
+    });
+
+    return {
+      id: agent.id,
+      name: agent.name,
+      instanceId: agent.instanceId,
+      instanceName: agent.instance.name,
+    };
   });
 }

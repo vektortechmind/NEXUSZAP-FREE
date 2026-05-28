@@ -11,8 +11,7 @@ type HeaderProps = {
 const routeMeta = [
   { match: (path: string) => path === "/", section: "Operação", title: "Instâncias", description: "Conexões WhatsApp, Telegram e IA por canal" },
   { match: (path: string) => path.startsWith("/dashboard"), section: "Operação", title: "Dashboard", description: "Visão de status, mensagens e arquivos" },
-  { match: (path: string) => path.startsWith("/agente"), section: "Inteligência", title: "Agente IA", description: "Prompt, personalidade e base de conhecimento" },
-  { match: (path: string) => path.startsWith("/telegram"), section: "Inteligência", title: "Telegram IA", description: "Configuração e operação do canal Telegram" },
+  { match: (path: string) => path.startsWith("/agente") || path.startsWith("/telegram"), section: "Inteligência", title: "Agentes", description: "Cards, runtime, contexto e integrações por agente" },
   { match: (path: string) => path.startsWith("/settings"), section: "Sistema", title: "Configurações", description: "Provedores, chaves de API e atualizações" },
 ];
 

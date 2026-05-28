@@ -56,10 +56,10 @@ model Agent {
   telegramEnabled Boolean  @default(true)
   systemPrompt    String?
   telegramSystemPrompt String?
-  voiceEnabled    Boolean  @default(false)
-  voiceProvider   String?
-  voiceModel      String?
-  voicePersona    String?
+  chatProvider    String?
+  openrouterModel String?
+  memoryLimit     Int      @default(5)
+  audioTranscriptionEnabled Boolean @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @default(now()) @updatedAt
 

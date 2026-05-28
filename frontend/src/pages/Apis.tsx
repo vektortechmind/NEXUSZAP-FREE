@@ -448,37 +448,6 @@ export function Apis() {
         </aside>
       </div>
 
-      <Section title="Configuração global" description="Preferências que não dependem de uma chave específica.">
-        <Panel className="grid gap-4 p-4 md:grid-cols-3">
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-            <span className="mb-1.5 block">Nome da instância</span>
-            <input
-              value={cfg.name}
-              onChange={(event) => setCfg({ ...cfg, name: event.target.value })}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-            />
-          </label>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-            <span className="mb-1.5 block">Delay mínimo</span>
-            <input
-              type="number"
-              value={cfg.delayMin}
-              onChange={(event) => setCfg({ ...cfg, delayMin: Number(event.target.value) })}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-            />
-          </label>
-          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-            <span className="mb-1.5 block">Delay máximo</span>
-            <input
-              type="number"
-              value={cfg.delayMax}
-              onChange={(event) => setCfg({ ...cfg, delayMax: Number(event.target.value) })}
-              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-            />
-          </label>
-        </Panel>
-      </Section>
-
       <Section title="OpenRouter Models" description="Selecione o modelo principal e navegue pela lista retornada pela API.">
         <Panel className="space-y-4 p-4">
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
