@@ -34,7 +34,7 @@ export async function dashboardRoutes(fastify: FastifyInstance) {
       }
 
       // Buscar mensagens agrupadas por data e canal
-      // Nota: SQLite não tem GROUP BY date, então vamos buscar todos e agrupar no código
+      // Buscar todas as entradas e agrupar no código
       const allFiles = await prisma.file.findMany({
         where: whereClause,
         orderBy: { createdAt: "asc" },

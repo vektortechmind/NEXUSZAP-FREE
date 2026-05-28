@@ -5,11 +5,15 @@ import { askChat, transcribeAudio } from "../ai/providerSelector";
 import { getResolvedTelegramPrompt } from "../services/agentPrompt";
 import { buildCompleteSystemPrompt, resolveAgentDisplayName } from "../ai/systemPrompt";
 import { extractTextFromBuffer } from "../services/fileExtractor";
-import { encryptToken, decryptToken, maskToken } from "../services/crypto.service";
+import { encryptToken, tryDecryptSecret } from "../services/crypto.service";
+import { safeLogError } from "../utils/redaction";
+import { globalMemoryManager } from "../utils/ai/memoryManager";
+import { splitLongText } from "../utils/textSplitter";
+import { ensureKnowledgeExtracted, buildFileContextSuffix } from "../services/knowledgeService";
 
 type MemoryItem = { role: "user" | "assistant"; content: string };
 
-const userMemory = new Map<string, MemoryItem[]>();
+// const userMemory = new Map<string, MemoryItem[]>();
 
 async function downloadTelegramFile(ctx: Context, filePath: string): Promise<Buffer | null> {
   try {
@@ -19,7 +23,7 @@ async function downloadTelegramFile(ctx: Context, filePath: string): Promise<Buf
     const arrayBuffer = await response.arrayBuffer();
     return Buffer.from(arrayBuffer);
   } catch (err) {
-    console.error("[downloadTelegramFile] Erro:", err);
+    console.error("[downloadTelegramFile] Erro:", safeLogError(err));
     return null;
   }
 }
@@ -36,37 +40,7 @@ function randomInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-function splitLongTextForTelegram(text: string, maxChunkLen = 3500): string[] {
-  const t = String(text ?? "").trim();
-  if (!t) return [];
-  const paragraphs = t.split(/\n{2,}/g).map((p) => p.trim()).filter(Boolean);
-  const chunks: string[] = [];
-  for (const p of paragraphs) {
-    const v = p.trim();
-    if (!v) continue;
-    if (v.length <= maxChunkLen) {
-      chunks.push(v);
-    } else {
-      const sentences = v.split(/(?<=[.!?])\s+/g);
-      let current = "";
-      for (const sentence of sentences) {
-        const candidate = current ? `${current} ${sentence}` : sentence;
-        if (candidate.length <= maxChunkLen) {
-          current = candidate;
-        } else {
-          if (current) chunks.push(current.trim());
-          current = sentence;
-          while (current.length > maxChunkLen) {
-            chunks.push(current.slice(0, maxChunkLen));
-            current = current.slice(maxChunkLen);
-          }
-        }
-      }
-      if (current.trim()) chunks.push(current.trim());
-    }
-  }
-  return chunks;
-}
+// function splitLongTextForTelegram
 
 async function getTelegramInstance() {
   let instance = await prisma.instance.findFirst();
@@ -82,33 +56,13 @@ async function getDecryptedTelegramToken(instanceId: string): Promise<string | n
   const instance = await prisma.instance.findUnique({ where: { id: instanceId } });
   if (!instance?.telegramBotToken) return null;
   try {
-    return decryptToken(instance.telegramBotToken);
+    return tryDecryptSecret(instance.telegramBotToken);
   } catch {
     return null;
   }
 }
 
-async function ensureKnowledgeExtracted(
-  files: Array<{ id: string; mimetype: string; data: Buffer; extracted: string | null }>
-) {
-  for (const file of files) {
-    if (file.extracted && file.extracted.trim()) continue;
-    const canExtract = [
-      "application/pdf",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "application/json",
-      "text/plain"
-    ].includes(file.mimetype);
-    if (!canExtract) continue;
-    try {
-      const text = await extractTextFromBuffer(Buffer.from(file.data), file.mimetype);
-      if (text && text.trim()) {
-        await prisma.file.update({ where: { id: file.id }, data: { extracted: text } });
-        file.extracted = text;
-      }
-    } catch { }
-  }
-}
+// async function ensureKnowledgeExtracted
 
 async function handleTelegramMessage(ctx: Context) {
   const message = ctx.message;
@@ -139,7 +93,7 @@ async function handleTelegramMessage(ctx: Context) {
         }
       }
     } catch (err) {
-      console.error("[Telegram] Erro ao transcrever áudio:", err);
+      console.error("[Telegram] Erro ao transcrever áudio:", safeLogError(err));
     }
   }
 
@@ -155,7 +109,7 @@ async function handleTelegramMessage(ctx: Context) {
         }
       }
     } catch (err) {
-      console.error("[Telegram] Erro ao transcrever nota de voz:", err);
+      console.error("[Telegram] Erro ao transcrever nota de voz:", safeLogError(err));
     }
   }
 
@@ -165,10 +119,7 @@ async function handleTelegramMessage(ctx: Context) {
     where: { instanceId: instance.id, channel: "TELEGRAM" }
   });
   await ensureKnowledgeExtracted(knowledgeFiles as Array<{ id: string; mimetype: string; data: Buffer; extracted: string | null }>);
-  const extractedParts = knowledgeFiles.map((f) => f.extracted).filter((t): t is string => typeof t === "string" && t.trim().length > 0);
-  const combinedKnowledge = extractedParts.length > 0
-    ? "\n[CONTEXTO DE ARQUIVOS]:\n" + extractedParts.join("\n---\n") + "\n[FIM DO CONTEXTO]\n"
-    : undefined;
+  const combinedKnowledge = buildFileContextSuffix(knowledgeFiles);
 
   const behavioral = await getResolvedTelegramPrompt(instance.id);
   const systemContent = buildCompleteSystemPrompt({
@@ -178,12 +129,8 @@ async function handleTelegramMessage(ctx: Context) {
   });
 
   const memoryKey = `${instance.id}:${fromId}`;
-  let memory = userMemory.get(memoryKey) ?? [];
-  memory.push({ role: "user", content: userContent });
-  if (memory.length > CHAT_MEMORY_MAX_MESSAGES) {
-    memory = memory.slice(memory.length - CHAT_MEMORY_MAX_MESSAGES);
-  }
-  userMemory.set(memoryKey, memory);
+  let memory = globalMemoryManager.getMemory(memoryKey);
+  globalMemoryManager.addMessage(memoryKey, "user", userContent);
 
   if (instance.typing) {
     const min = clamp(instance.delayMin ?? 4000, 4000, 7000);
@@ -193,7 +140,7 @@ async function handleTelegramMessage(ctx: Context) {
   }
 
   const aiResponse = await askChat(instance.id, [{ role: "system", content: systemContent }, ...memory]);
-  const parts = splitLongTextForTelegram(aiResponse, 3500);
+  const parts = splitLongText(aiResponse, 3500);
   if (parts.length === 0) return;
 
   for (let i = 0; i < parts.length; i++) {
@@ -207,12 +154,7 @@ async function handleTelegramMessage(ctx: Context) {
     }
   }
 
-  let finalMemory = userMemory.get(memoryKey) ?? memory;
-  finalMemory.push({ role: "assistant", content: aiResponse });
-  if (finalMemory.length > CHAT_MEMORY_MAX_MESSAGES) {
-    finalMemory = finalMemory.slice(finalMemory.length - CHAT_MEMORY_MAX_MESSAGES);
-  }
-  userMemory.set(memoryKey, finalMemory);
+  globalMemoryManager.addMessage(memoryKey, "assistant", aiResponse);
 }
 
 export class TelegramBotManager {
@@ -246,19 +188,19 @@ export class TelegramBotManager {
       const me = await bot.telegram.getMe();
       this.botLabel = me.username ? `@${me.username}` : me.first_name || null;
     } catch (err) {
-      console.warn("[Telegram] Não foi possível obter dados do bot:", err);
+      console.warn("[Telegram] Não foi possível obter dados do bot:", safeLogError(err));
     }
 
     bot.on("message", async (ctx) => {
       try {
         await handleTelegramMessage(ctx);
       } catch (err) {
-        console.error("[Telegram] Falha ao processar mensagem:", err);
+        console.error("[Telegram] Falha ao processar mensagem:", safeLogError(err));
       }
     });
 
     bot.catch((err) => {
-      console.error("[Telegram] polling_error:", err);
+      console.error("[Telegram] polling_error:", safeLogError(err));
     });
 
     void bot.launch();

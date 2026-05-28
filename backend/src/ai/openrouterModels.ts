@@ -2,6 +2,7 @@
  * Lista modelos OpenRouter e separa grátis vs pagos (via API pública /v1/models).
  * @see https://openrouter.ai/docs/api-reference/models
  */
+import { redactSensitiveText } from "../utils/redaction";
 
 export type OpenRouterModelPublic = {
   id: string;
@@ -67,7 +68,7 @@ export async function fetchOpenRouterModelsGrouped(apiKey: string): Promise<{
   });
   const rawText = await res.text();
   if (!res.ok) {
-    throw new Error(`OpenRouter ${res.status}: ${rawText.slice(0, 400)}`);
+    throw new Error(`OpenRouter ${res.status}: ${redactSensitiveText(rawText, 180)}`);
   }
   let json: { data?: RawModel[] };
   try {

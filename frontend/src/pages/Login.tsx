@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { isAxiosError } from "axios";
 import { useAuth } from "../contexts/AuthContext";
-import { Mail, Lock } from "lucide-react";
+import { AlertCircle, Bot, Database, Lock, Mail, MessageCircle, ShieldCheck } from "lucide-react";
 import { Navigate } from "react-router-dom";
 import { APP_VERSION } from "../version";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
-import { Card } from "../components/ui/Card";
+import { InlineAlert } from "../components/ui/InlineAlert";
 import { ThemeToggle } from "../components/ThemeToggle";
 
 function loginErrorMessage(err: unknown): string {
@@ -60,59 +60,117 @@ export function Login() {
     }
   };
 
+  const productSignals = [
+    {
+      icon: <MessageCircle size={18} aria-hidden="true" />,
+      label: "Canais conectados",
+      value: "WhatsApp e Telegram",
+    },
+    {
+      icon: <Bot size={18} aria-hidden="true" />,
+      label: "Atendimento com IA",
+      value: "Agente configurável",
+    },
+    {
+      icon: <Database size={18} aria-hidden="true" />,
+      label: "Base protegida",
+      value: "Conhecimento e chaves seguras",
+    },
+  ];
+
   return (
-    <div className="relative min-h-screen w-full bg-gradient-to-br from-slate-50 via-blue-50/60 to-violet-50/70 dark:from-slate-950 dark:via-slate-950 dark:to-slate-900 flex items-center justify-center p-4 transition-colors duration-200">
-      <div className="absolute top-4 right-4 z-20">
+    <div className="min-h-screen w-full bg-[var(--nexus-bg)] text-[var(--nexus-text)]">
+      <div className="fixed right-4 top-4 z-20">
         <ThemeToggle />
       </div>
-      {/* Animated Background */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className={"absolute top-0 left-1/4 w-96 h-96 bg-blue-400 opacity-20 dark:opacity-10 blur-3xl rounded-full"} />
-        <div className={"absolute bottom-0 right-1/4 w-96 h-96 bg-purple-400 opacity-20 dark:opacity-10 blur-3xl rounded-full"} />
-      </div>
 
-      <div className="w-full max-w-md relative z-10">
-        <Card className="shadow-2xl">
-          {/* Header */}
-          <div className="text-center mb-8">
-            <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-violet-600 shadow-[0_16px_34px_-18px_rgba(59,130,246,0.9)]">
-              <span className="text-2xl font-bold text-white">🤖</span>
-            </div>
-            <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-              Nexus<span className="text-blue-600 dark:text-blue-400">ZAP</span>
-            </h2>
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Plataforma de Inteligência Artificial
-            </p>
-          </div>
-
-          {/* Form */}
-          <form onSubmit={handleLogin} className="space-y-5">
-            {error && (
-              <div className="rounded-xl border border-red-200 bg-red-50/90 p-4 backdrop-blur-xl dark:border-red-900 dark:bg-red-950/40">
-                <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
+      <main className="mx-auto grid min-h-screen w-full max-w-7xl grid-cols-1 px-4 py-20 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(26rem,30rem)] lg:gap-16 lg:px-8">
+        <section className="order-2 flex flex-col justify-center border-t border-slate-200 pt-10 dark:border-slate-800 lg:order-1 lg:border-t-0 lg:pt-0">
+          <div className="max-w-2xl">
+            <div className="mb-8 inline-flex items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+              <div className="flex h-9 w-9 items-center justify-center rounded-md bg-emerald-600 text-white dark:bg-emerald-500 dark:text-slate-950">
+                <Bot size={20} aria-hidden="true" />
               </div>
+              <div>
+                <p className="text-sm font-semibold text-slate-950 dark:text-slate-50">NexusZAP</p>
+                <p className="text-xs text-slate-600 dark:text-slate-400">Command Center</p>
+              </div>
+            </div>
+
+            <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">
+              Operação com IA
+            </p>
+            <h1 className="max-w-xl text-4xl font-semibold leading-tight tracking-normal text-slate-950 dark:text-slate-50 sm:text-5xl">
+              Painel seguro para operar atendimento automatizado.
+            </h1>
+            <p className="mt-5 max-w-xl text-base text-slate-600 dark:text-slate-400">
+              Controle conexões, provedores de IA e base de conhecimento em uma superfície única, focada em operação diária.
+            </p>
+
+            <div className="mt-10 grid gap-3 sm:grid-cols-3 lg:max-w-3xl">
+              {productSignals.map((item) => (
+                <div key={item.label} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+                  <div className="mb-3 inline-flex rounded-md bg-slate-100 p-2 text-emerald-700 dark:bg-slate-800 dark:text-emerald-400">
+                    {item.icon}
+                  </div>
+                  <p className="text-sm font-semibold text-slate-950 dark:text-slate-50">{item.label}</p>
+                  <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">{item.value}</p>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-10 flex items-center gap-3 text-sm text-slate-600 dark:text-slate-400">
+              <ShieldCheck size={18} className="text-emerald-700 dark:text-emerald-400" aria-hidden="true" />
+              <span>Autenticação protegida e sessão validada pelo backend.</span>
+            </div>
+          </div>
+        </section>
+
+        <section className="order-1 flex items-center justify-center pb-10 lg:order-2 lg:pb-0" aria-labelledby="login-title">
+          <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-8">
+            <div className="mb-8">
+              <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-600 text-white dark:bg-emerald-500 dark:text-slate-950">
+                <ShieldCheck size={24} aria-hidden="true" />
+              </div>
+              <h2 id="login-title" className="text-2xl font-semibold tracking-normal text-slate-950 dark:text-slate-50">
+                Entrar no painel
+              </h2>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
+                Use suas credenciais administrativas para acessar o NexusZAP.
+              </p>
+            </div>
+
+            <form onSubmit={handleLogin} className="space-y-5">
+            {error && (
+              <InlineAlert tone="danger" icon={<AlertCircle size={18} aria-hidden="true" />} title="Não foi possível entrar">
+                {error}
+              </InlineAlert>
             )}
 
             <Input
               label="Email"
+              id="login-email"
               type="email"
-              placeholder="seu@email.com"
+              placeholder="admin@seudominio.com"
               icon={<Mail size={18} />}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               disabled={loading}
+              autoComplete="email"
+              autoFocus
               required
             />
 
             <Input
               label="Senha"
+              id="login-password"
               type="password"
               placeholder="••••••••"
               icon={<Lock size={18} />}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               disabled={loading}
+              autoComplete="current-password"
               required
             />
 
@@ -123,23 +181,22 @@ export function Login() {
               className="w-full"
               loading={loading}
             >
-              {loading ? "Entrando..." : "Entrar"}
+              Entrar
             </Button>
           </form>
 
-          {/* Footer */}
-          <div className="mt-8 border-t border-slate-200/70 pt-6 text-center dark:border-slate-700/70">
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              Acesso protegido por autenticação segura
+            <div className="mt-8 border-t border-slate-200 pt-5 dark:border-slate-800">
+              <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-400">
+                O acesso é restrito a administradores. As chaves de IA e tokens permanecem protegidos no servidor.
+              </p>
+            </div>
+
+            <p className="mt-6 text-center text-xs text-slate-500 dark:text-slate-500">
+              NexusZAP v{APP_VERSION}
             </p>
           </div>
-        </Card>
-
-        <p className="text-center text-xs text-gray-500 dark:text-gray-500 mt-6">
-          © 2026 NexusZAP · v{APP_VERSION} — Todos os direitos reservados.
-        </p>
-      </div>
+        </section>
+      </main>
     </div>
   );
 }
-

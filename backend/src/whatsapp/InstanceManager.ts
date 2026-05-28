@@ -1,13 +1,17 @@
 import makeWASocket, {
   DisconnectReason,
   WASocket,
-  fetchLatestBaileysVersion
+  fetchLatestBaileysVersion,
+  makeCacheableSignalKeyStore
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
+import NodeCache from "node-cache";
+import P from "pino";
 import { prisma } from "../database/prisma";
 import { handleIncomingMessage } from "./messageHandler";
 import { onInstanceLabelEdit } from "./labelsCache";
 import { usePrismaAuthState } from "./prismaAuth";
+import { safeLogError } from "../utils/redaction";
 
 export class InstanceManager {
   private static sock: WASocket | null = null;
@@ -87,9 +91,18 @@ export class InstanceManager {
       const { state, saveCreds } = await usePrismaAuthState(instanceId);
       const { version } = await fetchLatestBaileysVersion();
 
+      const msgRetryCounterCache = new NodeCache();
+      const logger = P({ level: 'silent' }) as any;
+      const cachedKeys = makeCacheableSignalKeyStore(state.keys, logger);
+
       const sock = makeWASocket({
         version,
-        auth: state,
+        auth: {
+          creds: state.creds,
+          keys: cachedKeys
+        },
+        logger,
+        msgRetryCounterCache,
         printQRInTerminal: false,
         markOnlineOnConnect: false,
         generateHighQualityLinkPreview: true,
@@ -159,7 +172,7 @@ export class InstanceManager {
             try {
               await handleIncomingMessage(sock, instanceId, msg);
             } catch (err) {
-              console.error("[Baileys] Falha ao processar mensagem:", err);
+              console.error("[Baileys] Falha ao processar mensagem:", safeLogError(err));
             }
           }
         }
@@ -179,7 +192,7 @@ export class InstanceManager {
         this.sock.ev.removeAllListeners("connection.update");
         await this.sock.logout();
       } catch (err) {
-        console.error(`[InstanceManager] logout:`, err);
+        console.error(`[InstanceManager] logout:`, safeLogError(err));
       }
       this.sock = null;
     }

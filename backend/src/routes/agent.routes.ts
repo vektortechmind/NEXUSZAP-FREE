@@ -1,5 +1,4 @@
 import { FastifyInstance } from "fastify";
-import { Prisma } from "@prisma/client";
 import { verifyJwt } from "../security/middlewares";
 import { prisma } from "../database/prisma";
 import { InstanceManager } from "../whatsapp/InstanceManager";
@@ -10,6 +9,10 @@ import { groqChat, groqPingModels } from "../ai/groq";
 import { openRouterChat } from "../ai/openrouter";
 import { fetchOpenRouterModelsGrouped } from "../ai/openrouterModels";
 import { TelegramBotManager } from "../telegram/TelegramBotManager";
+import { handlePrismaError } from "../utils/prismaErrorHandler";
+import { buildAgentConfigUpdateData, sanitizeAgentConfigForResponse } from "../services/agentConfigSecrets";
+import { tryDecryptSecret } from "../services/crypto.service";
+import { safeErrorMessage, safeLogError } from "../utils/redaction";
 
 /** String vazia → null; undefined permanece (campo omitido no JSON). */
 const emptyToNull = (v: unknown) => {
@@ -78,10 +81,12 @@ export async function agentRoutes(fastify: FastifyInstance) {
 
   fastify.get("/config", async (_request, reply) => {
     const agent = await getAgent();
-    return reply.send(agent);
+    return reply.send(sanitizeAgentConfigForResponse(agent));
   });
 
-  fastify.post("/openrouter-models", async (request, reply) => {
+  fastify.post("/openrouter-models", {
+    config: { rateLimit: { max: 20, timeWindow: "1 minute" } }
+  }, async (request, reply) => {
     const body = z.object({ openrouterKey: z.string().min(8, "Chave muito curta") }).parse(request.body);
     try {
       const { free, paid } = await fetchOpenRouterModelsGrouped(body.openrouterKey);
@@ -92,13 +97,15 @@ export async function agentRoutes(fastify: FastifyInstance) {
         totalPaid: paid.length
       });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Falha ao listar modelos";
-      fastify.log.warn({ err }, "[openrouter-models]");
+      const msg = safeErrorMessage(err, "Falha ao listar modelos");
+      fastify.log.warn({ err: safeLogError(err) }, "[openrouter-models]");
       return reply.status(400).send({ error: msg });
     }
   });
 
-  fastify.get("/providers-health", async (_request, reply) => {
+  fastify.get("/providers-health", {
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } }
+  }, async (_request, reply) => {
     const agent = await getAgent();
 
     const messages = [
@@ -128,7 +135,7 @@ export async function agentRoutes(fastify: FastifyInstance) {
         };
       } catch (err: unknown) {
         const msg =
-          err instanceof Error ? err.message : typeof err === "string" ? err : "Falha desconhecida";
+          safeErrorMessage(err, "Falha desconhecida");
         return {
           provider: name,
           configured: true,
@@ -140,10 +147,17 @@ export async function agentRoutes(fastify: FastifyInstance) {
     }
 
     const [gemini, groq, openrouter, groqAudio] = await Promise.all([
-      test("gemini", agent.geminiKey),
-      test("groq", agent.groqKey),
-      test("openrouter", agent.openrouterKey),
-      test("groq-audio", agent.groqAudioKey || agent.groqKey)  // Usa audioKey ou fallback para groqKey
+      test("gemini", agent.geminiKey ? tryDecryptSecret(agent.geminiKey) : agent.geminiKey),
+      test("groq", agent.groqKey ? tryDecryptSecret(agent.groqKey) : agent.groqKey),
+      test("openrouter", agent.openrouterKey ? tryDecryptSecret(agent.openrouterKey) : agent.openrouterKey),
+      test(
+        "groq-audio",
+        agent.groqAudioKey
+          ? tryDecryptSecret(agent.groqAudioKey)
+          : agent.groqKey
+            ? tryDecryptSecret(agent.groqKey)
+            : agent.groqKey
+      )  // Usa audioKey ou fallback para groqKey
     ]);
 
     return reply.send({
@@ -152,7 +166,9 @@ export async function agentRoutes(fastify: FastifyInstance) {
     });
   });
 
-  fastify.put("/config", async (request, reply) => {
+  fastify.put("/config", {
+    config: { rateLimit: { max: 60, timeWindow: "1 minute" } }
+  }, async (request, reply) => {
     const agent = await getAgent();
     let data: z.infer<typeof updateSchema>;
     try {
@@ -167,31 +183,17 @@ export async function agentRoutes(fastify: FastifyInstance) {
     try {
       const updated = await prisma.instance.update({
         where: { id: agent.id },
-        data
+        data: buildAgentConfigUpdateData(data)
       });
-      return reply.send(updated);
-    } catch (err) {
-      if (err instanceof Prisma.PrismaClientKnownRequestError) {
-        fastify.log.error(err);
-        return reply.status(400).send({
-          error:
-            err.code === "P2022"
-              ? "Coluna ausente no banco. Rode no servidor: npx prisma db push && npx prisma generate"
-              : err.message
-        });
-      }
-      if (err instanceof Prisma.PrismaClientValidationError) {
-        fastify.log.error(err);
-        return reply.status(400).send({
-          error:
-            "Validação Prisma. Atualize o cliente: npx prisma generate — " + err.message.slice(0, 200)
-        });
-      }
-      throw err;
+      return reply.send(sanitizeAgentConfigForResponse(updated));
+    } catch (e: any) {
+      return handlePrismaError(e, reply, fastify);
     }
   });
 
-  fastify.post("/start", async (request, reply) => {
+  fastify.post("/start", {
+    config: { rateLimit: { max: 5, timeWindow: "1 minute" } }
+  }, async (request, reply) => {
     let finalQr = "";
     try {
       await InstanceManager.start(
@@ -217,7 +219,9 @@ export async function agentRoutes(fastify: FastifyInstance) {
     return reply.send({ success: true, qr: finalQr });
   });
 
-  fastify.post("/stop", async (request, reply) => {
+  fastify.post("/stop", {
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } }
+  }, async (request, reply) => {
     try {
       await InstanceManager.stop();
     } catch (err) {
@@ -243,7 +247,9 @@ export async function agentRoutes(fastify: FastifyInstance) {
     return reply.send({ labels });
   });
 
-  fastify.post("/telegram/save-token", async (request, reply) => {
+  fastify.post("/telegram/save-token", {
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } }
+  }, async (request, reply) => {
     const agent = await getAgent();
     const body = z.object({
       token: z.string().min(20, "Token inválido")
@@ -261,7 +267,9 @@ export async function agentRoutes(fastify: FastifyInstance) {
     });
   });
 
-  fastify.delete("/telegram/token", async (_request, reply) => {
+  fastify.delete("/telegram/token", {
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } }
+  }, async (_request, reply) => {
     const agent = await getAgent();
     await TelegramBotManager.stop();
     await prisma.instance.update({
@@ -280,7 +288,9 @@ export async function agentRoutes(fastify: FastifyInstance) {
     });
   });
 
-  fastify.post("/telegram/validate-token", async (request, reply) => {
+  fastify.post("/telegram/validate-token", {
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } }
+  }, async (request, reply) => {
     const body = z.object({
       token: z.string().min(20, "Token inválido")
     }).parse(request.body);

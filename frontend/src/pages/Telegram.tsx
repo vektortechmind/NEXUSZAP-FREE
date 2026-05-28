@@ -65,7 +65,13 @@ export function Telegram() {
   }, [refreshFiles]);
 
   useEffect(() => {
-    void load();
+    let mounted = true;
+    const fetchLoad = async () => {
+      await load();
+      if (!mounted) return;
+    };
+    void fetchLoad();
+    return () => { mounted = false; };
   }, [load]);
 
   const upload = async (file: File) => {

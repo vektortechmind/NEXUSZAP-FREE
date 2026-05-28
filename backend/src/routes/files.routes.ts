@@ -1,42 +1,16 @@
 import { FastifyInstance } from "fastify";
 import { verifyJwt } from "../security/middlewares";
 import { prisma } from "../database/prisma";
-import path from "path";
 import { extractTextFromBuffer } from "../services/fileExtractor";
-
-async function streamToBuffer(stream: NodeJS.ReadableStream, maxBytes: number) {
-  const chunks: Buffer[] = [];
-  let total = 0;
-  for await (const chunk of stream as any) {
-    const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-    total += buf.length;
-    if (total > maxBytes) {
-      throw new Error("Arquivo excede o limite.");
-    }
-    chunks.push(buf);
-  }
-  return Buffer.concat(chunks);
-}
-
-function resolveMimeFromUpload(filename: string, incomingMime?: string) {
-  const ext = path.extname(filename).toLowerCase();
-  const byExt: Record<string, string> = {
-    ".pdf": "application/pdf",
-    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ".txt": "text/plain",
-    ".json": "application/json",
-    ".png": "image/png",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".webp": "image/webp"
-  };
-
-  const normalizedIncoming = String(incomingMime ?? "").trim().toLowerCase();
-  if (!normalizedIncoming || normalizedIncoming === "application/octet-stream") {
-    return byExt[ext] ?? "application/octet-stream";
-  }
-  return normalizedIncoming;
-}
+import {
+  assertStorageQuota,
+  buildSafeDownloadHeaders,
+  FileSecurityError,
+  logExtractionFailure,
+  MAX_UPLOAD_BYTES,
+  streamToLimitedBuffer,
+  validateAndNormalizeUpload
+} from "../services/fileSecurity.service";
 
 export async function filesRoutes(fastify: FastifyInstance) {
   // Hardening e Proteção da Rota via JWT HttpOnly
@@ -61,8 +35,8 @@ export async function filesRoutes(fastify: FastifyInstance) {
       return reply.status(404).send({ error: "Arquivo não encontrado." });
     }
 
-    reply.header("Content-Type", file.mimetype);
-    reply.header("Content-Disposition", `inline; filename="${encodeURIComponent(file.filename)}"`);
+    const headers = buildSafeDownloadHeaders(file.filename, file.mimetype);
+    for (const [key, value] of Object.entries(headers)) reply.header(key, value);
     return reply.send(file.data);
   });
 
@@ -78,7 +52,9 @@ export async function filesRoutes(fastify: FastifyInstance) {
     return reply.send(files);
   });
 
-  fastify.post("/:instanceId/upload", async (request, reply) => {
+  fastify.post("/:instanceId/upload", {
+    config: { rateLimit: { max: 20, timeWindow: "1 minute" } }
+  }, async (request, reply) => {
     const { instanceId } = request.params as { instanceId: string };
     const parts = request.parts(); // O limitador de 5MB já atua nativamente aqui pelo Fastify Core
 
@@ -86,42 +62,46 @@ export async function filesRoutes(fastify: FastifyInstance) {
 
     for await (const part of parts) {
       if (part.type === "file") {
-        const ext = path.extname(part.filename).toLowerCase();
-        const allowedExts = [".pdf", ".txt", ".docx", ".json", ".png", ".jpg", ".jpeg", ".webp"];
-
-        // Anti File Execution (PHP/Node/Shell inject blocker)
-        if (!allowedExts.includes(ext)) {
-          return reply.status(400).send({ error: "Extensão inválida OWASP: Upload bloqueado." });
-        }
-
-        const buffer = await streamToBuffer(part.file, 5 * 1024 * 1024);
-        const resolvedMime = resolveMimeFromUpload(part.filename, part.mimetype);
-
-        // File Content Sanity Check via Lib — só extrai texto para KNOWLEDGE (contexto da IA)
         try {
+          const buffer = await streamToLimitedBuffer(part.file, MAX_UPLOAD_BYTES);
+          const normalized = validateAndNormalizeUpload({
+            filename: part.filename,
+            incomingMime: part.mimetype,
+            buffer
+          });
+
+          const existingFiles = await prisma.file.findMany({
+            where: { instanceId, channel: "WHATSAPP" },
+            select: { data: true }
+          });
+          await assertStorageQuota({ existingFiles, nextBytes: buffer.length });
+
+          // File Content Sanity Check via Lib — só extrai texto para KNOWLEDGE (contexto da IA)
           let extractedText: string | null = null;
-          const canExtract = [
-            "application/pdf",
-            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/json",
-            "text/plain"
-          ].includes(resolvedMime);
-          if (canExtract) {
-            extractedText = await extractTextFromBuffer(buffer, resolvedMime);
+          if (normalized.canExtract) {
+            try {
+              extractedText = await extractTextFromBuffer(buffer, normalized.mimetype);
+            } catch (e) {
+              logExtractionFailure(fastify.log, e, { channel: "WHATSAPP", mimetype: normalized.mimetype });
+              return reply.status(400).send({ error: "Arquivo corrompido ou inextraível OWASP." });
+            }
           }
 
           savedFile = await prisma.file.create({
             data: {
               instanceId,
-              filename: part.filename,
-              mimetype: resolvedMime,
+              filename: normalized.filename,
+              mimetype: normalized.mimetype,
               data: buffer,
               extracted: extractedText,
               channel: "WHATSAPP"
             }
           });
         } catch (e) {
-          return reply.status(400).send({ error: "Arquivo corrompido ou inextraível OWASP." });
+          if (e instanceof FileSecurityError) {
+            return reply.status(400).send({ error: e.message });
+          }
+          throw e;
         }
       }
     }
@@ -133,7 +113,9 @@ export async function filesRoutes(fastify: FastifyInstance) {
     return reply.send(savedFile);
   });
 
-  fastify.delete("/:fileId", async (request, reply) => {
+  fastify.delete("/:fileId", {
+    config: { rateLimit: { max: 60, timeWindow: "1 minute" } }
+  }, async (request, reply) => {
     const { fileId } = request.params as { fileId: string };
     const file = await prisma.file.findUnique({ where: { id: fileId } });
     if (file && file.channel === "WHATSAPP") {

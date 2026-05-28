@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { env } from "../config/env";
 import { z } from "zod";
-import { verifyJwt } from "../security/middlewares";
+import { csrfCookieName, generateCsrfToken, verifyCsrf, verifyJwt } from "../security/middlewares";
 import { timingSafeEqual } from "crypto";
 
 const loginSchema = z.object({
@@ -34,6 +34,7 @@ export async function authRoutes(fastify: FastifyInstance) {
       }
 
       const token = fastify.jwt.sign({ email, role: "admin" });
+      const csrfToken = generateCsrfToken();
       
       reply.setCookie("token", token, {
         path: "/",
@@ -43,14 +44,31 @@ export async function authRoutes(fastify: FastifyInstance) {
         maxAge: 12 * 60 * 60 // 12 horas
       });
 
-      return reply.send({ success: true, message: "Autenticado com sucesso" });
+      reply.setCookie(csrfCookieName, csrfToken, {
+        path: "/",
+        httpOnly: false,
+        secure: env.NODE_ENV === "production",
+        sameSite: env.NODE_ENV === "production" ? "strict" : "lax",
+        maxAge: 12 * 60 * 60
+      });
+
+      return reply.send({ success: true, message: "Autenticado com sucesso", csrfToken });
     } catch (error) {
        return reply.status(400).send({ error: "Inputs ou credenciais inválidas" });
     }
   });
 
-  fastify.post("/logout", async (request, reply) => {
+  fastify.post("/logout", {
+    preValidation: [verifyJwt, verifyCsrf],
+    config: {
+      rateLimit: {
+        max: 20,
+        timeWindow: "1 minute"
+      }
+    }
+  }, async (request, reply) => {
     reply.clearCookie("token", { path: "/" });
+    reply.clearCookie(csrfCookieName, { path: "/" });
     return reply.send({ success: true });
   });
 

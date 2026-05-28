@@ -1,0 +1,197 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$ROOT"
+
+echo ""
+echo "========================================"
+echo "NexusZAP - Instalacao VPS"
+echo "========================================"
+echo ""
+
+require() {
+  local bin="$1"
+  local message="$2"
+  if ! command -v "$bin" >/dev/null 2>&1; then
+    echo "ERRO: $message" >&2
+    exit 1
+  fi
+}
+
+sudo_cmd() {
+  if [[ "${EUID:-$(id -u)}" -eq 0 ]]; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+install_docker_debian_ubuntu() {
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    return 0
+  fi
+
+  if [[ ! -r /etc/os-release ]]; then
+    echo "Docker nao encontrado e nao foi possivel detectar a distribuicao." >&2
+    exit 1
+  fi
+
+  # shellcheck disable=SC1091
+  source /etc/os-release
+  local distro_id="${ID:-}"
+  local distro_like="${ID_LIKE:-}"
+  local docker_repo_id=""
+
+  case "$distro_id" in
+    ubuntu|debian) docker_repo_id="$distro_id" ;;
+    *)
+      if [[ " $distro_like " == *" debian "* ]]; then
+        docker_repo_id="debian"
+      else
+        echo "Docker nao encontrado. Instalacao automatica suportada apenas em Debian/Ubuntu." >&2
+        echo "Instale Docker Engine + Docker Compose plugin e rode install.sh novamente." >&2
+        exit 1
+      fi
+      ;;
+  esac
+
+  require curl "Instale curl antes de instalar Docker automaticamente."
+  require gpg "Instale gnupg/gpg antes de instalar Docker automaticamente."
+  require apt-get "Instalacao automatica de Docker requer apt-get."
+
+  if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+    require sudo "Instale sudo ou rode este script como root para instalar Docker."
+  fi
+
+  local codename="${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}"
+  if [[ -z "$codename" ]]; then
+    echo "Nao foi possivel detectar VERSION_CODENAME para configurar o repositorio Docker." >&2
+    exit 1
+  fi
+
+  echo "Docker/Compose nao encontrado. Instalando Docker Engine pelo repositorio oficial..."
+  sudo_cmd apt-get update
+  sudo_cmd apt-get install -y ca-certificates curl gnupg
+  sudo_cmd install -m 0755 -d /etc/apt/keyrings
+  sudo_cmd curl -fsSL "https://download.docker.com/linux/${docker_repo_id}/gpg" -o /etc/apt/keyrings/docker.asc
+  sudo_cmd chmod a+r /etc/apt/keyrings/docker.asc
+
+  local arch
+  arch="$(dpkg --print-architecture)"
+  printf 'Types: deb\nURIs: https://download.docker.com/linux/%s\nSuites: %s\nComponents: stable\nArchitectures: %s\nSigned-By: /etc/apt/keyrings/docker.asc\n' \
+    "$docker_repo_id" "$codename" "$arch" | sudo_cmd tee /etc/apt/sources.list.d/docker.sources >/dev/null
+
+  sudo_cmd apt-get update
+  sudo_cmd apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+  sudo_cmd systemctl enable --now docker >/dev/null 2>&1 || true
+
+  docker --version
+  docker compose version
+}
+
+random_key() {
+  node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+}
+
+random_password() {
+  node -e "console.log(require('crypto').randomBytes(18).toString('base64').replace(/[+/=]/g,'A')+'a1!')"
+}
+
+ensure_env() {
+  if [[ -f "backend/.env" ]]; then
+    echo "backend/.env ja existe. Mantendo configuracao atual."
+    return 0
+  fi
+
+  mkdir -p backend
+
+  local jwt_secret encryption_key admin_password
+  jwt_secret="$(random_key)"
+  encryption_key="$(random_key)"
+  admin_password="$(random_password)"
+
+  cat > backend/.env <<EOF
+NODE_ENV="production"
+DATABASE_URL="postgresql://nexus:nexus_secret@localhost:5432/nexus_chatbot_db?schema=public"
+PORT=3000
+JWT_SECRET="$jwt_secret"
+ENCRYPTION_KEY="$encryption_key"
+ADMIN_EMAIL="admin@nexuszap.com"
+ADMIN_PASSWORD="$admin_password"
+CORS_ORIGINS="http://localhost,http://localhost:5173,http://localhost:4173"
+GITHUB_REPO="vektortechmind/NEXUSZAP-FREE"
+EOF
+
+  chmod 600 backend/.env
+
+  echo "backend/.env criado automaticamente."
+  echo "Login inicial: admin@nexuszap.com"
+  echo "Senha inicial: $admin_password"
+}
+
+load_env() {
+  if [[ ! -f "backend/.env" ]]; then
+    return 0
+  fi
+
+  set -a
+  # shellcheck disable=SC1091
+  source backend/.env
+  set +a
+}
+
+remove_ps1() {
+  find "$ROOT" -type f -name '*.ps1' -delete
+}
+
+require node "Instale Node.js 18+ antes de continuar."
+require npm "Instale npm antes de continuar."
+
+install_docker_debian_ubuntu
+
+ensure_env
+
+echo ""
+echo "[1/5] Instalando dependencias da raiz..."
+npm install
+
+echo ""
+echo "[2/5] Instalando dependencias do backend..."
+pushd backend >/dev/null
+if [[ -f package-lock.json ]]; then
+  npm ci
+else
+  npm install
+fi
+npm run db:generate
+popd >/dev/null
+
+echo ""
+echo "[3/5] Instalando dependencias do frontend..."
+pushd frontend >/dev/null
+if [[ -f package-lock.json ]]; then
+  npm ci
+else
+  npm install
+fi
+popd >/dev/null
+
+echo ""
+echo "[4/5] Buildando backend e frontend..."
+npm run build
+
+echo ""
+echo "[5/5] Subindo stack Docker, se Docker estiver disponivel..."
+if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  load_env
+  docker compose up -d --build
+  echo "Stack Docker iniciada. Painel: http://localhost  API: http://localhost:3000"
+else
+  echo "Docker Compose nao encontrado. Instalacao concluida; configure PostgreSQL e rode npm run dev ou use seu process manager."
+fi
+
+remove_ps1
+
+echo ""
+echo "Instalacao concluida."

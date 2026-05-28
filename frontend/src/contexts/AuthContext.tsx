@@ -11,7 +11,7 @@ interface AuthContextType {
   user: AuthUser | null;
   loading: boolean;
   error: string | null;
-  login: (email: string, password: string) => Promise<void>;
+  login: (emailParam: string, passwordParam: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -39,8 +39,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = async (email: string, password: string) => {
-    await api.post("/auth/login", { email, password });
+  const login = async (emailParam: string, passwordParam: string) => {
+    await api.post("/auth/login", { email: emailParam, password: passwordParam });
     const res = await api.get("/auth/me");
     setUser(res.data.user);
   };
