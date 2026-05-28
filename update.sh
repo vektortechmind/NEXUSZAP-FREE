@@ -70,6 +70,53 @@ load_env() {
   set +a
 }
 
+compose_env_set() {
+  local key="$1"
+  local value="$2"
+  touch .env
+  chmod 600 .env 2>/dev/null || true
+
+  if grep -q "^${key}=" .env; then
+    sed -i "s|^${key}=.*|${key}=${value}|" .env
+  else
+    printf '%s=%s\n' "$key" "$value" >> .env
+  fi
+  export "$key=$value"
+}
+
+port_in_use() {
+  local port="$1"
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltnH "sport = :${port}" | grep -q .
+    return $?
+  fi
+  if command -v lsof >/dev/null 2>&1; then
+    lsof -iTCP:"${port}" -sTCP:LISTEN >/dev/null 2>&1
+    return $?
+  fi
+  return 1
+}
+
+ensure_frontend_port() {
+  local preferred="${FRONTEND_HTTP_PORT:-80}"
+  if ! port_in_use "$preferred"; then
+    compose_env_set FRONTEND_HTTP_PORT "$preferred"
+    return 0
+  fi
+
+  local candidate
+  for candidate in 8080 8081 8082 8090; do
+    if ! port_in_use "$candidate"; then
+      echo "Porta ${preferred} ocupada. Usando porta ${candidate} para o painel."
+      compose_env_set FRONTEND_HTTP_PORT "$candidate"
+      return 0
+    fi
+  done
+
+  echo "ERRO: nao encontrei porta HTTP livre entre ${preferred}, 8080, 8081, 8082 e 8090." >&2
+  exit 1
+}
+
 remove_ps1() {
   find "$ROOT" -type f -name '*.ps1' -delete
 }
@@ -142,6 +189,7 @@ npm run build
 
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   load_env
+  ensure_frontend_port
   docker compose up -d --build
   echo "Stack Docker atualizada."
 else

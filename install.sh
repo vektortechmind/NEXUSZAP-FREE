@@ -155,6 +155,20 @@ env_set() {
   export "$key=$value"
 }
 
+compose_env_set() {
+  local key="$1"
+  local value="$2"
+  touch .env
+  chmod 600 .env 2>/dev/null || true
+
+  if grep -q "^${key}=" .env; then
+    sed -i "s|^${key}=.*|${key}=${value}|" .env
+  else
+    printf '%s=%s\n' "$key" "$value" >> .env
+  fi
+  export "$key=$value"
+}
+
 port_in_use() {
   local port="$1"
   if command -v ss >/dev/null 2>&1; then
@@ -172,6 +186,7 @@ ensure_frontend_port() {
   local preferred="${FRONTEND_HTTP_PORT:-80}"
   if ! port_in_use "$preferred"; then
     env_set FRONTEND_HTTP_PORT "$preferred"
+    compose_env_set FRONTEND_HTTP_PORT "$preferred"
     return 0
   fi
 
@@ -180,6 +195,7 @@ ensure_frontend_port() {
     if ! port_in_use "$candidate"; then
       echo "Porta ${preferred} ocupada. Usando porta ${candidate} para o painel."
       env_set FRONTEND_HTTP_PORT "$candidate"
+      compose_env_set FRONTEND_HTTP_PORT "$candidate"
       return 0
     fi
   done

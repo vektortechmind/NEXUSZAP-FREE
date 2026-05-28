@@ -30,10 +30,6 @@ services:
       NODE_ENV: production
       DATABASE_URL: postgresql://nexus:nexus_secret@postgres:5432/nexus_chatbot_db?schema=public
       PORT: 3000
-      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET with at least 32 random characters}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:?Set ADMIN_EMAIL}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set a strong ADMIN_PASSWORD}
-      CORS_ORIGINS: ${CORS_ORIGINS:?Set frontend origin, for example https://app.example.com}
       GITHUB_REPO: vektortechmind/NEXUSZAP-FREE
     expose:
       - "3000"
