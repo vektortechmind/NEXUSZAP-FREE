@@ -170,7 +170,6 @@ else
   npm install
 fi
 npm run db:generate
-npm run db:migrate
 popd >/dev/null
 
 echo ""

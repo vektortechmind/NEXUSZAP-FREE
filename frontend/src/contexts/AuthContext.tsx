@@ -40,7 +40,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   }, []);
 
   const login = async (emailParam: string, passwordParam: string) => {
-    await api.post("/auth/login", { email: emailParam, password: passwordParam });
+    const loginRes = await api.post<{ user?: AuthUser }>("/auth/login", { email: emailParam, password: passwordParam });
+    if (loginRes.data.user) {
+      setUser(loginRes.data.user);
+      return;
+    }
     const res = await api.get("/auth/me");
     setUser(res.data.user);
   };

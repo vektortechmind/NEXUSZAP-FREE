@@ -1,4 +1,4 @@
-import { FastifyInstance } from "fastify";
+import { FastifyInstance, FastifyRequest } from "fastify";
 import { env } from "../config/env";
 import { z } from "zod";
 import { csrfCookieName, generateCsrfToken, verifyCsrf, verifyJwt } from "../security/middlewares";
@@ -15,6 +15,12 @@ function safeEqual(a: string, b: string): boolean {
   const bb = Buffer.from(b);
   if (ab.length !== bb.length) return false;
   return timingSafeEqual(ab, bb);
+}
+
+function isSecureRequest(request: FastifyRequest): boolean {
+  const forwardedProto = request.headers["x-forwarded-proto"];
+  const proto = Array.isArray(forwardedProto) ? forwardedProto[0] : forwardedProto;
+  return proto?.split(",")[0]?.trim() === "https";
 }
 
 export async function authRoutes(fastify: FastifyInstance) {
@@ -37,24 +43,25 @@ export async function authRoutes(fastify: FastifyInstance) {
 
       const token = fastify.jwt.sign({ email, role: "admin" });
       const csrfToken = generateCsrfToken();
+      const secureCookie = env.NODE_ENV === "production" && isSecureRequest(request);
       
       reply.setCookie("token", token, {
         path: "/",
         httpOnly: true,
-        secure: env.NODE_ENV === "production",
-        sameSite: env.NODE_ENV === "production" ? "strict" : "lax",
+        secure: secureCookie,
+        sameSite: secureCookie ? "strict" : "lax",
         maxAge: 12 * 60 * 60 // 12 horas
       });
 
       reply.setCookie(csrfCookieName, csrfToken, {
         path: "/",
         httpOnly: false,
-        secure: env.NODE_ENV === "production",
-        sameSite: env.NODE_ENV === "production" ? "strict" : "lax",
+        secure: secureCookie,
+        sameSite: secureCookie ? "strict" : "lax",
         maxAge: 12 * 60 * 60
       });
 
-      return reply.send({ success: true, message: "Autenticado com sucesso", csrfToken });
+      return reply.send({ success: true, message: "Autenticado com sucesso", csrfToken, user: { email, role: "admin" } });
     } catch (error) {
        return reply.status(400).send({ error: "Inputs ou credenciais inválidas" });
     }
