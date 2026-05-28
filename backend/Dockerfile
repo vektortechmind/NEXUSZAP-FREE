@@ -2,6 +2,8 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+RUN apk add --no-cache openssl
+
 COPY package*.json ./
 RUN npm ci
 
@@ -10,11 +12,15 @@ RUN npx prisma generate
 
 COPY tsconfig.json ./
 COPY src ./src
+COPY scripts ./scripts
+COPY VERSION ./VERSION
 RUN npm run build
 
 FROM node:22-alpine AS runner
 
 WORKDIR /app
+
+RUN apk add --no-cache openssl
 
 COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
