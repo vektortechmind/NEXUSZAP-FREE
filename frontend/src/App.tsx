@@ -9,6 +9,8 @@ import { Agente } from "./pages/Agente";
 import { Telegram } from "./pages/Telegram";
 import { Apis } from "./pages/Apis";
 import { Dashboard } from "./pages/Dashboard";
+import { DockerSetup } from "./pages/DockerSetup";
+import { CreateAdmin } from "./pages/CreateAdmin";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { ThemeProvider } from "./contexts/ThemeProvider";
@@ -101,6 +103,8 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      <Route path="/docker-setup" element={<DockerSetup />} />
+      <Route path="/criar-admin" element={<CreateAdmin />} />
       <Route path="/agent" element={<Navigate to="/agente" replace />} />
       <Route element={<PrivateRoute />}>
         <Route index element={<Instancia />} />
@@ -112,6 +116,7 @@ function AppRoutes() {
     </Routes>
   );
 }
+
 export default function App() {
   return (
     <ThemeProvider>

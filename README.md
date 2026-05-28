@@ -34,6 +34,8 @@ Na VPS/Linux, rode a instalacao completa com um unico comando:
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/vektortechmind/NEXUSZAP-FREE/main/install.sh)"
 ```
 
+Esse comando pode ser executado em uma VPS limpa: se a pasta do projeto ainda nao existir, o instalador clona `NEXUSZAP-FREE` automaticamente e continua a instalacao dentro dela.
+
 Se preferir auditar o script antes de executar, baixe e rode manualmente:
 
 ```bash
@@ -61,12 +63,28 @@ O instalador faz o fluxo completo:
 
 - cria `backend/.env` automaticamente se ainda nao existir;
 - gera `JWT_SECRET` e `ENCRYPTION_KEY` automaticamente;
-- gera uma senha inicial para o admin e mostra no terminal;
+- gera `SETUP_TOKEN`, uma senha temporaria e mostra no terminal as URLs iniciais;
 - na VPS Debian/Ubuntu, instala Docker Engine e Docker Compose plugin se estiverem ausentes;
 - instala dependencias da raiz, backend e frontend;
 - executa `prisma generate`;
 - builda backend e frontend;
 - se Docker estiver disponivel, sobe `postgres`, `backend` e `frontend` com `docker compose up -d --build`.
+
+Ao final da instalacao na VPS, abra a URL exibida no terminal:
+
+```text
+http://SEU_IP/docker-setup?token=SEU_TOKEN
+```
+
+Informe o dominio publico, por exemplo `seudominio.com`. Isso ajusta `APP_URL`, `CORS_ORIGINS` e prepara a configuracao final.
+
+Depois crie o primeiro administrador:
+
+```text
+http://SEU_DOMINIO/criar-admin?token=SEU_TOKEN
+```
+
+Essa etapa substitui a senha temporaria gerada na instalacao e bloqueia nova criacao publica de administrador.
 
 URLs padrao com Docker:
 
@@ -123,7 +141,11 @@ JWT_SECRET="gerado-automaticamente"
 ENCRYPTION_KEY="gerado-automaticamente"
 ADMIN_EMAIL="admin@nexuszap.com"
 ADMIN_PASSWORD="senha-gerada"
+ADMIN_SETUP_REQUIRED="true"
 CORS_ORIGINS="http://localhost,http://localhost:5173,http://localhost:4173"
+APP_URL="https://seudominio.com"
+SETUP_TOKEN="token-gerado"
+SETUP_COMPLETED="false"
 GITHUB_REPO="vektortechmind/NEXUSZAP-FREE"
 ```
 

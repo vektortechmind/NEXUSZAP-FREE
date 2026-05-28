@@ -66,7 +66,13 @@ if errorlevel 1 (
   ) else (
     docker compose up -d --build
     if errorlevel 1 exit /b 1
-    echo Stack Docker iniciada. Painel: http://localhost  API: http://localhost:3000
+    echo Stack Docker iniciada.
+    echo.
+    echo Abra a configuracao inicial no navegador:
+    echo http://localhost/docker-setup?token=%SETUP_TOKEN%
+    echo.
+    echo Depois crie o primeiro administrador:
+    echo http://localhost/criar-admin?token=%SETUP_TOKEN%
   )
 )
 
@@ -101,6 +107,7 @@ if exist "backend\.env" (
 if not exist backend mkdir backend
 call :random_key JWT_SECRET
 call :random_key ENCRYPTION_KEY
+call :random_key SETUP_TOKEN
 call :random_password ADMIN_PASSWORD
 
 set "ADMIN_EMAIL=admin@nexuszap.com"
@@ -115,13 +122,18 @@ set "CORS_ORIGINS=http://localhost,http://localhost:5173,http://localhost:4173"
   echo ENCRYPTION_KEY="%ENCRYPTION_KEY%"
   echo ADMIN_EMAIL="%ADMIN_EMAIL%"
   echo ADMIN_PASSWORD="%ADMIN_PASSWORD%"
+  echo ADMIN_SETUP_REQUIRED="true"
   echo CORS_ORIGINS="%CORS_ORIGINS%"
+  echo APP_URL=""
+  echo SETUP_TOKEN="%SETUP_TOKEN%"
+  echo SETUP_COMPLETED="false"
   echo GITHUB_REPO="vektortechmind/NEXUSZAP-FREE"
 ) > "backend\.env"
 
 echo backend\.env criado automaticamente.
 echo Login inicial: %ADMIN_EMAIL%
 echo Senha inicial: %ADMIN_PASSWORD%
+echo Token de setup: %SETUP_TOKEN%
 exit /b 0
 
 :load_env

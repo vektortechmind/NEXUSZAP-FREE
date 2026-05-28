@@ -4,7 +4,7 @@ import { FastifyReply, FastifyRequest } from "fastify";
 const CSRF_COOKIE_NAME = "csrfToken";
 const CSRF_HEADER_NAME = "x-csrf-token";
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-const CSRF_EXEMPT_PATHS = new Set(["/api/auth/login"]);
+const CSRF_EXEMPT_PATHS = new Set(["/api/auth/login", "/api/setup/docker", "/api/setup/admin"]);
 
 export const csrfCookieName = CSRF_COOKIE_NAME;
 export const csrfHeaderName = CSRF_HEADER_NAME;
