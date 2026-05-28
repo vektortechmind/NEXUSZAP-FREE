@@ -2,8 +2,11 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { verifyJwt } from "../security/middlewares";
 import {
   checkForUpdate,
-  CURRENT_VERSION,
   GITHUB_REPO,
+  getCurrentUpdateJob,
+  getUpdateStatusPayload,
+  startUpdateJob,
+  UpdateConflictError,
 } from "../services/update.service";
 import { safeErrorMessage, safeLogError } from "../utils/redaction";
 
@@ -13,7 +16,7 @@ async function updateRoutes(fastify: FastifyInstance) {
     { preHandler: [verifyJwt], config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
     async (_req: FastifyRequest, reply: FastifyReply) => {
       try {
-        const updateInfo = await checkForUpdate();
+        const updateInfo = await getUpdateStatusPayload();
         return reply.send({
           currentVersion: updateInfo.currentVersion,
           latestVersion: updateInfo.latestVersion,
@@ -21,6 +24,7 @@ async function updateRoutes(fastify: FastifyInstance) {
           releaseUrl: updateInfo.releaseUrl,
           changelog: updateInfo.changelog,
           githubRepo: GITHUB_REPO,
+          job: updateInfo.job,
         });
       } catch (error) {
         const message = safeErrorMessage(error, "Erro desconhecido");
@@ -30,16 +34,36 @@ async function updateRoutes(fastify: FastifyInstance) {
     }
   );
 
+  fastify.get(
+    "/update/job",
+    { preHandler: [verifyJwt], config: { rateLimit: { max: 20, timeWindow: "1 minute" } } },
+    async (_req: FastifyRequest, reply: FastifyReply) => {
+      return reply.send({ job: getCurrentUpdateJob() });
+    }
+  );
+
   fastify.post(
     "/update/apply",
-    { preHandler: [verifyJwt], config: { rateLimit: { max: 2, timeWindow: "1 minute" } } },
+    { preHandler: [verifyJwt], config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
     async (_req: FastifyRequest, reply: FastifyReply) => {
-      return reply.status(410).send({
-        success: false,
-        error: "Apply remoto desativado por seguranca. Use o runbook de atualizacao manual.",
-      });
+      try {
+        const job = await startUpdateJob();
+        return reply.status(202).send({
+          success: true,
+          message: "Atualização iniciada em background.",
+          job,
+        });
+      } catch (error) {
+        if (error instanceof UpdateConflictError) {
+          return reply.status(error.statusCode).send({ success: false, error: error.message, job: getCurrentUpdateJob() });
+        }
+        const message = safeErrorMessage(error, "Erro desconhecido ao iniciar update");
+        fastify.log.error({ err: safeLogError(error) }, "Erro ao iniciar update remoto");
+        return reply.status(500).send({ success: false, error: message, job: getCurrentUpdateJob() });
+      }
     }
   );
 }
 
 export default updateRoutes;
+

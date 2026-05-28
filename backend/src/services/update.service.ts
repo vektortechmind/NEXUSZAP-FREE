@@ -1,14 +1,48 @@
-import { prisma } from "../database/prisma";
-import fs from "node:fs";
+import { openSync, closeSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { prisma } from "../database/prisma";
 import {
   decodeGitHubFileContent,
   getRepoFile,
   getLatestRelease,
-  parseVersion,
   hasUpdate,
+  parseVersion,
 } from "./github.service";
-import { encryptToken, maskToken, maskStoredSecret, tryDecryptSecret } from "./crypto.service";
+import { encryptToken, maskStoredSecret, maskToken, tryDecryptSecret } from "./crypto.service";
+
+export type UpdateJobStatus = "queued" | "running" | "success" | "failed";
+
+type StoredUpdateJob = {
+  id: string;
+  status: UpdateJobStatus;
+  currentVersion: string;
+  targetVersion: string;
+  releaseUrl: string;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  pid: number | null;
+  summary: string | null;
+  error: string | null;
+  logPath: string;
+};
+
+export type UpdateJobView = Omit<StoredUpdateJob, "logPath"> & {
+  logTail: string[];
+  active: boolean;
+};
+
+export type UpdateInfo = {
+  currentVersion: string;
+  latestVersion: string;
+  hasUpdate: boolean;
+  releaseUrl: string;
+  changelog: string;
+};
+
+type UpdateStatusPayload = UpdateInfo & {
+  job: UpdateJobView | null;
+};
 
 function readVersionFile(): string | null {
   const candidates = [
@@ -17,8 +51,8 @@ function readVersionFile(): string | null {
   ];
 
   for (const filePath of candidates) {
-    if (!fs.existsSync(filePath)) continue;
-    const version = fs.readFileSync(filePath, "utf8").trim();
+    if (!existsSync(filePath)) continue;
+    const version = readFileSync(filePath, "utf8").trim();
     if (version) return version;
   }
 
@@ -27,6 +61,16 @@ function readVersionFile(): string | null {
 
 const CURRENT_VERSION = readVersionFile() || process.env.APP_VERSION || "v0.0.0";
 const GITHUB_REPO = process.env.GITHUB_REPO || (process.env.NODE_ENV === "production" ? "" : "owner/repo");
+const UPDATE_STORAGE_DIR = path.resolve(process.cwd(), "..", "updates");
+const UPDATE_JOB_FILE = path.join(UPDATE_STORAGE_DIR, "update-job.json");
+const UPDATE_JOB_LOG_FILE = path.join(UPDATE_STORAGE_DIR, "update-job.log");
+const UPDATE_JOB_LOCK_FILE = path.join(UPDATE_STORAGE_DIR, "update-job.lock");
+const UPDATE_RUNNER_SCRIPT = path.resolve(process.cwd(), "scripts", "update-job-runner.cjs");
+const OFFICIAL_UPDATE_SCRIPT = path.resolve(process.cwd(), "..", "update.sh");
+
+function ensureUpdateStorage() {
+  mkdirSync(UPDATE_STORAGE_DIR, { recursive: true });
+}
 
 function getRepoParts(): { owner: string; repo: string } {
   if (process.env.NODE_ENV === "production" && (!GITHUB_REPO || GITHUB_REPO === "owner/repo")) {
@@ -37,26 +81,78 @@ function getRepoParts(): { owner: string; repo: string } {
   if (!owner || !repo) {
     throw new Error(`GITHUB_REPO mal formatado: ${GITHUB_REPO}`);
   }
+
   return { owner, repo };
 }
 
-export type UpdateInfo = {
-  currentVersion: string;
-  latestVersion: string;
-  hasUpdate: boolean;
-  releaseUrl: string;
-  changelog: string;
-};
+function acquireUpdateLock() {
+  ensureUpdateStorage();
+  return openSync(UPDATE_JOB_LOCK_FILE, "wx");
+}
+
+function releaseUpdateLock(fd: number) {
+  closeSync(fd);
+  if (existsSync(UPDATE_JOB_LOCK_FILE)) {
+    unlinkSync(UPDATE_JOB_LOCK_FILE);
+  }
+}
+
+function readStoredJob(): StoredUpdateJob | null {
+  ensureUpdateStorage();
+  if (!existsSync(UPDATE_JOB_FILE)) return null;
+
+  try {
+    return JSON.parse(readFileSync(UPDATE_JOB_FILE, "utf8")) as StoredUpdateJob;
+  } catch {
+    return null;
+  }
+}
+
+function readLogTail(limit = 40): string[] {
+  ensureUpdateStorage();
+  if (!existsSync(UPDATE_JOB_LOG_FILE)) return [];
+  const content = readFileSync(UPDATE_JOB_LOG_FILE, "utf8");
+  return content.split(/\r?\n/).map((line) => line.trimEnd()).filter(Boolean).slice(-limit);
+}
+
+function isActiveJob(status: UpdateJobStatus) {
+  return status === "queued" || status === "running";
+}
+
+function toJobView(job: StoredUpdateJob | null): UpdateJobView | null {
+  if (!job) return null;
+  return {
+    id: job.id,
+    status: job.status,
+    currentVersion: job.currentVersion,
+    targetVersion: job.targetVersion,
+    releaseUrl: job.releaseUrl,
+    createdAt: job.createdAt,
+    startedAt: job.startedAt,
+    finishedAt: job.finishedAt,
+    pid: job.pid,
+    summary: job.summary,
+    error: job.error,
+    logTail: readLogTail(),
+    active: isActiveJob(job.status),
+  };
+}
+
+export function getCurrentUpdateJob(): UpdateJobView | null {
+  return toJobView(readStoredJob());
+}
+
+function createJobId() {
+  return `job-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function readGitHubToken() {
+  const settings = await prisma.settings.findUnique({ where: { id: "github_update_settings" } });
+  return settings?.githubToken ? tryDecryptSecret(settings.githubToken) : undefined;
+}
 
 export async function checkForUpdate(): Promise<UpdateInfo> {
-  const settings = await prisma.settings.findUnique({
-    where: { id: "github_update_settings" },
-  });
-
-  const token = settings?.githubToken
-    ? tryDecryptSecret(settings.githubToken)
-    : undefined;
-
+  const token = await readGitHubToken();
   const { owner, repo } = getRepoParts();
   const currentVersion = parseVersion(CURRENT_VERSION);
 
@@ -90,9 +186,96 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
   }
 }
 
-export async function validateGitHubToken(
-  token: string
-): Promise<{ valid: boolean; message: string }> {
+export async function getUpdateStatusPayload(): Promise<UpdateStatusPayload> {
+  const updateInfo = await checkForUpdate();
+  return {
+    ...updateInfo,
+    job: getCurrentUpdateJob(),
+  };
+}
+
+export class UpdateConflictError extends Error {
+  statusCode = 409;
+
+  constructor(message: string) {
+    super(message);
+    this.name = "UPDATE_CONFLICT_ERROR";
+  }
+}
+
+export async function startUpdateJob() {
+  const updateInfo = await checkForUpdate();
+  if (!updateInfo.hasUpdate) {
+    throw new UpdateConflictError("Nenhuma atualização nova está disponível no momento.");
+  }
+
+  let lockFd: number | null = null;
+  try {
+    lockFd = acquireUpdateLock();
+  } catch {
+    throw new UpdateConflictError("Já existe uma operação de atualização sendo preparada. Tente novamente em instantes.");
+  }
+
+  try {
+    const current = readStoredJob();
+    if (current && isActiveJob(current.status)) {
+      throw new UpdateConflictError("Já existe uma atualização em andamento.");
+    }
+
+    const job: StoredUpdateJob = {
+      id: createJobId(),
+      status: "queued",
+      currentVersion: updateInfo.currentVersion,
+      targetVersion: updateInfo.latestVersion,
+      releaseUrl: updateInfo.releaseUrl,
+      createdAt: new Date().toISOString(),
+      startedAt: null,
+      finishedAt: null,
+      pid: null,
+      summary: "Job criado e aguardando worker de update.",
+      error: null,
+      logPath: UPDATE_JOB_LOG_FILE,
+    };
+
+    ensureUpdateStorage();
+    writeFileSync(UPDATE_JOB_LOG_FILE, "");
+    writeFileSync(UPDATE_JOB_FILE, JSON.stringify(job, null, 2));
+
+    const { spawn } = await import("node:child_process");
+    const out = openSync(UPDATE_JOB_LOG_FILE, "a");
+    const err = openSync(UPDATE_JOB_LOG_FILE, "a");
+    const child = spawn(process.execPath, [UPDATE_RUNNER_SCRIPT], {
+      cwd: process.cwd(),
+      detached: true,
+      stdio: ["ignore", out, err],
+      env: {
+        ...process.env,
+        UPDATE_JOB_FILE,
+        UPDATE_JOB_LOG_FILE,
+        UPDATE_JOB_ID: job.id,
+        UPDATE_SCRIPT_PATH: OFFICIAL_UPDATE_SCRIPT,
+        UPDATE_TARGET_VERSION: job.targetVersion,
+        UPDATE_CURRENT_VERSION: job.currentVersion,
+      },
+    });
+    child.unref();
+
+    const persisted: StoredUpdateJob = {
+      ...job,
+      pid: child.pid ?? null,
+      summary: child.pid ? `Worker de update iniciado (pid ${child.pid}).` : "Worker de update iniciado.",
+    };
+    writeFileSync(UPDATE_JOB_FILE, JSON.stringify(persisted, null, 2));
+
+    return toJobView(persisted);
+  } finally {
+    if (lockFd !== null) {
+      releaseUpdateLock(lockFd);
+    }
+  }
+}
+
+export async function validateGitHubToken(token: string): Promise<{ valid: boolean; message: string }> {
   try {
     const response = await fetch("https://api.github.com/user", {
       headers: {
@@ -114,18 +297,13 @@ export async function validateGitHubToken(
       return { valid: false, message: "Token sem permissão (verifique scopes)" };
     }
 
-    return {
-      valid: false,
-      message: `Erro na verificação: ${response.status}`,
-    };
+    return { valid: false, message: `Erro na verificação: ${response.status}` };
   } catch {
     return { valid: false, message: "Erro ao verificar token" };
   }
 }
 
-export async function saveGitHubToken(
-  token: string
-): Promise<{ success: boolean; tokenMasked: string; message?: string }> {
+export async function saveGitHubToken(token: string): Promise<{ success: boolean; tokenMasked: string; message?: string }> {
   const validation = await validateGitHubToken(token);
   if (!validation.valid) {
     return { success: false, tokenMasked: maskToken(token), message: validation.message };
@@ -148,17 +326,12 @@ export async function removeGitHubToken(): Promise<void> {
   });
 }
 
-export async function getTokenStatus(): Promise<{
-  configured: boolean;
-  masked: string | null;
-}> {
-  const settings = await prisma.settings.findUnique({
-    where: { id: "github_update_settings" },
-  });
+export async function getTokenStatus(): Promise<{ configured: boolean; masked: string | null }> {
+  const settings = await prisma.settings.findUnique({ where: { id: "github_update_settings" } });
   if (!settings?.githubToken) {
     return { configured: false, masked: null };
   }
   return { configured: true, masked: maskStoredSecret(settings.githubToken) };
 }
 
-export { getRepoParts, CURRENT_VERSION, GITHUB_REPO };
+export { CURRENT_VERSION, GITHUB_REPO, getRepoParts, OFFICIAL_UPDATE_SCRIPT, UPDATE_JOB_FILE, UPDATE_JOB_LOG_FILE };
