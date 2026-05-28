@@ -23,6 +23,8 @@ services:
     restart: unless-stopped
     env_file:
       - ./backend/.env
+    volumes:
+      - ./backend/.env:/app/.env
     depends_on:
       postgres:
         condition: service_healthy

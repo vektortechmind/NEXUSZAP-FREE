@@ -3,6 +3,7 @@ import { env } from "../config/env";
 import { z } from "zod";
 import { csrfCookieName, generateCsrfToken, verifyCsrf, verifyJwt } from "../security/middlewares";
 import { timingSafeEqual } from "crypto";
+import { getAdminCredentials } from "../services/setup.service";
 
 const loginSchema = z.object({
   email: z.string().trim().email().max(254),
@@ -29,7 +30,8 @@ export async function authRoutes(fastify: FastifyInstance) {
     try {
       const { email, password } = loginSchema.parse(request.body);
       
-      if (!safeEqual(email, env.ADMIN_EMAIL) || !safeEqual(password, env.ADMIN_PASSWORD)) {
+      const admin = getAdminCredentials();
+      if (!safeEqual(email, admin.email) || !safeEqual(password, admin.password)) {
         return reply.status(401).send({ error: "Credenciais inválidas" });
       }
 

@@ -11,6 +11,7 @@ Base de comparação: `https://github.com/vektortechmind/NEXUSZAP-FREE.git` no c
 - Dockerização do projeto com `docker-compose.yml`, `backend/Dockerfile`, `frontend/Dockerfile` e `frontend/nginx.conf`.
 - Scripts oficiais de instalação e atualização para Windows e VPS/Linux: `install.bat`, `install.sh`, `update.bat` e `update.sh`.
 - Geração automática de segredos operacionais quando ausentes, incluindo `JWT_SECRET` e `ENCRYPTION_KEY`.
+- Fluxo guiado de primeira configuração por navegador em `/docker-setup` e `/criar-admin`, protegido por `SETUP_TOKEN`.
 - Arquivo `backend/VERSION` para versionamento fora do `.env`.
 - Migração inicial PostgreSQL em `backend/prisma/migrations/20260527000000_init_postgresql/migration.sql`.
 - Testes e validações de segurança para autenticação, segredos, upload de arquivos, prompt injection, update bloqueado e limpeza operacional PostgreSQL.
@@ -55,4 +56,3 @@ Base de comparação: `https://github.com/vektortechmind/NEXUSZAP-FREE.git` no c
 - Arquivos existentes apenas no remoto: `9`.
 - Arquivos modificados no local: `84`.
 - Arquivos idênticos: `4`.
-
