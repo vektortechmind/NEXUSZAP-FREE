@@ -78,6 +78,7 @@ frontend/.kiro/
 frontend/.qoder/
 frontend/.qwen/
 CHANGELOG-LOCAL-vs-REMOTE.md
+docs/
 
 # IDE and OS files
 .vscode/

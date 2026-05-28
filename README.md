@@ -16,7 +16,7 @@ Chatbot para WhatsApp e Telegram com IA, suporte a audio, base de conhecimento e
 |------------|--------|----------|
 | Node.js | 18+ | https://nodejs.org/ |
 | Git | Latest | https://git-scm.com/ |
-| Docker | Opcional no Windows; instalado automaticamente pelo `install.sh` em Debian/Ubuntu | https://www.docker.com/ |
+| Docker | Instalado automaticamente pelo `install.sh` em Debian/Ubuntu | https://www.docker.com/ |
 
 Verificacao rapida:
 
@@ -36,20 +36,12 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/vektortechmind/NEXUSZAP-
 
 Esse comando pode ser executado em uma VPS limpa: se a pasta do projeto ainda nao existir, o instalador clona `NEXUSZAP-FREE` automaticamente e continua a instalacao dentro dela.
 
-Se preferir auditar o script antes de executar, baixe e rode manualmente:
+Se preferir auditar o script antes de executar, baixe e rode manualmente na VPS:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/vektortechmind/NEXUSZAP-FREE/main/install.sh -o install.sh
 chmod +x install.sh
 sudo ./install.sh
-```
-
-No Windows, clone o repositorio oficial e rode o instalador:
-
-```bash
-git clone https://github.com/vektortechmind/NEXUSZAP-FREE.git
-cd NEXUSZAP-FREE
-install.bat
 ```
 
 Em um clone Git existente na VPS/Linux, use `install.sh`:
@@ -86,29 +78,15 @@ http://SEU_DOMINIO/criar-admin?token=SEU_TOKEN
 
 Essa etapa substitui a senha temporaria gerada na instalacao e bloqueia nova criacao publica de administrador.
 
-URLs padrao com Docker:
+URLs padrao na VPS com Docker:
 
-- Painel: `http://localhost`
-- API: `http://localhost:3000`
-- PostgreSQL: `localhost:5432`
-
-Para desenvolvimento sem Docker, depois da instalacao rode:
-
-```bash
-npm run dev
-```
-
-Nesse modo o painel fica em `http://localhost:5173` e a API em `http://localhost:3000`.
+- Painel: `http://SEU_IP` ou `https://SEU_DOMINIO`
+- API: `http://SEU_IP/api` ou `https://SEU_DOMINIO/api`
+- PostgreSQL: container interno `postgres:5432`
 
 ## Update
 
-Na raiz do clone Git:
-
-```bat
-update.bat
-```
-
-Na VPS/Linux:
+Na VPS/Linux, dentro da pasta do projeto:
 
 ```bash
 ./update.sh
@@ -153,7 +131,7 @@ Em producao, ajuste `ADMIN_EMAIL`, `ADMIN_PASSWORD` e `CORS_ORIGINS` para o domi
 
 ## Versao da aplicacao
 
-A versao atual fica em `backend/VERSION`. Esse arquivo e versionado no Git e e atualizado pelo `update.bat`/`update.sh` junto com o codigo.
+A versao atual fica em `backend/VERSION`. Esse arquivo e versionado no Git e e atualizado pelo `update.sh` junto com o codigo.
 
 Nao use `APP_VERSION` no `.env` como fonte principal de versao: o `.env` e preservado no update para nao sobrescrever secrets e configuracoes da VPS.
 
@@ -181,11 +159,8 @@ docker compose down
 
 | Script | Descricao |
 |--------|-----------|
-| `install.bat` | Instalacao completa em um comando |
 | `install.sh` | Instalacao completa em VPS/Linux |
-| `update.bat` | Atualizacao pelo repositorio oficial |
 | `update.sh` | Atualizacao em VPS/Linux pelo repositorio oficial |
-| `npm run dev` | Backend e frontend em desenvolvimento |
 | `npm run build` | Build de backend e frontend |
 | `npm run test:smoke` | Smoke test da API |
 | `npm test --prefix backend` | Validacoes de seguranca e smoke do backend |
@@ -204,9 +179,7 @@ NEXUSZAP-FREE/
 ├── scripts/
 │   └── start-safe.cjs
 ├── docker-compose.yml
-├── install.bat
 ├── install.sh
-├── update.bat
 ├── update.sh
 └── ecosystem.config.cjs
 ```

@@ -237,7 +237,7 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; 
   echo "Depois crie o primeiro administrador:"
   echo "$ADMIN_URL"
 else
-  echo "Docker Compose nao encontrado. Instalacao concluida; configure PostgreSQL e rode npm run dev ou use seu process manager."
+  echo "Docker Compose nao encontrado. Instale Docker Compose e rode install.sh novamente na VPS."
 fi
 
 remove_ps1
