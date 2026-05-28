@@ -2,217 +2,246 @@ import makeWASocket, {
   DisconnectReason,
   WASocket,
   fetchLatestBaileysVersion,
-  makeCacheableSignalKeyStore
+  makeCacheableSignalKeyStore,
 } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
 import NodeCache from "node-cache";
 import P from "pino";
 import { prisma } from "../database/prisma";
-import { handleIncomingMessage } from "./messageHandler";
-import { onInstanceLabelEdit } from "./labelsCache";
-import { usePrismaAuthState } from "./prismaAuth";
+import { getOrCreatePrimaryInstance, getPrimaryInstance, listInstances } from "../services/instance.service";
 import { safeLogError } from "../utils/redaction";
+import { onInstanceLabelEdit } from "./labelsCache";
+import { handleIncomingMessage } from "./messageHandler";
+import { usePrismaAuthState } from "./prismaAuth";
+
+type InstanceRuntime = {
+  sock: WASocket | null;
+  starting: boolean;
+  manualStop: boolean;
+  lastQr: string | null;
+  resetManualStopTimer: NodeJS.Timeout | null;
+};
 
 export class InstanceManager {
-  private static sock: WASocket | null = null;
-  private static starting = false;
-  /** Evita reconexão automática após parada manual */
-  private static manualStop = false;
-  /** Último QR (para polling) */
-  private static lastQr: string | null = null;
+  private static runtimes = new Map<string, InstanceRuntime>();
 
-  static getLastQr(): string | null {
-    return this.lastQr;
+  private static ensureRuntime(instanceId: string): InstanceRuntime {
+    const existing = this.runtimes.get(instanceId);
+    if (existing) return existing;
+
+    const created: InstanceRuntime = {
+      sock: null,
+      starting: false,
+      manualStop: false,
+      lastQr: null,
+      resetManualStopTimer: null,
+    };
+    this.runtimes.set(instanceId, created);
+    return created;
   }
 
-  /**
-   * Garante que existe pelo menos um Agente no banco e retorna seu ID.
-   */
-  private static async getOrCreateDefaultInstance() {
-    let instance = await prisma.instance.findFirst();
-    if (!instance) {
-      instance = await prisma.instance.create({
-        data: { name: "Agente Principal" }
-      });
-    }
-    return instance;
-  }
+  private static async createSocket(instanceId: string, onQr?: (qr: string) => void) {
+    const runtime = this.ensureRuntime(instanceId);
+    const { state, saveCreds } = await usePrismaAuthState(instanceId);
+    const { version } = await fetchLatestBaileysVersion();
 
-  /**
-   * Ao subir o servidor: reconecta se houver sessão salva.
-   */
-  static async loadInstancesOnBoot(): Promise<void> {
-    const instance = await prisma.instance.findFirst();
-    if (!instance) return;
+    const msgRetryCounterCache = new NodeCache();
+    const logger = P({ level: "silent" }) as any;
+    const cachedKeys = makeCacheableSignalKeyStore(state.keys, logger);
 
-    // Verifica se existe o registro 'creds' no banco para esta instância
-    const session = await prisma.session.findUnique({
-      where: { instanceId_key: { instanceId: instance.id, key: "creds" } }
+    const sock = makeWASocket({
+      version,
+      auth: {
+        creds: state.creds,
+        keys: cachedKeys,
+      },
+      logger,
+      msgRetryCounterCache,
+      printQRInTerminal: false,
+      markOnlineOnConnect: false,
+      generateHighQualityLinkPreview: true,
+      syncFullHistory: false,
     });
 
-    if (!session) {
-      console.log(`[Baileys] Boot: Nenhuma sessão salva para "${instance.name}".`);
-      return;
-    }
+    runtime.sock = sock;
+    sock.ev.on("creds.update", saveCreds);
+    sock.ev.on("labels.edit", (label) => onInstanceLabelEdit(instanceId, label));
 
-    // Se houver sessão, tentamos conectar automaticamente no boot
-    console.log(`[Baileys] Boot: Restaurando sessão do agente "${instance.name}"...`);
-    await this.start();
-  }
+    sock.ev.on("connection.update", async (update) => {
+      const { connection, lastDisconnect, qr } = update;
 
-  static async start(onQr?: (qr: string) => void, opts?: { userInitiated?: boolean }) {
-    if (this.starting) {
-      console.log("[Baileys] start ignorado: inicializacao em andamento.");
-      return;
-    }
-    if (opts?.userInitiated) {
-      this.manualStop = false;
-    } else if (this.manualStop) {
-      console.log("[Baileys] start ignorado: parada manual ativa.");
-      return;
-    }
-    this.starting = true;
-
-    try {
-      if (this.sock) {
-        try {
-          this.sock.ev.removeAllListeners("messages.upsert");
-          this.sock.ev.removeAllListeners("connection.update");
-          await this.sock.logout();
-        } catch {
-          /* ignore */
-        }
-        this.sock = null;
+      if (qr) {
+        runtime.lastQr = qr;
+        onQr?.(qr);
       }
 
-      const instance = await this.getOrCreateDefaultInstance();
-      const instanceId = instance.id;
+      if (connection === "close") {
+        const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
+        const shouldReconnect = !runtime.manualStop && statusCode !== DisconnectReason.loggedOut;
 
-      const { state, saveCreds } = await usePrismaAuthState(instanceId);
-      const { version } = await fetchLatestBaileysVersion();
+        console.log(`[Baileys] Conexão fechada para ${instanceId}. Code: ${statusCode}. ShouldReconnect: ${shouldReconnect}`);
+        runtime.sock = null;
 
-      const msgRetryCounterCache = new NodeCache();
-      const logger = P({ level: 'silent' }) as any;
-      const cachedKeys = makeCacheableSignalKeyStore(state.keys, logger);
-
-      const sock = makeWASocket({
-        version,
-        auth: {
-          creds: state.creds,
-          keys: cachedKeys
-        },
-        logger,
-        msgRetryCounterCache,
-        printQRInTerminal: false,
-        markOnlineOnConnect: false,
-        generateHighQualityLinkPreview: true,
-        syncFullHistory: false
-      });
-
-      this.sock = sock;
-
-      sock.ev.on("creds.update", saveCreds);
-
-      sock.ev.on("labels.edit", (label) => {
-        onInstanceLabelEdit(instanceId, label);
-      });
-
-      sock.ev.on("connection.update", async (update) => {
-        const { connection, lastDisconnect, qr } = update;
-
-        if (qr) {
-          this.lastQr = qr;
-          if (onQr) onQr(qr);
-        }
-
-        if (connection === "close") {
-          const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
-          const shouldReconnect =
-            !this.manualStop && statusCode !== DisconnectReason.loggedOut;
-
-          console.log(`[Baileys] Conexão fechada. Code: ${statusCode}. ShouldReconnect: ${shouldReconnect}`);
-
-          this.sock = null;
-
-          if (shouldReconnect) {
-            await prisma.instance.update({
-              where: { id: instanceId },
-              data: { status: "RECONNECTING" }
-            });
-            console.log("[Baileys] Tentando reconectar em 5s...");
-            setTimeout(() => {
-              void this.start(onQr);
-            }, 5000);
-          } else {
-            await prisma.instance.update({
-              where: { id: instanceId },
-              data: { status: "DISCONNECTED" }
-            });
-            this.lastQr = null;
-            if (statusCode === DisconnectReason.loggedOut) {
-              await prisma.session.deleteMany({
-                where: { instanceId }
-              });
-              console.log("[Baileys] Logout detectado. Sessão limpa.");
-            }
-          }
-        } else if (connection === "open") {
-          this.lastQr = null;
+        if (shouldReconnect) {
           await prisma.instance.update({
             where: { id: instanceId },
-            data: { status: "CONNECTED" }
+            data: { status: "RECONNECTING" },
           });
-          console.log("[Baileys] Conexão estabelecida com sucesso.");
+          setTimeout(() => {
+            void this.start(instanceId, onQr);
+          }, 5000);
+          return;
         }
-      });
 
-      sock.ev.on("messages.upsert", async (m) => {
-        if (m.type === "notify") {
-          for (const msg of m.messages) {
-            try {
-              await handleIncomingMessage(sock, instanceId, msg);
-            } catch (err) {
-              console.error("[Baileys] Falha ao processar mensagem:", safeLogError(err));
-            }
-          }
+        await prisma.instance.update({
+          where: { id: instanceId },
+          data: { status: "DISCONNECTED" },
+        });
+        runtime.lastQr = null;
+
+        if (statusCode === DisconnectReason.loggedOut) {
+          await prisma.session.deleteMany({ where: { instanceId } });
+          console.log(`[Baileys] Logout detectado na instância ${instanceId}. Sessão limpa.`);
         }
-      });
-    } finally {
-      this.starting = false;
-    }
-  }
-
-  static async stop() {
-    this.manualStop = true;
-    this.lastQr = null;
-
-    if (this.sock) {
-      try {
-        this.sock.ev.removeAllListeners("messages.upsert");
-        this.sock.ev.removeAllListeners("connection.update");
-        await this.sock.logout();
-      } catch (err) {
-        console.error(`[InstanceManager] logout:`, safeLogError(err));
       }
-      this.sock = null;
-    }
 
-    const instance = await prisma.instance.findFirst();
-    if (instance) {
-      await prisma.instance.update({
-        where: { id: instance.id },
-        data: { status: "DISCONNECTED" }
+      if (connection === "open") {
+        runtime.lastQr = null;
+        await prisma.instance.update({
+          where: { id: instanceId },
+          data: { status: "CONNECTED" },
+        });
+        console.log(`[Baileys] Conexão estabelecida com sucesso para ${instanceId}.`);
+      }
+    });
+
+    sock.ev.on("messages.upsert", async (m) => {
+      if (m.type !== "notify") return;
+
+      for (const msg of m.messages) {
+        try {
+          await handleIncomingMessage(sock, instanceId, msg);
+        } catch (err) {
+          console.error("[Baileys] Falha ao processar mensagem:", safeLogError(err));
+        }
+      }
+    });
+  }
+
+  static getLastQr(instanceId?: string): string | null {
+    if (instanceId) return this.ensureRuntime(instanceId).lastQr;
+
+    const primaryRuntime = [...this.runtimes.values()].find((runtime) => runtime.lastQr);
+    return primaryRuntime?.lastQr ?? null;
+  }
+
+  private static async getOrCreateDefaultInstance() {
+    return getOrCreatePrimaryInstance();
+  }
+
+  static async loadInstancesOnBoot(): Promise<void> {
+    const instances = await listInstances();
+
+    for (const instance of instances) {
+      const session = await prisma.session.findUnique({
+        where: { instanceId_key: { instanceId: instance.id, key: "creds" } },
       });
+
+      if (!session) {
+        console.log(`[Baileys] Boot: Nenhuma sessão salva para "${instance.name}".`);
+        continue;
+      }
+
+      console.log(`[Baileys] Boot: Restaurando sessão do agente "${instance.name}"...`);
+      await this.start(instance.id);
+    }
+  }
+
+  static async start(instanceId?: string, onQr?: (qr: string) => void, opts?: { userInitiated?: boolean }) {
+    const instance = instanceId
+      ? await prisma.instance.findUnique({ where: { id: instanceId } })
+      : await this.getOrCreateDefaultInstance();
+
+    if (!instance) {
+      throw new Error("Instância não encontrada.");
     }
 
-    setTimeout(() => (this.manualStop = false), 8000);
+    const runtime = this.ensureRuntime(instance.id);
+    if (runtime.starting) {
+      console.log(`[Baileys] start ignorado para ${instance.id}: inicialização em andamento.`);
+      return;
+    }
+
+    if (opts?.userInitiated) {
+      runtime.manualStop = false;
+    } else if (runtime.manualStop) {
+      console.log(`[Baileys] start ignorado para ${instance.id}: parada manual ativa.`);
+      return;
+    }
+
+    if (runtime.sock) {
+      console.log(`[Baileys] start ignorado para ${instance.id}: socket já ativo.`);
+      return;
+    }
+
+    runtime.starting = true;
+    if (runtime.resetManualStopTimer) {
+      clearTimeout(runtime.resetManualStopTimer);
+      runtime.resetManualStopTimer = null;
+    }
+
+    try {
+      await this.createSocket(instance.id, onQr);
+    } finally {
+      runtime.starting = false;
+    }
   }
 
-  static get() {
-    return this.sock;
+  static async stop(instanceId?: string) {
+    const instance = instanceId
+      ? await prisma.instance.findUnique({ where: { id: instanceId } })
+      : await getPrimaryInstance();
+
+    if (!instance) return;
+
+    const runtime = this.ensureRuntime(instance.id);
+    runtime.manualStop = true;
+    runtime.lastQr = null;
+
+    if (runtime.resetManualStopTimer) {
+      clearTimeout(runtime.resetManualStopTimer);
+    }
+
+    if (runtime.sock) {
+      try {
+        runtime.sock.ev.removeAllListeners("messages.upsert");
+        runtime.sock.ev.removeAllListeners("connection.update");
+        await runtime.sock.logout();
+      } catch (err) {
+        console.error(`[InstanceManager] logout ${instance.id}:`, safeLogError(err));
+      }
+      runtime.sock = null;
+    }
+
+    await prisma.instance.update({
+      where: { id: instance.id },
+      data: { status: "DISCONNECTED" },
+    });
+
+    runtime.resetManualStopTimer = setTimeout(() => {
+      runtime.manualStop = false;
+      runtime.resetManualStopTimer = null;
+    }, 8000);
   }
 
-  static isRunning(): boolean {
-    return !!this.sock;
+  static get(instanceId?: string) {
+    if (instanceId) return this.ensureRuntime(instanceId).sock;
+    const primary = [...this.runtimes.values()].find((runtime) => runtime.sock);
+    return primary?.sock ?? null;
+  }
+
+  static isRunning(instanceId?: string): boolean {
+    if (instanceId) return !!this.ensureRuntime(instanceId).sock;
+    return [...this.runtimes.values()].some((runtime) => !!runtime.sock);
   }
 }

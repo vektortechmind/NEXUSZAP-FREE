@@ -19,6 +19,7 @@ enum MessageDirection {
 
 model Instance {
   id                  String         @id @default(uuid())
+  slot                Int            @unique
   name                String         @default("Agente Principal")
   agentName           String?
   status              String         @default("DISCONNECTED")
@@ -36,17 +37,43 @@ model Instance {
   geminiKey           String?
   openrouterKey       String?
   openrouterModel     String?
+  memoryLimit         Int            @default(5)
   createdAt           DateTime       @default(now())
   updatedAt           DateTime       @default(now()) @updatedAt
 
   files               File[]
   messageEvents       MessageEvent[]
+  agent               Agent?
+
+  @@index([slot])
+}
+
+model Agent {
+  id              String   @id @default(uuid())
+  name            String
+  instanceId      String   @unique
+  instance        Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  telegramEnabled Boolean  @default(true)
+  systemPrompt    String?
+  telegramSystemPrompt String?
+  voiceEnabled    Boolean  @default(false)
+  voiceProvider   String?
+  voiceModel      String?
+  voicePersona    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
+
+  files           File[]
+
+  @@index([name])
 }
 
 model File {
   id         String   @id @default(uuid())
   instanceId String
   instance   Instance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  agentId    String?
+  agent      Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
   filename   String
   mimetype   String
   data       Bytes
@@ -55,6 +82,7 @@ model File {
   createdAt  DateTime @default(now())
 
   @@index([instanceId])
+  @@index([agentId])
   @@index([channel])
 }
 

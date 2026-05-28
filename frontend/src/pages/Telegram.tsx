@@ -13,6 +13,7 @@ import { useToast } from "../contexts/ToastContext";
 
 type TelegramConfig = {
   id: string;
+  agentWorkspaceId: string;
   telegramSystemPrompt: string | null;
 };
 
@@ -65,12 +66,12 @@ export function Telegram() {
     return { chars: promptValue.length, words };
   }, [promptValue]);
 
-  const refreshFiles = useCallback(async (instanceId: string, soft?: boolean) => {
+  const refreshFiles = useCallback(async (agentId: string, soft?: boolean) => {
     if (soft) setFilesRefreshing(true);
     else setFilesLoading(true);
     setFilesError(null);
     try {
-      const fls = await api.get<KnowledgeFile[]>(`/telegram-files/${instanceId}`);
+      const fls = await api.get<KnowledgeFile[]>(`/telegram-files/agent/${agentId}`);
       setFiles(fls.data);
     } catch (err) {
       console.error(err);
@@ -88,12 +89,13 @@ export function Telegram() {
       const agent = await api.get<TelegramConfig & { telegramSystemPrompt?: string | null }>("/agent/config");
       const nextCfg = {
         id: agent.data.id,
+        agentWorkspaceId: agent.data.agentWorkspaceId,
         telegramSystemPrompt: agent.data.telegramSystemPrompt ?? null,
       };
       setCfg(nextCfg);
       setError(null);
       setLoading(false);
-      void refreshFiles(nextCfg.id);
+      void refreshFiles(nextCfg.agentWorkspaceId);
     } catch (err) {
       setError("Não foi possível carregar as configurações");
       console.error(err);
@@ -121,8 +123,8 @@ export function Telegram() {
     try {
       const fd = new FormData();
       fd.append("file", file);
-      await api.post(`/telegram-files/${cfg.id}/upload`, fd);
-      await refreshFiles(cfg.id, true);
+      await api.post(`/telegram-files/agent/${cfg.agentWorkspaceId}/upload`, fd);
+      await refreshFiles(cfg.agentWorkspaceId, true);
       addToast("Arquivo enviado com sucesso", "success");
     } catch (err) {
       setFilesError("Falha ao enviar arquivo. Tente novamente.");
@@ -138,7 +140,7 @@ export function Telegram() {
     if (!window.confirm("Excluir este arquivo da base de conhecimento do Telegram?")) return;
     try {
       await api.delete(`/telegram-files/${id}`);
-      await refreshFiles(cfg.id, true);
+      await refreshFiles(cfg.agentWorkspaceId, true);
       addToast("Arquivo removido", "success");
     } catch (err) {
       setFilesError("Não foi possível remover o arquivo.");
@@ -221,7 +223,7 @@ export function Telegram() {
             title="Base de conhecimento"
             description="Arquivos usados como contexto do agente no Telegram."
             actions={
-              <Button variant="ghost" size="sm" onClick={() => void refreshFiles(cfg.id, true)} disabled={filesRefreshing || filesLoading}>
+              <Button variant="ghost" size="sm" onClick={() => void refreshFiles(cfg.agentWorkspaceId, true)} disabled={filesRefreshing || filesLoading}>
                 <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
                 Atualizar
               </Button>

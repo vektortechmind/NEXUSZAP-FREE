@@ -1,11 +1,17 @@
+import type { Instance } from "@prisma/client";
 import { Context, Telegraf } from "telegraf";
 import { prisma } from "../database/prisma";
 import { askChat, transcribeAudio } from "../ai/providerSelector";
 import { getResolvedTelegramPrompt } from "../services/agentPrompt";
 import { encryptToken, tryDecryptSecret } from "../services/crypto.service";
 import { recordMessageEvent } from "../services/messageEvent.service";
+import { getOrCreatePrimaryInstance } from "../services/instance.service";
 import { buildCompleteSystemPrompt, resolveAgentDisplayName } from "../ai/systemPrompt";
-import { ensureKnowledgeExtracted, buildFileContextSuffix } from "../services/knowledgeService";
+import {
+  ensureKnowledgeExtracted,
+  buildFileContextSuffix,
+  listKnowledgeFilesByInstance,
+} from "../services/knowledgeService";
 import { safeLogError } from "../utils/redaction";
 import { globalMemoryManager } from "../utils/ai/memoryManager";
 import { splitLongText } from "../utils/textSplitter";
@@ -36,13 +42,7 @@ function randomInt(min: number, max: number) {
 }
 
 async function getTelegramInstance() {
-  let instance = await prisma.instance.findFirst();
-  if (!instance) {
-    instance = await prisma.instance.create({
-      data: { name: "Agente Principal", typing: true, delayMin: 4000, delayMax: 7000 },
-    });
-  }
-  return instance;
+  return (await getOrCreatePrimaryInstance()) as Instance;
 }
 
 async function getDecryptedTelegramToken(instanceId: string): Promise<string | null> {
@@ -119,9 +119,7 @@ async function handleTelegramMessage(ctx: Context) {
 
   if (!userContent || !userContent.trim()) return;
 
-  const knowledgeFiles = await prisma.file.findMany({
-    where: { instanceId: instance.id, channel: "TELEGRAM" },
-  });
+  const knowledgeFiles = (await listKnowledgeFilesByInstance(instance.id, "TELEGRAM")) ?? [];
   await ensureKnowledgeExtracted(
     knowledgeFiles as Array<{ id: string; mimetype: string; data: Buffer; extracted: string | null }>
   );
@@ -135,8 +133,8 @@ async function handleTelegramMessage(ctx: Context) {
   });
 
   const memoryKey = `${instance.id}:${fromId}`;
-  const memory = globalMemoryManager.getMemory(memoryKey);
   globalMemoryManager.addMessage(memoryKey, "user", userContent);
+  const memory = globalMemoryManager.getMemory(memoryKey, instance.memoryLimit);
 
   if (instance.typing) {
     const min = clamp(instance.delayMin ?? 4000, 4000, 7000);

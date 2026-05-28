@@ -1,0 +1,2 @@
+ALTER TABLE "Instance"
+ADD COLUMN "memoryLimit" INTEGER NOT NULL DEFAULT 5;

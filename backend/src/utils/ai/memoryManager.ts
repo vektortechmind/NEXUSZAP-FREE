@@ -1,4 +1,4 @@
-import { CHAT_MEMORY_MAX_MESSAGES } from "../../ai/chatMemory";
+import { CHAT_MEMORY_MAX_MESSAGES, CHAT_MEMORY_STORAGE_MAX_MESSAGES } from "../../ai/chatMemory";
 
 export type MemoryRole = "user" | "assistant" | "system";
 
@@ -36,12 +36,14 @@ export class MemoryManager {
     );
   }
 
-  public getMemory(key: string): MemoryItem[] {
+  public getMemory(key: string, limit = CHAT_MEMORY_MAX_MESSAGES): MemoryItem[] {
     this.pruneExpired();
     const entry = this.memory.get(key);
     if (!entry) return [];
     entry.lastAccessedAt = Date.now();
-    return [...entry.messages];
+    const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.trunc(limit) : CHAT_MEMORY_MAX_MESSAGES;
+    if (entry.messages.length <= safeLimit) return [...entry.messages];
+    return entry.messages.slice(entry.messages.length - safeLimit);
   }
 
   public addMessage(key: string, role: MemoryRole, content: string): void {
@@ -49,8 +51,8 @@ export class MemoryManager {
     const entry = this.memory.get(key) ?? { messages: [], lastAccessedAt: Date.now() };
     let currentMemory = [...entry.messages, { role, content }];
 
-    if (currentMemory.length > CHAT_MEMORY_MAX_MESSAGES) {
-      currentMemory = currentMemory.slice(currentMemory.length - CHAT_MEMORY_MAX_MESSAGES);
+    if (currentMemory.length > CHAT_MEMORY_STORAGE_MAX_MESSAGES) {
+      currentMemory = currentMemory.slice(currentMemory.length - CHAT_MEMORY_STORAGE_MAX_MESSAGES);
     }
 
     this.memory.set(key, { messages: currentMemory, lastAccessedAt: Date.now() });
@@ -70,6 +72,10 @@ export class MemoryManager {
   public size(): number {
     this.pruneExpired();
     return this.memory.size;
+  }
+
+  public clear(key: string): void {
+    this.memory.delete(key);
   }
 
   private pruneExpired(): void {
