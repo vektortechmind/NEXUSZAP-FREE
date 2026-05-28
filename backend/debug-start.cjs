@@ -7,6 +7,11 @@
 const path = require("path");
 const fs = require("fs");
 
+function redact(value) {
+  if (!value) return "❌";
+  return "[REDACTED]";
+}
+
 console.log("\n╔═══════════════════════════════════════╗");
 console.log("║       DEBUG - Backend Startup         ║");
 console.log("╚═══════════════════════════════════════╝\n");
@@ -40,10 +45,11 @@ if (!fs.existsSync(prismaPath)) {
 require("dotenv").config({ path: envPath });
 
 console.log("\n📋 Variáveis de Ambiente:");
-console.log("   DATABASE_URL:", process.env.DATABASE_URL);
+console.log("   DATABASE_URL:", redact(process.env.DATABASE_URL));
 console.log("   PORT:", process.env.PORT);
 console.log("   JWT_SECRET:", process.env.JWT_SECRET ? "✅" : "❌");
-console.log("   ADMIN_EMAIL:", process.env.ADMIN_EMAIL);
+console.log("   ADMIN_EMAIL:", redact(process.env.ADMIN_EMAIL));
+console.log("   ENCRYPTION_KEY:", process.env.ENCRYPTION_KEY ? "✅" : "❌");
 
 // Tentar iniciar
 console.log("\n🚀 Iniciando servidor com ts-node...\n");

@@ -4,6 +4,9 @@ import { geminiChat } from "./gemini";
 import { openRouterChat } from "./openrouter";
 import { normalizeMessagesForChatApi } from "./systemPrompt";
 import type { ChatMessage } from "./systemPrompt";
+import { sanitizeBotResponse } from "./promptGuard";
+import { tryDecryptSecret } from "../services/crypto.service";
+import { safeErrorMessage, safeLogError } from "../utils/redaction";
 
 type ChatProviderFn = (key: string, messages: ChatMessage[]) => Promise<string>;
 
@@ -29,12 +32,22 @@ function logFailureForAdmin(noKeysConfigured: boolean, lastError: unknown) {
     return;
   }
   if (lastError && isLikelyQuotaOrRateLimit(lastError)) {
-    console.error("[askChat] ADMIN: provável limite de cota ou taxa (429 / quota). Verifique saldo e chaves no provedor.", lastError);
+    console.error(
+      "[askChat] ADMIN: provável limite de cota ou taxa (429 / quota). Verifique saldo e chaves no provedor.",
+      safeLogError(lastError)
+    );
     return;
   }
   if (lastError) {
-    console.error("[askChat] ADMIN: falha ao obter resposta da IA. Verifique chaves, rede e logs do provedor.", lastError);
+    console.error(
+      "[askChat] ADMIN: falha ao obter resposta da IA. Verifique chaves, rede e logs do provedor.",
+      safeLogError(lastError)
+    );
   }
+}
+
+function decryptNullableSecret(value: string | null | undefined) {
+  return value ? tryDecryptSecret(value) : value;
 }
 
 export async function getKeys(instanceId?: string) {
@@ -46,13 +59,13 @@ export async function getKeys(instanceId?: string) {
     chatProvider: agent?.chatProvider,
 
     // Chat
-    groqKey: agent?.groqKey,
-    geminiKey: agent?.geminiKey,
-    openrouterKey: agent?.openrouterKey,
+    groqKey: decryptNullableSecret(agent?.groqKey),
+    geminiKey: decryptNullableSecret(agent?.geminiKey),
+    openrouterKey: decryptNullableSecret(agent?.openrouterKey),
     openrouterModel: agent?.openrouterModel,
 
     // Áudio/Whisper (chave separada opcional)
-    groqAudioKey: agent?.groqAudioKey,
+    groqAudioKey: decryptNullableSecret(agent?.groqAudioKey),
   };
 }
 
@@ -91,10 +104,10 @@ export async function askChat(instanceId: string, messages: any[]) {
       tried.push(p.name);
       try {
         const response = await p.fn(p.key, normalized);
-        if (response) return response;
+        if (response) return sanitizeBotResponse(response);
       } catch (err) {
         lastError = err;
-        console.error(`[AI Fallback] Falha no provedor '${p.name}':`, err);
+        console.error(`[AI Fallback] Falha no provedor '${p.name}':`, safeLogError(err));
       }
     }
   }
@@ -129,5 +142,9 @@ export async function transcribeAudio(
     );
   }
 
-  return groqWhisper(audioKey, audioBuffer, mimeType, language);
+  try {
+    return await groqWhisper(audioKey, audioBuffer, mimeType, language);
+  } catch (err) {
+    throw new Error(safeErrorMessage(err, "Falha ao transcrever audio"));
+  }
 }

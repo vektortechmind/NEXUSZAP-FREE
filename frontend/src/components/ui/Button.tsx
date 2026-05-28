@@ -2,23 +2,23 @@ import React from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center font-semibold rounded-xl transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-transparent active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed",
+  "inline-flex items-center justify-center rounded-lg font-semibold transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent active:translate-y-px disabled:cursor-not-allowed disabled:opacity-50 enabled:cursor-pointer",
   {
     variants: {
       variant: {
         primary:
-          "bg-gradient-to-r from-blue-600 to-violet-600 text-white shadow-[0_10px_24px_-12px_rgba(79,70,229,0.85)] hover:from-blue-500 hover:to-violet-500 hover:shadow-[0_18px_32px_-16px_rgba(59,130,246,0.9)] focus:ring-blue-500",
+          "border border-emerald-600 bg-emerald-600 text-white shadow-sm hover:border-emerald-500 hover:bg-emerald-500 dark:border-emerald-500 dark:bg-emerald-500 dark:text-slate-950 dark:hover:border-emerald-400 dark:hover:bg-emerald-400",
         secondary:
-          "border border-slate-200/80 bg-white/75 text-slate-800 backdrop-blur-xl hover:bg-white dark:border-slate-700/80 dark:bg-slate-800/65 dark:text-slate-100 dark:hover:bg-slate-700/70 focus:ring-slate-400",
+          "border border-slate-300 bg-white text-slate-800 shadow-sm hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800",
         danger:
-          "bg-gradient-to-r from-rose-600 to-red-600 text-white shadow-[0_10px_24px_-12px_rgba(225,29,72,0.85)] hover:from-rose-500 hover:to-red-500 focus:ring-rose-500",
+          "border border-red-600 bg-red-600 text-white shadow-sm hover:border-red-500 hover:bg-red-500 focus-visible:ring-red-500 dark:border-red-500 dark:bg-red-500 dark:hover:border-red-400 dark:hover:bg-red-400",
         ghost:
-          "text-slate-700 hover:bg-slate-100/70 dark:text-slate-300 dark:hover:bg-slate-800/70 focus:ring-slate-400",
+          "border border-transparent text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800",
       },
       size: {
-        sm: "px-3 py-2 text-sm",
-        md: "px-4 py-2.5 text-sm",
-        lg: "px-6 py-3 text-base",
+        sm: "min-h-9 px-3 py-2 text-sm",
+        md: "min-h-10 px-4 py-2.5 text-sm",
+        lg: "min-h-11 px-5 py-3 text-base",
       },
     },
     defaultVariants: {
@@ -45,7 +45,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
         {...props}
       >
         {loading && (
-          <span className="inline-block mr-2 w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          <span className="mr-2 inline-block h-4 w-4 rounded-full border-2 border-current border-t-transparent motion-safe:animate-spin" />
         )}
         {children}
       </button>

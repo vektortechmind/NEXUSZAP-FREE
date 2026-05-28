@@ -1,6 +1,6 @@
 import React, { useRef } from "react";
 import { AlertCircle, Check, Info, AlertTriangle } from "lucide-react";
-import { useTheme } from "./ThemeContext";
+import { useTheme } from "./useTheme";
 
 type ToastType = "success" | "error" | "info" | "warning";
 
@@ -10,11 +10,10 @@ interface Toast {
   message: string;
   duration?: number;
 }
-
 interface ToastContextType {
   toasts: Toast[];
-  addToast: (message: string, type?: ToastType, duration?: number) => void;
-  removeToast: (id: string) => void;
+  addToast: (messageParam: string, typeParam?: ToastType, durationParam?: number) => void;
+  removeToast: (idParam: string) => void;
 }
 
 const ToastContext = React.createContext<ToastContextType | undefined>(undefined);
