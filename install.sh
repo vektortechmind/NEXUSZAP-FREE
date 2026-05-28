@@ -121,6 +121,10 @@ random_key() {
   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 }
 
+random_url_token() {
+  node -e "console.log(require('crypto').randomBytes(32).toString('base64url'))"
+}
+
 random_password() {
   node -e "console.log(require('crypto').randomBytes(18).toString('base64').replace(/[+/=]/g,'A')+'a1!')"
 }
@@ -148,7 +152,7 @@ ensure_env() {
   jwt_secret="$(random_key)"
   encryption_key="$(random_key)"
   admin_password="$(random_password)"
-  setup_token="$(random_key)"
+  setup_token="$(random_url_token)"
 
   cat > backend/.env <<EOF
 NODE_ENV="production"
