@@ -1,4 +1,5 @@
 import type { IntegrationDashboardResponse } from "../dashboard/integrationDashboard";
+import { INTEGRATION_DOCUMENTATION_ROUTE } from "./integrationDocumentationContent";
 
 export type IntegrationWorkspaceSection = {
   id: "credenciais" | "operacao" | "documentacao";
@@ -35,7 +36,7 @@ export const EMPTY_INTEGRATIONS: IntegrationDashboardResponse = {
     missingCredential: 0,
   },
   documentation: {
-    path: "docs/integrations/nexuszap-plugin-api.md",
+    path: INTEGRATION_DOCUMENTATION_ROUTE,
     endpointPath: "/api/integrations/events",
     endpointUrl: null,
     supportedEvents: [],

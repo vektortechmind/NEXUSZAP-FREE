@@ -2,7 +2,7 @@ import type { IntegrationCredentialStatus, IntegrationDispatchStatus, Integratio
 import { prisma } from "../../database/prisma";
 import { integrationEventCatalogService } from "./integrationEventCatalog.service";
 
-export const INTEGRATION_DASHBOARD_DOC_PATH = "docs/integrations/nexuszap-plugin-api.md";
+export const INTEGRATION_DASHBOARD_DOC_PATH = "/integracoes/documentacao";
 export const INTEGRATION_DASHBOARD_RECENT_ACTIVITY_WINDOW_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_RECENT_LOG_LIMIT = 120;
 const DEFAULT_RECENT_ITEMS_PER_INSTANCE = 3;
