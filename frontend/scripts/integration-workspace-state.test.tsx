@@ -44,6 +44,7 @@ test("integration route renders the dedicated workspace sections", () => {
   assert.match(html, /Atualizar operação/);
   assert.match(html, /Abrir documentação/);
   assert.match(html, /href="\/integracoes\/documentacao"/);
+  assert.doesNotMatch(html, /Ver seção/);
   assert.doesNotMatch(html, /docs\/integrations\/nexuszap-plugin-api\.md/);
   assert.equal(EMPTY_INTEGRATIONS.documentation.path, INTEGRATION_DOCUMENTATION_ROUTE);
 });

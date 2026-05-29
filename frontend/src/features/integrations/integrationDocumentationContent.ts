@@ -2,6 +2,15 @@ export const INTEGRATION_DOCUMENTATION_ROUTE = "/integracoes/documentacao";
 export const INTEGRATION_ENDPOINT_PATH = "/api/integrations/events";
 export const INTEGRATION_ENDPOINT_URL_EXAMPLE = "https://painel.seudominio.com/api/integrations/events";
 
+export const INTEGRATION_DOCUMENTATION_TOPICS = [
+  { id: "visao-geral", label: "Visão geral" },
+  { id: "credenciais", label: "Credenciais" },
+  { id: "autenticacao-request", label: "Autenticação e request" },
+  { id: "eventos", label: "Eventos e regras" },
+  { id: "respostas-http", label: "Respostas HTTP" },
+  { id: "troubleshooting", label: "Troubleshooting" },
+] as const;
+
 export const INTEGRATION_CREDENTIAL_FIELDS = [
   {
     name: "endpointUrl",

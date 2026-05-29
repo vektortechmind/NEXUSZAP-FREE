@@ -128,13 +128,11 @@ export function summarizeIntegrationCards(items: IntegrationDashboardItem[]) {
     if (item.operationalStatus === "ACTIVE_RECENT_ACTIVITY") acc.recentActivity += 1;
     if (item.operationalStatus === "ACTIVE_IDLE") acc.idle += 1;
     if (item.operationalStatus === "INGRESS_ERROR" || item.operationalStatus === "DISPATCH_FAILED") acc.failures += 1;
-    if (item.credentialStatus === "MISSING") acc.missingCredential += 1;
     return acc;
   }, {
     activeConnections: 0,
     recentActivity: 0,
     idle: 0,
     failures: 0,
-    missingCredential: 0,
   });
 }

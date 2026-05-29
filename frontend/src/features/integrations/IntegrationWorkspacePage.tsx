@@ -1,4 +1,4 @@
-import { ArrowRight, BookOpenText, Cable, KeyRound, LifeBuoy, RefreshCw } from "lucide-react";
+import { BookOpenText, Cable, KeyRound, LifeBuoy, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "../../components/ui/Button";
 import { Panel } from "../../components/ui/Panel";
@@ -61,16 +61,18 @@ export function IntegrationWorkspacePage({
       <div className="grid gap-4 xl:grid-cols-3">
         {INTEGRATION_WORKSPACE_SECTIONS.map((section) => {
           const Icon = section.id === "credenciais" ? KeyRound : section.id === "operacao" ? Cable : BookOpenText;
+          const isDocumentation = section.id === "documentacao";
           return (
             <Panel key={section.id} className="p-5">
               <div className="flex items-start justify-between gap-3">
                 <div className="rounded-2xl bg-emerald-50 p-3 text-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-300">
                   <Icon size={20} aria-hidden="true" />
                 </div>
-                <a href={`#${section.id}`} className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-emerald-700 transition-colors hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-300">
-                  Ver seção
-                  <ArrowRight size={14} aria-hidden="true" />
-                </a>
+                {isDocumentation ? (
+                  <Link to={documentationPath} className="inline-flex min-h-9 items-center justify-center rounded-lg border border-emerald-600 bg-emerald-600 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-white shadow-sm transition-colors hover:border-emerald-500 hover:bg-emerald-500 dark:border-emerald-500 dark:bg-emerald-500 dark:text-slate-950 dark:hover:border-emerald-400 dark:hover:bg-emerald-400">
+                    Abrir documentação
+                  </Link>
+                ) : null}
               </div>
               <h2 className="mt-4 text-lg font-semibold text-slate-950 dark:text-slate-50">{section.label}</h2>
               <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">{section.description}</p>
@@ -106,10 +108,6 @@ export function IntegrationWorkspacePage({
               <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">Abra a documentação pública do endpoint para consultar auth, body, eventos suportados, respostas HTTP e troubleshooting. O fluxo correto continua sendo selecionar a instância e obter `instanceId`, `endpointUrl` e `secretToken` na seção `Credenciais` antes de configurar o sistema externo.</p>
             </div>
             <div className="flex flex-col items-stretch gap-3 sm:items-end">
-              <Link to={documentationPath} className="inline-flex min-h-10 items-center justify-center rounded-lg border border-emerald-600 bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:border-emerald-500 hover:bg-emerald-500 dark:border-emerald-500 dark:bg-emerald-500 dark:text-slate-950 dark:hover:border-emerald-400 dark:hover:bg-emerald-400">
-                <BookOpenText className="mr-2 h-4 w-4" aria-hidden="true" />
-                Abrir documentação
-              </Link>
               <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
                 <LifeBuoy size={14} aria-hidden="true" />
                 Story 040
