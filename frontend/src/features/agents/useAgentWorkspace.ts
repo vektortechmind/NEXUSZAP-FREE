@@ -48,6 +48,8 @@ export function useAgentWorkspace(addToast: (message: string, tone?: "success" |
   const accept = useMemo(() => ".pdf,.png,.jpg,.jpeg,.webp,.txt,.docx,.json", []);
   const telegramAvailable = Boolean(telegramStatus?.online && telegramStatus?.instanceId);
   const telegramInstanceId = telegramStatus?.instanceId ?? null;
+  const telegramBlockingReason = telegramConfig?.blockingReason ?? null;
+  const telegramWorkspaceId = telegramConfig?.agentWorkspaceId ?? null;
   const telegramAgent = useMemo(
     () => agents.find((item) => item.instanceId === telegramStatus?.instanceId) ?? null,
     [agents, telegramStatus?.instanceId],
@@ -246,7 +248,7 @@ export function useAgentWorkspace(addToast: (message: string, tone?: "success" |
       }));
       addToast(errorObj?.response?.data?.error || "Erro ao criar agente", "error");
     }
-  }, [addToast, closeCreateModal, createModal.channel, createModal.instanceId, createModal.name, loadOverview, navigate, telegramAgent, telegramAvailable, telegramStatus?.instanceId]);
+  }, [addToast, closeCreateModal, createModal.channel, createModal.instanceId, createModal.name, loadOverview, navigate, telegramAgent, telegramAvailable, telegramStatus]);
 
   const saveWorkspace = useCallback(async () => {
     if (!editor) return;
@@ -262,7 +264,7 @@ export function useAgentWorkspace(addToast: (message: string, tone?: "success" |
       });
       if (selectedIsTelegramWorkspace) {
         if (!telegramWorkspaceEditable) {
-          addToast(telegramConfig?.blockingReason || "Vincule um agente ao Telegram antes de editar o prompt.", "error");
+          addToast(telegramBlockingReason || "Vincule um agente ao Telegram antes de editar o prompt.", "error");
           return;
         }
         await api.put("/agent/telegram/config", { telegramSystemPrompt: editor.telegramPrompt });
@@ -276,7 +278,7 @@ export function useAgentWorkspace(addToast: (message: string, tone?: "success" |
     } finally {
       setSaving(false);
     }
-  }, [addToast, editor, loadOverview, loadSelectedWorkspace, selectedIsTelegramWorkspace, telegramConfig?.blockingReason, telegramWorkspaceEditable]);
+  }, [addToast, editor, loadOverview, loadSelectedWorkspace, selectedIsTelegramWorkspace, telegramBlockingReason, telegramWorkspaceEditable]);
 
   const deleteSelectedAgent = useCallback(async () => {
     if (!editor) return;
@@ -332,8 +334,8 @@ export function useAgentWorkspace(addToast: (message: string, tone?: "success" |
 
   const uploadTelegramFile = useCallback(async (file: File) => {
     if (!editor) return;
-    if (!telegramWorkspaceEditable || !telegramConfig?.agentWorkspaceId) {
-      addToast(telegramConfig?.blockingReason || "Vincule um agente ao Telegram antes de enviar arquivos.", "error");
+    if (!telegramWorkspaceEditable || !telegramWorkspaceId) {
+      addToast(telegramBlockingReason || "Vincule um agente ao Telegram antes de enviar arquivos.", "error");
       return;
     }
     setTelegramUploading(true);
@@ -341,8 +343,8 @@ export function useAgentWorkspace(addToast: (message: string, tone?: "success" |
     try {
       const fd = new FormData();
       fd.append("file", file);
-      await api.post(`/telegram-files/agent/${telegramConfig.agentWorkspaceId}/upload`, fd);
-      await refreshTelegramFiles(telegramConfig.agentWorkspaceId, true);
+      await api.post(`/telegram-files/agent/${telegramWorkspaceId}/upload`, fd);
+      await refreshTelegramFiles(telegramWorkspaceId, true);
       addToast("Arquivo do Telegram enviado com sucesso", "success");
     } catch (err) {
       console.error(err);
@@ -351,25 +353,25 @@ export function useAgentWorkspace(addToast: (message: string, tone?: "success" |
     } finally {
       setTelegramUploading(false);
     }
-  }, [addToast, editor, refreshTelegramFiles, telegramConfig?.agentWorkspaceId, telegramConfig?.blockingReason, telegramWorkspaceEditable]);
+  }, [addToast, editor, refreshTelegramFiles, telegramBlockingReason, telegramWorkspaceEditable, telegramWorkspaceId]);
 
   const removeTelegramFile = useCallback(async (fileId: string) => {
     if (!editor) return;
-    if (!telegramWorkspaceEditable || !telegramConfig?.agentWorkspaceId) {
-      addToast(telegramConfig?.blockingReason || "Vincule um agente ao Telegram antes de remover arquivos.", "error");
+    if (!telegramWorkspaceEditable || !telegramWorkspaceId) {
+      addToast(telegramBlockingReason || "Vincule um agente ao Telegram antes de remover arquivos.", "error");
       return;
     }
     if (!window.confirm("Excluir este arquivo da base de conhecimento do Telegram?")) return;
     try {
       await api.delete(`/telegram-files/${fileId}`);
-      await refreshTelegramFiles(telegramConfig.agentWorkspaceId, true);
+      await refreshTelegramFiles(telegramWorkspaceId, true);
       addToast("Arquivo do Telegram removido", "success");
     } catch (err) {
       console.error(err);
       setTelegramFilesError("Não foi possível remover o arquivo do Telegram.");
       addToast("Erro ao remover arquivo do Telegram", "error");
     }
-  }, [addToast, editor, refreshTelegramFiles, telegramConfig?.agentWorkspaceId, telegramConfig?.blockingReason, telegramWorkspaceEditable]);
+  }, [addToast, editor, refreshTelegramFiles, telegramBlockingReason, telegramWorkspaceEditable, telegramWorkspaceId]);
 
   return {
     navigate,
