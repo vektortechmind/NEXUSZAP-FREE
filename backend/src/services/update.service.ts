@@ -46,12 +46,14 @@ type UpdateStatusPayload = UpdateInfo & {
 
 function readVersionFile(): string | null {
   const candidates = [
+    process.env.UPDATE_VERSION_FILE,
     path.resolve(process.cwd(), "VERSION"),
     path.resolve(__dirname, "..", "..", "VERSION"),
+    process.env.UPDATE_WORKSPACE_DIR ? path.resolve(process.env.UPDATE_WORKSPACE_DIR, "backend", "VERSION") : null,
   ];
 
   for (const filePath of candidates) {
-    if (!existsSync(filePath)) continue;
+    if (!filePath || !existsSync(filePath)) continue;
     const version = readFileSync(filePath, "utf8").trim();
     if (version) return version;
   }
@@ -59,14 +61,64 @@ function readVersionFile(): string | null {
   return null;
 }
 
+function resolveUpdateWorkspaceDir() {
+  const candidates = [
+    process.env.UPDATE_WORKSPACE_DIR,
+    process.cwd(),
+    path.resolve(process.cwd(), ".."),
+  ];
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    const resolved = path.resolve(candidate);
+    if (existsSync(path.join(resolved, "update.sh"))) {
+      return resolved;
+    }
+  }
+
+  return path.resolve(process.cwd(), "..");
+}
+
+function writeStoredJob(job: StoredUpdateJob) {
+  ensureUpdateStorage();
+  writeFileSync(UPDATE_JOB_FILE, JSON.stringify(job, null, 2));
+}
+
+function reconcileRecoveredJob(job: StoredUpdateJob | null): StoredUpdateJob | null {
+  if (!job || !isActiveJob(job.status)) return job;
+
+  const currentVersion = parseVersion(readVersionFile() || process.env.APP_VERSION || CURRENT_VERSION);
+  const targetVersion = parseVersion(job.targetVersion);
+
+  if (hasUpdate(currentVersion, targetVersion)) {
+    return job;
+  }
+
+  const recovered: StoredUpdateJob = {
+    ...job,
+    status: "success",
+    finishedAt: job.finishedAt ?? new Date().toISOString(),
+    summary: "Atualização concluída após reinício do serviço.",
+    error: null,
+  };
+
+  writeStoredJob(recovered);
+  return recovered;
+}
+
 const CURRENT_VERSION = readVersionFile() || process.env.APP_VERSION || "v0.0.0";
 const GITHUB_REPO = process.env.GITHUB_REPO || (process.env.NODE_ENV === "production" ? "" : "owner/repo");
-const UPDATE_STORAGE_DIR = path.resolve(process.cwd(), "..", "updates");
+const UPDATE_WORKSPACE_DIR = resolveUpdateWorkspaceDir();
+const UPDATE_STORAGE_DIR = process.env.UPDATE_STORAGE_DIR
+  ? path.resolve(process.env.UPDATE_STORAGE_DIR)
+  : path.join(UPDATE_WORKSPACE_DIR, "updates");
 const UPDATE_JOB_FILE = path.join(UPDATE_STORAGE_DIR, "update-job.json");
 const UPDATE_JOB_LOG_FILE = path.join(UPDATE_STORAGE_DIR, "update-job.log");
 const UPDATE_JOB_LOCK_FILE = path.join(UPDATE_STORAGE_DIR, "update-job.lock");
 const UPDATE_RUNNER_SCRIPT = path.resolve(process.cwd(), "scripts", "update-job-runner.cjs");
-const OFFICIAL_UPDATE_SCRIPT = path.resolve(process.cwd(), "..", "update.sh");
+const OFFICIAL_UPDATE_SCRIPT = process.env.UPDATE_SCRIPT_PATH
+  ? path.resolve(process.env.UPDATE_SCRIPT_PATH)
+  : path.join(UPDATE_WORKSPACE_DIR, "update.sh");
 
 function ensureUpdateStorage() {
   mkdirSync(UPDATE_STORAGE_DIR, { recursive: true });
@@ -102,7 +154,8 @@ function readStoredJob(): StoredUpdateJob | null {
   if (!existsSync(UPDATE_JOB_FILE)) return null;
 
   try {
-    return JSON.parse(readFileSync(UPDATE_JOB_FILE, "utf8")) as StoredUpdateJob;
+    const stored = JSON.parse(readFileSync(UPDATE_JOB_FILE, "utf8")) as StoredUpdateJob;
+    return reconcileRecoveredJob(stored);
   } catch {
     return null;
   }
@@ -239,7 +292,7 @@ export async function startUpdateJob() {
 
     ensureUpdateStorage();
     writeFileSync(UPDATE_JOB_LOG_FILE, "");
-    writeFileSync(UPDATE_JOB_FILE, JSON.stringify(job, null, 2));
+    writeStoredJob(job);
 
     const { spawn } = await import("node:child_process");
     const out = openSync(UPDATE_JOB_LOG_FILE, "a");
@@ -265,7 +318,7 @@ export async function startUpdateJob() {
       pid: child.pid ?? null,
       summary: child.pid ? `Worker de update iniciado (pid ${child.pid}).` : "Worker de update iniciado.",
     };
-    writeFileSync(UPDATE_JOB_FILE, JSON.stringify(persisted, null, 2));
+    writeStoredJob(persisted);
 
     return toJobView(persisted);
   } finally {
@@ -334,4 +387,13 @@ export async function getTokenStatus(): Promise<{ configured: boolean; masked: s
   return { configured: true, masked: maskStoredSecret(settings.githubToken) };
 }
 
-export { CURRENT_VERSION, GITHUB_REPO, getRepoParts, OFFICIAL_UPDATE_SCRIPT, UPDATE_JOB_FILE, UPDATE_JOB_LOG_FILE };
+export {
+  CURRENT_VERSION,
+  GITHUB_REPO,
+  getRepoParts,
+  OFFICIAL_UPDATE_SCRIPT,
+  UPDATE_JOB_FILE,
+  UPDATE_JOB_LOG_FILE,
+  UPDATE_STORAGE_DIR,
+  UPDATE_WORKSPACE_DIR,
+};
