@@ -18,6 +18,10 @@ import {
   UnsupportedIntegrationEventError,
   integrationEventCatalogService,
 } from "../services/integrations/integrationEventCatalog.service";
+import {
+  IntegrationDispatchRuntimeError,
+  integrationDispatchRuntimeService,
+} from "../services/integrations/integrationDispatchRuntime.service";
 import { redactSensitiveText, safeLogError } from "../utils/redaction";
 
 const integrationHeadersSchema = {
@@ -80,8 +84,9 @@ type IntegrationEventBody = {
 
 type IntegrationRouteDeps = {
   authService?: Pick<typeof integrationAuthService, "authorizeRequest">;
-  ingressService?: Pick<typeof integrationIngressService, "persistLog">;
+  ingressService?: Pick<typeof integrationIngressService, "persistLog" | "updateLog">;
   eventCatalogService?: Pick<typeof integrationEventCatalogService, "normalizeEventContext">;
+  dispatchRuntimeService?: Pick<typeof integrationDispatchRuntimeService, "dispatchEvent">;
 };
 
 function extractBearerToken(headerValue: string): string {
@@ -124,6 +129,9 @@ function authFailureMessage(error: Error): { statusCode: number; code: string; m
   if (error instanceof DuplicateIntegrationRequestError) {
     return { statusCode: 409, code: error.code, message: error.message };
   }
+  if (error instanceof IntegrationDispatchRuntimeError) {
+    return { statusCode: error.statusCode, code: error.code, message: error.message };
+  }
   return { statusCode: 500, code: "INTEGRATION_INGRESS_INTERNAL_ERROR", message: "Erro interno ao processar ingresso do evento." };
 }
 
@@ -131,6 +139,7 @@ export function createIntegrationRoutes(deps: IntegrationRouteDeps = {}) {
   const authService = deps.authService ?? integrationAuthService;
   const ingressService = deps.ingressService ?? integrationIngressService;
   const eventCatalogService = deps.eventCatalogService ?? integrationEventCatalogService;
+  const dispatchRuntimeService = deps.dispatchRuntimeService ?? integrationDispatchRuntimeService;
 
   return async function integrationRoutes(fastify: FastifyInstance) {
     fastify.post<{ Headers: IntegrationEventHeaders; Body: IntegrationEventBody }>("/events", {
@@ -217,15 +226,24 @@ export function createIntegrationRoutes(deps: IntegrationRouteDeps = {}) {
         return sendError(reply, mapped.statusCode, mapped.code, mapped.message);
       }
 
+      const ingressLog = await ingressService.persistLog({
+        credentialId: authorization.credential.id,
+        instanceId: body.instanceId,
+        eventSlug: body.event,
+        dedupKey: body.dedupKey,
+        requestTimestamp: authorization.requestTimestamp,
+        status: INTEGRATION_INGRESS_STATUS.ACCEPTED,
+        failureCode: null,
+        payload: body.payload,
+      });
+
       try {
-        const ingressLog = await ingressService.persistLog({
+        const dispatchResult = await dispatchRuntimeService.dispatchEvent({
+          ingressLogId: ingressLog.id,
           credentialId: authorization.credential.id,
           instanceId: body.instanceId,
           eventSlug: body.event,
           dedupKey: body.dedupKey,
-          requestTimestamp: authorization.requestTimestamp,
-          status: INTEGRATION_INGRESS_STATUS.ACCEPTED,
-          failureCode: null,
           payload: body.payload,
         });
 
@@ -234,25 +252,23 @@ export function createIntegrationRoutes(deps: IntegrationRouteDeps = {}) {
           success: true,
           data: {
             ingressId: ingressLog.id,
+            dispatchId: dispatchResult.dispatchLog.id,
+            providerMessageId: dispatchResult.providerMessageId,
             status: "accepted",
             instanceId: body.instanceId,
             event: body.event,
           },
         });
       } catch (error) {
-        await ingressService.persistLog({
-          credentialId: authorization?.credential.id ?? null,
-          instanceId: body.instanceId,
-          eventSlug: body.event,
-          dedupKey: body.dedupKey,
-          requestTimestamp: authorization?.requestTimestamp ?? parseOptionalDate(body.timestamp),
+        const mapped = authFailureMessage(error as Error);
+        await ingressService.updateLog(ingressLog.id, {
           status: INTEGRATION_INGRESS_STATUS.ERROR,
-          failureCode: "INTEGRATION_INGRESS_INTERNAL_ERROR",
-          payload: body.payload,
+          failureCode: mapped.code,
+          processedAt: new Date(),
         });
 
         fastify.log.error({ ingress: requestSummary(request), err: safeLogError(error) }, "integration ingress request failed");
-        return sendError(reply, 500, "INTEGRATION_INGRESS_INTERNAL_ERROR", "Erro interno ao processar ingresso do evento.");
+        return sendError(reply, mapped.statusCode, mapped.code, mapped.message);
       }
     });
   };

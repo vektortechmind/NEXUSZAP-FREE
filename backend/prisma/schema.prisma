@@ -32,6 +32,17 @@ enum IntegrationIngressStatus {
   ERROR
 }
 
+enum IntegrationDispatchStatus {
+  PENDING_RUNTIME
+  SENT
+  FAILED_INSTANCE_NOT_FOUND
+  FAILED_INSTANCE_OFFLINE
+  FAILED_RECIPIENT_MISSING
+  FAILED_TEMPLATE_RENDER
+  FAILED_SEND
+  ERROR
+}
+
 model Instance {
   id                  String         @id @default(uuid())
   slot                Int            @unique
@@ -186,6 +197,29 @@ model IntegrationIngressLog {
   @@index([instanceId, receivedAt])
   @@index([status, receivedAt])
   @@index([dedupKey])
+}
+
+model IntegrationDispatchLog {
+  id               String                    @id @default(uuid())
+  ingressLogId     String?
+  credentialId     String?
+  instanceId       String?
+  eventSlug        String?
+  dedupKey         String?
+  recipientJid     String?
+  messageType      String?
+  dispatchStatus   IntegrationDispatchStatus
+  failureCode      String?
+  providerMessageId String?
+  payloadSummaryJson String?
+  createdAt        DateTime                  @default(now())
+  processedAt      DateTime?
+
+  @@index([instanceId, createdAt])
+  @@index([dispatchStatus, createdAt])
+  @@index([eventSlug, createdAt])
+  @@index([dedupKey])
+  @@index([ingressLogId])
 }
 
 model Settings {

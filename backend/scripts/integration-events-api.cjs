@@ -24,9 +24,15 @@ const {
   createInMemoryIntegrationIngressStore,
   createIntegrationIngressService,
 } = require("../src/services/integrations/integrationIngress.service.ts");
+const {
+  IntegrationDispatchRecipientMissingError,
+} = require("../src/services/integrations/integrationDispatchRuntime.service.ts");
 const { createIntegrationRoutes } = require("../src/routes/integration.routes.ts");
 
-function createApp(authBehavior) {
+function createApp(authBehavior, dispatchBehavior = async () => ({
+  dispatchLog: { id: "dispatch-1" },
+  providerMessageId: "wamid.123",
+})) {
   const app = Fastify();
   const logStore = createInMemoryIntegrationIngressStore();
   const ingressService = createIntegrationIngressService(logStore);
@@ -36,6 +42,9 @@ function createApp(authBehavior) {
       authorizeRequest: authBehavior,
     },
     ingressService,
+    dispatchRuntimeService: {
+      dispatchEvent: dispatchBehavior,
+    },
   }), { prefix: "/api/integrations" });
 
   return { app, logStore };
@@ -199,9 +208,33 @@ function validPayload(overrides = {}) {
     const parsed = JSON.parse(response.body);
     assert.equal(parsed.success, true);
     assert.equal(parsed.data.status, "accepted");
+    assert.equal(parsed.data.dispatchId, "dispatch-1");
+    assert.equal(parsed.data.providerMessageId, "wamid.123");
     const stored = Array.from(logStore.logs.values())[0];
     assert.equal(stored.status, INTEGRATION_INGRESS_STATUS.ACCEPTED);
     assert.equal(stored.credentialId, "cred-accepted");
+    await app.close();
+  }
+
+  {
+    const { app, logStore } = createApp(async () => ({
+      credential: { id: "cred-dispatch-fail" },
+      requestTimestamp: new Date("2026-05-29T14:00:00.000Z"),
+    }), async () => {
+      throw new IntegrationDispatchRecipientMissingError("pedido_pago");
+    });
+    await app.ready();
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/integrations/events",
+      headers: { authorization: "Bearer valid-token" },
+      payload: validPayload({ dedupKey: "evt-dispatch-fail" }),
+    });
+    assert.equal(response.statusCode, 422, response.body);
+    assert.equal(JSON.parse(response.body).error.code, "INTEGRATION_DISPATCH_RECIPIENT_MISSING");
+    const stored = Array.from(logStore.logs.values())[0];
+    assert.equal(stored.status, INTEGRATION_INGRESS_STATUS.ERROR);
+    assert.equal(stored.failureCode, "INTEGRATION_DISPATCH_RECIPIENT_MISSING");
     await app.close();
   }
 
