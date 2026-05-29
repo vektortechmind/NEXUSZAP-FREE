@@ -164,13 +164,17 @@ export function buildSafeDownloadHeaders(filename: string, mimetype: string) {
 }
 
 export async function assertStorageQuota(input: {
-  existingFiles: Array<{ data: Buffer | Uint8Array }>;
+  existingFiles: Array<{ sizeBytes?: number | null; data?: Buffer | Uint8Array | null }>;
   nextBytes: number;
 }) {
   if (input.existingFiles.length >= MAX_FILES_PER_INSTANCE_CHANNEL) {
     throw new FileSecurityError("Cota de quantidade de arquivos atingida.", "FILE_COUNT_QUOTA_EXCEEDED");
   }
-  const currentBytes = input.existingFiles.reduce((sum, file) => sum + Buffer.from(file.data).length, 0);
+  const currentBytes = input.existingFiles.reduce((sum, file) => {
+    if (typeof file.sizeBytes === "number" && file.sizeBytes > 0) return sum + file.sizeBytes;
+    if (file.data) return sum + Buffer.from(file.data).length;
+    return sum;
+  }, 0);
   if (currentBytes + input.nextBytes > MAX_TOTAL_BYTES_PER_INSTANCE_CHANNEL) {
     throw new FileSecurityError("Cota de armazenamento de arquivos atingida.", "FILE_SIZE_QUOTA_EXCEEDED");
   }

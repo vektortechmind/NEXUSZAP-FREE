@@ -6,7 +6,6 @@ import { ToastProvider } from "./contexts/ToastContext";
 import { Login } from "./pages/Login";
 import { Instancia } from "./pages/Instancia";
 import { Agente } from "./pages/Agente";
-import { Telegram } from "./pages/Telegram";
 import { Apis } from "./pages/Apis";
 import { Dashboard } from "./pages/Dashboard";
 import { DockerSetup } from "./pages/DockerSetup";
@@ -109,7 +108,7 @@ function AppRoutes() {
       <Route element={<PrivateRoute />}>
         <Route index element={<Instancia />} />
         <Route path="agente" element={<Agente />} />
-        <Route path="telegram" element={<Telegram />} />
+        <Route path="telegram" element={<Navigate to="/agente" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="settings" element={<Apis />} />
       </Route>

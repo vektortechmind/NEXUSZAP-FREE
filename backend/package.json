@@ -1,10 +1,11 @@
 {
   "name": "backend",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node scripts/security-api.cjs && node scripts/secrets-api.cjs && node scripts/file-security.cjs && node scripts/prompt-injection.cjs && node scripts/update-disabled.cjs && node scripts/setup-api.cjs && node scripts/ops-postgresql-cleanup.cjs && node scripts/smoke-api.cjs",
+    "test": "node scripts/integration-dashboard-api.cjs && node scripts/integration-dispatch-runtime-api.cjs && node scripts/integration-dispatch-template-api.cjs && node scripts/integration-event-normalization-api.cjs && node scripts/integration-events-api.cjs && node scripts/integration-auth-api.cjs && node scripts/security-api.cjs && node scripts/secrets-api.cjs && node scripts/file-security.cjs && node scripts/prompt-injection.cjs && node scripts/update-disabled.cjs && node scripts/setup-api.cjs && node scripts/ops-postgresql-cleanup.cjs && node scripts/smoke-api.cjs && node scripts/instance-cards-api.cjs && node scripts/provider-fallback-api.cjs && node scripts/knowledge-isolation-api.cjs && node scripts/memory-runtime-api.cjs && node scripts/local-file-storage-api.cjs",
+    "typecheck": "tsc --noEmit",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
     "start:prod": "node dist/server.js",
@@ -14,6 +15,7 @@
     "db:studio": "prisma studio",
     "backup": "node scripts/backup-db.cjs",
     "smoke": "node scripts/smoke-api.cjs",
+    "test:instance-cards": "node scripts/instance-cards-api.cjs",
     "db:migrate:dev": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy"
   },
@@ -52,3 +54,5 @@
     "typescript": "^6.0.3"
   }
 }
+
+

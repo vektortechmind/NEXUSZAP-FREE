@@ -8,9 +8,10 @@ import { Boom } from "@hapi/boom";
 import NodeCache from "node-cache";
 import P from "pino";
 import { prisma } from "../database/prisma";
-import { getOrCreatePrimaryInstance, getPrimaryInstance, listInstances } from "../services/instance.service";
+import { getOrCreatePrimaryInstance, getPrimaryInstance, listInstances } from "../services/instances/instance.service";
 import { safeLogError } from "../utils/redaction";
-import { onInstanceLabelEdit } from "./labelsCache";
+import { clearLabelsForInstance, getLabelsCacheDiagnostics, onInstanceLabelEdit } from "./labelsCache";
+import { clearLastMessagesForInstance, getLastMessageCacheDiagnostics } from "./lastMessageCache";
 import { handleIncomingMessage } from "./messageHandler";
 import { usePrismaAuthState } from "./prismaAuth";
 
@@ -101,6 +102,8 @@ export class InstanceManager {
 
         if (statusCode === DisconnectReason.loggedOut) {
           await prisma.session.deleteMany({ where: { instanceId } });
+          clearLastMessagesForInstance(instanceId);
+          clearLabelsForInstance(instanceId);
           console.log(`[Baileys] Logout detectado na instância ${instanceId}. Sessão limpa.`);
         }
       }
@@ -141,6 +144,8 @@ export class InstanceManager {
 
   static async loadInstancesOnBoot(): Promise<void> {
     const instances = await listInstances();
+    let restored = 0;
+    let skipped = 0;
 
     for (const instance of instances) {
       const session = await prisma.session.findUnique({
@@ -148,13 +153,23 @@ export class InstanceManager {
       });
 
       if (!session) {
+        skipped += 1;
         console.log(`[Baileys] Boot: Nenhuma sessão salva para "${instance.name}".`);
         continue;
       }
 
       console.log(`[Baileys] Boot: Restaurando sessão do agente "${instance.name}"...`);
       await this.start(instance.id);
+      restored += 1;
     }
+
+    console.info("[Baileys] Boot: reconstrução de runtime concluída", {
+      restored,
+      skipped,
+      runtimeEntries: this.runtimes.size,
+      labelCache: getLabelsCacheDiagnostics(),
+      lastMessageCache: getLastMessageCacheDiagnostics(),
+    });
   }
 
   static async start(instanceId?: string, onQr?: (qr: string) => void, opts?: { userInitiated?: boolean }) {
@@ -223,6 +238,9 @@ export class InstanceManager {
       runtime.sock = null;
     }
 
+    clearLastMessagesForInstance(instance.id);
+    clearLabelsForInstance(instance.id);
+
     await prisma.instance.update({
       where: { id: instance.id },
       data: { status: "DISCONNECTED" },
@@ -243,5 +261,18 @@ export class InstanceManager {
   static isRunning(instanceId?: string): boolean {
     if (instanceId) return !!this.ensureRuntime(instanceId).sock;
     return [...this.runtimes.values()].some((runtime) => !!runtime.sock);
+  }
+
+  static getRuntimeDiagnostics() {
+    return {
+      runtimes: Array.from(this.runtimes.entries()).map(([instanceId, runtime]) => ({
+        instanceId,
+        running: !!runtime.sock,
+        starting: runtime.starting,
+        manualStop: runtime.manualStop,
+        hasQr: !!runtime.lastQr,
+      })),
+      total: this.runtimes.size,
+    };
   }
 }

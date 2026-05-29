@@ -9,11 +9,10 @@ type HeaderProps = {
 };
 
 const routeMeta = [
-  { match: (path: string) => path === "/", section: "Operação", title: "Instâncias", description: "Conexões WhatsApp, Telegram e IA por canal" },
-  { match: (path: string) => path.startsWith("/dashboard"), section: "Operação", title: "Dashboard", description: "Visão de status, mensagens e arquivos" },
-  { match: (path: string) => path.startsWith("/agente"), section: "Inteligência", title: "Agente IA", description: "Prompt, personalidade e base de conhecimento" },
-  { match: (path: string) => path.startsWith("/telegram"), section: "Inteligência", title: "Telegram IA", description: "Configuração e operação do canal Telegram" },
-  { match: (path: string) => path.startsWith("/settings"), section: "Sistema", title: "Configurações", description: "Provedores, chaves de API e atualizações" },
+  { match: (path: string) => path === "/", title: "Instâncias" },
+  { match: (path: string) => path.startsWith("/dashboard"), title: "Dashboard" },
+  { match: (path: string) => path.startsWith("/agente") || path.startsWith("/telegram"), title: "Agentes" },
+  { match: (path: string) => path.startsWith("/settings"), title: "Configurações" },
 ];
 
 function getRouteMeta(pathname: string) {
@@ -25,8 +24,8 @@ export function Header({ onOpenMobileSidebar, actions }: HeaderProps) {
   const meta = getRouteMeta(pathname);
 
   return (
-    <header className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-      <div className="flex items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+    <header className="px-4 pt-4 sm:px-6 sm:pt-6 lg:px-8">
+      <div className="flex items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
@@ -38,13 +37,7 @@ export function Header({ onOpenMobileSidebar, actions }: HeaderProps) {
             <Menu size={18} />
           </button>
           <div className="min-w-0">
-            <nav className="mb-1 flex items-center gap-1 text-xs font-medium text-slate-500 dark:text-slate-500" aria-label="Breadcrumb">
-              <span>NexusZAP</span>
-              <span aria-hidden="true">/</span>
-              <span className="text-slate-700 dark:text-slate-300">{meta.section}</span>
-            </nav>
-            <h2 className="truncate text-xl font-semibold tracking-normal text-slate-950 dark:text-slate-50 sm:text-2xl">{meta.title}</h2>
-            <p className="truncate text-sm text-slate-600 dark:text-slate-400">{meta.description}</p>
+            <h1 className="truncate text-xl font-semibold tracking-normal text-slate-950 dark:text-slate-50 sm:text-2xl">{meta.title}</h1>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">

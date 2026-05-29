@@ -2,17 +2,34 @@
 
 Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
+## [1.0.3] - 2026-05-29
+
+### Added
+
+- Modelo de autenticação de integrações por instância com persistência dedicada no backend.
+- Endpoint de ingress para eventos de plugin com normalização e trilha operacional de recebimento.
+- Catálogo oficial de eventos suportados para integrações e templates predefinidos de dispatch.
+- Observabilidade de dispatch em runtime com histórico operacional para integrações Baileys.
+- Endpoint `GET /api/dashboard/integrations` e visão consolidada no dashboard para credenciais, ingressos, dispatches e saúde operacional.
+- Teste leve do estado do dashboard de integrações no frontend e suíte de API para os fluxos de integração no backend.
+
+### Changed
+
+- Gates de qualidade do projeto passaram a expor `npm run lint` e `npm run typecheck` no nível raiz.
+- Dashboard principal passou a exibir um overview operacional de integrações sem exigir navegação para uma tela separada.
+- Documentação e artefatos públicos de integração foram consolidados para refletir o fluxo atual do plugin/API.
+- Versão do frontend, backend, `backend/VERSION`, `README` e artefatos de release atualizada para `1.0.3`.
+
 ## [1.0.2] - 2026-05-28
 
 ### Added
 
-- Configuração de voz por agente com persistência dedicada em `Agent.voiceEnabled`, `Agent.voiceProvider`, `Agent.voiceModel` e `Agent.voicePersona`.
-- Catálogo operacional de voz em `GET /api/agent/agents/voice-options`, inicialmente limitado ao suporte real de `Groq Audio` com `whisper-large-v3-turbo`.
-- Nova seção `Voz do agente` na UI com separação explícita entre provedor textual da instância e provedor de voz do agente.
+- Controle por agente para habilitar ou desabilitar a transcrição de áudio recebida do cliente.
+- Nova opção na configuração do agente para aplicar a transcrição usando o provedor já definido no runtime da instância.
 
 ### Changed
 
-- Fluxo de transcrição de áudio passou a respeitar a configuração de voz do agente sem sobrescrever o runtime textual da instância WhatsApp.
+- Fluxo de transcrição de áudio passou a respeitar o toggle do agente sem criar um runtime de voz separado da instância WhatsApp.
 - Stories `011` e `012` foram validadas em QA e fechadas no backlog de documentação.
 - Versão do frontend, backend, `backend/VERSION`, `README` e artefatos de release atualizada para `1.0.2`.
 
