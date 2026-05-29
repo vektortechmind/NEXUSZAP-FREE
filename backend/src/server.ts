@@ -16,6 +16,7 @@ import { telegramFilesRoutes } from "./routes/telegram-files.routes";
 import { dashboardRoutes } from "./routes/dashboard.routes";
 import updateRoutes from "./routes/update.routes";
 import { setupRoutes } from "./routes/setup.routes";
+import { integrationRoutes } from "./routes/integration.routes";
 import { InstanceManager } from "./whatsapp/InstanceManager";
 import { TelegramBotManager } from "./telegram/TelegramBotManager";
 import { buildAllowedOrigins, createOriginGuard, isCorsOriginAllowedForRequest, verifyCsrf } from "./security/middlewares";
@@ -29,7 +30,7 @@ export async function buildServer() {
 
   await fastify.register(helmet, {
     global: true,
-    contentSecurityPolicy: true
+    contentSecurityPolicy: true,
   });
 
   const defaultOrigins = ["http://localhost:5173", "http://127.0.0.1:5173"];
@@ -46,10 +47,10 @@ export async function buildServer() {
       const corsOptions: FastifyCorsOptions = {
         origin: isCorsOriginAllowedForRequest(request, allowedOrigins, env.NODE_ENV),
         credentials: true,
-        methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+        methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       };
       callback(null, {
-        ...corsOptions
+        ...corsOptions,
       });
     };
   });
@@ -63,19 +64,19 @@ export async function buildServer() {
     secret: env.JWT_SECRET,
     cookie: {
       cookieName: "token",
-      signed: false
-    }
+      signed: false,
+    },
   });
 
   await fastify.register(multipart, {
     limits: {
-      fileSize: 5 * 1024 * 1024
-    }
+      fileSize: 5 * 1024 * 1024,
+    },
   });
 
   await fastify.register(rateLimit, {
     max: 800,
-    timeWindow: "1 minute"
+    timeWindow: "1 minute",
   });
 
   fastify.get("/api/ping", { config: { rateLimit: false } }, async () => {
@@ -99,6 +100,7 @@ export async function buildServer() {
   await fastify.register(dashboardRoutes, { prefix: "/api/dashboard" });
   await fastify.register(updateRoutes, { prefix: "/api" });
   await fastify.register(setupRoutes, { prefix: "/api/setup" });
+  await fastify.register(integrationRoutes, { prefix: "/api/integrations" });
 
   return fastify;
 }

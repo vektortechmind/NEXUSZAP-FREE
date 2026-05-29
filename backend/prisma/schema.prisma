@@ -23,6 +23,15 @@ enum IntegrationCredentialStatus {
   REVOKED
 }
 
+enum IntegrationIngressStatus {
+  ACCEPTED
+  REJECTED_AUTH
+  REJECTED_CONTRACT
+  REJECTED_REPLAY
+  REJECTED_DUPLICATE
+  ERROR
+}
+
 model Instance {
   id                  String         @id @default(uuid())
   slot                Int            @unique
@@ -161,9 +170,26 @@ model IntegrationReplayKey {
   @@index([expiresAt])
 }
 
+model IntegrationIngressLog {
+  id               String                  @id @default(uuid())
+  credentialId     String?
+  instanceId       String?
+  eventSlug        String?
+  dedupKey         String?
+  requestTimestamp DateTime?
+  status           IntegrationIngressStatus
+  failureCode      String?
+  payloadJson      String?
+  receivedAt       DateTime                @default(now())
+  processedAt      DateTime?
+
+  @@index([instanceId, receivedAt])
+  @@index([status, receivedAt])
+  @@index([dedupKey])
+}
+
 model Settings {
   id          String   @id @default("github_update_settings")
   githubToken String?
   updatedAt   DateTime @updatedAt
 }
-
