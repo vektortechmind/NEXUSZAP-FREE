@@ -24,8 +24,8 @@ export function Header({ onOpenMobileSidebar, actions }: HeaderProps) {
   const meta = getRouteMeta(pathname);
 
   return (
-    <header className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-      <div className="flex items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
+    <header className="px-4 pt-4 sm:px-6 sm:pt-6 lg:px-8">
+      <div className="flex items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
