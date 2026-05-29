@@ -37,11 +37,6 @@ export function Header({ onOpenMobileSidebar, actions }: HeaderProps) {
             <Menu size={18} />
           </button>
           <div className="min-w-0">
-            <nav className="mb-1 flex items-center gap-1 text-xs font-medium text-slate-500 dark:text-slate-500" aria-label="Breadcrumb">
-              <span>NexusZAP</span>
-              <span aria-hidden="true">/</span>
-              <span className="text-slate-700 dark:text-slate-300">{meta.section}</span>
-            </nav>
             <h2 className="truncate text-xl font-semibold tracking-normal text-slate-950 dark:text-slate-50 sm:text-2xl">{meta.title}</h2>
             <p className="truncate text-sm text-slate-600 dark:text-slate-400">{meta.description}</p>
           </div>

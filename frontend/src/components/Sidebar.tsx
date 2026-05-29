@@ -50,7 +50,7 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
       <aside
         onMouseEnter={() => setDesktopExpanded(true)}
         onMouseLeave={() => setDesktopExpanded(false)}
-        className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-slate-200 bg-white transition-[width,transform] duration-200 dark:border-slate-800 dark:bg-slate-950 lg:static lg:translate-x-0 ${desktopExpanded ? "lg:w-72" : "lg:w-20"} ${
+        className={`fixed inset-y-0 left-0 z-40 flex w-64 flex-col border-r border-slate-200 bg-white transition-[width,transform] duration-200 dark:border-slate-800 dark:bg-slate-950 lg:static lg:translate-x-0 ${desktopExpanded ? "lg:w-64" : "lg:w-[4.5rem]"} ${
           mobileOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -67,7 +67,7 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm dark:bg-emerald-500 dark:text-slate-950">
               <Bot size={22} />
             </div>
-            <div className={`min-w-0 overflow-hidden transition-[max-width,opacity] duration-200 ${desktopExpanded ? "lg:max-w-[10rem] lg:opacity-100" : "lg:max-w-0 lg:opacity-0"}`}>
+            <div className={`min-w-0 overflow-hidden transition-[max-width,opacity] duration-200 ${desktopExpanded ? "lg:max-w-[8.5rem] lg:opacity-100" : "lg:max-w-0 lg:opacity-0"}`}>
               <h1 className="text-lg font-semibold text-slate-950 dark:text-slate-50">
                 Nexus<span className="text-emerald-600 dark:text-emerald-400">ZAP</span>
               </h1>
@@ -101,7 +101,7 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
                       <span className={isActive ? "text-emerald-700 dark:text-emerald-400" : "text-slate-500 dark:text-slate-400"}>
                         {nav.icon}
                       </span>
-                      <span className={`truncate overflow-hidden transition-[max-width,opacity] duration-200 ${desktopExpanded ? "lg:max-w-[10rem] lg:opacity-100" : "lg:max-w-0 lg:opacity-0"}`}>{nav.name}</span>
+                      <span className={`truncate overflow-hidden transition-[max-width,opacity] duration-200 ${desktopExpanded ? "lg:max-w-[8.5rem] lg:opacity-100" : "lg:max-w-0 lg:opacity-0"}`}>{nav.name}</span>
                       {isActive && <span className={`ml-auto h-1.5 w-1.5 rounded-full bg-emerald-500 transition-opacity duration-200 ${desktopExpanded ? "lg:opacity-100" : "lg:opacity-0"}`} aria-hidden="true" />}
                     </Link>
                   );
