@@ -1,7 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
-import { api } from "../lib/axios";
-import { AlertCircle, Bot, FileAudio2, FileText, Plus, RefreshCw, Save, Trash2, Upload } from "lucide-react";
+import { AlertCircle, Bot, MessageCircle, Save, Send, X } from "lucide-react";
 import { Button } from "../components/ui/Button";
 import { EmptyState } from "../components/ui/EmptyState";
 import { InlineAlert } from "../components/ui/InlineAlert";
@@ -9,596 +6,88 @@ import { Panel } from "../components/ui/Panel";
 import { Section } from "../components/ui/Section";
 import { Skeleton } from "../components/ui/Skeleton";
 import { StatusDot } from "../components/ui/StatusDot";
+import { Tabs } from "../components/ui/Tabs";
 import { Toolbar } from "../components/ui/Toolbar";
 import { useToast } from "../contexts/ToastContext";
-
-type AgentSummary = {
-  id: string;
-  name: string;
-  telegramEnabled: boolean;
-  voiceEnabled: boolean;
-  voiceProvider: "groq" | null;
-  voiceModel: string | null;
-  voicePersona: string | null;
-  voiceModelFallback: boolean;
-  createdAt: string;
-  instanceId: string;
-  instanceName: string;
-  instanceSlot: number;
-  instanceStatus: string;
-  instanceChatProvider: "groq" | "gemini" | "openrouter" | null;
-  instanceOpenrouterModel: string | null;
-  systemPrompt?: string | null;
-};
-
-type AgentWorkspace = AgentSummary & {
-  systemPrompt: string | null;
-};
-
-type VoiceProviderOption = {
-  id: "groq";
-  label: string;
-  description: string;
-  supportsModel: boolean;
-  defaultModel: string;
-  models: Array<{
-    id: string;
-    label: string;
-    description: string;
-  }>;
-};
-
-type VoiceOptionsResponse = {
-  providers: VoiceProviderOption[];
-  defaults: {
-    voiceEnabled: boolean;
-  };
-};
-
-type EligibleInstance = {
-  id: string;
-  slot: number;
-  name: string;
-  status: string;
-  available: boolean;
-  occupied: boolean;
-};
-
-type KnowledgeFile = {
-  id: string;
-  filename: string;
-  mimetype: string;
-  createdAt: string;
-};
+import { KnowledgeFilesSection } from "../features/agents/components/KnowledgeFilesSection";
+import { useAgentWorkspace } from "../features/agents/useAgentWorkspace";
+import type { CreateChannel, StatusTone } from "../features/agents/types";
 
 function AgentSkeleton() {
-  return (
-    <div className="space-y-6" aria-busy="true">
-      <Skeleton className="h-16" />
-      <Skeleton className="h-40" />
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
-        <Skeleton className="h-[34rem]" />
-        <Skeleton className="h-[34rem]" />
-      </div>
-    </div>
-  );
+  return <div className="space-y-6" aria-busy="true"><Skeleton className="h-24" /><div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3"><Skeleton className="h-48" /><Skeleton className="h-48" /><Skeleton className="h-48" /></div><Skeleton className="h-[44rem]" /></div>;
 }
 
-function fileKind(file: KnowledgeFile) {
-  return file.mimetype.split("/")[1]?.toUpperCase() || file.mimetype || "DOC";
-}
-
-function formatDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Data indisponível";
-  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).format(date);
-}
+function statusText(status: string) { if (status === "CONNECTED") return "Conectado"; if (status === "RECONNECTING") return "Reconectando"; if (status === "DISCONNECTED") return "Desconectado"; return status || "Indefinido"; }
+function statusTone(status: string): StatusTone { if (status === "CONNECTED") return "success"; if (status === "RECONNECTING") return "warning"; if (status === "DISCONNECTED") return "danger"; return "neutral"; }
+function StatusPill({ tone, label, pulse }: { tone: StatusTone; label: string; pulse?: boolean }) { return <span className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200"><StatusDot tone={tone} pulse={pulse} />{label}</span>; }
+function ChannelBadge({ channel }: { channel: CreateChannel }) { return channel === "TELEGRAM" ? <span className="inline-flex items-center gap-1 rounded-full bg-sky-600 px-2.5 py-1 text-xs font-semibold text-white dark:bg-sky-500 dark:text-slate-950"><Send className="h-3.5 w-3.5" aria-hidden="true" />Telegram</span> : <span className="inline-flex items-center gap-1 rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white dark:bg-emerald-500 dark:text-slate-950"><MessageCircle className="h-3.5 w-3.5" aria-hidden="true" />WhatsApp</span>; }
 
 export function Agente() {
-  const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const selectedAgentId = searchParams.get("agentId");
-  const [agents, setAgents] = useState<AgentSummary[]>([]);
-  const [agent, setAgent] = useState<AgentWorkspace | null>(null);
-  const [eligibleInstances, setEligibleInstances] = useState<EligibleInstance[]>([]);
-  const [files, setFiles] = useState<KnowledgeFile[]>([]);
-  const [voiceOptions, setVoiceOptions] = useState<VoiceOptionsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [filesLoading, setFilesLoading] = useState(false);
-  const [filesRefreshing, setFilesRefreshing] = useState(false);
-  const [filesError, setFilesError] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [creating, setCreating] = useState(false);
-  const [showCreate, setShowCreate] = useState(false);
-  const [createName, setCreateName] = useState("");
-  const [selectedInstanceId, setSelectedInstanceId] = useState("");
   const { addToast } = useToast();
+  const {
+    navigate,
+    selectedAgentId,
+    agents,
+    eligibleInstances,
+    telegramStatus,
+    editor,
+    loading,
+    workspaceLoading,
+    error,
+    workspaceError,
+    saving,
+    activeTab,
+    createModal,
+    files,
+    filesLoading,
+    filesRefreshing,
+    filesError,
+    uploading,
+    telegramConfig,
+    telegramFiles,
+    telegramFilesLoading,
+    telegramFilesRefreshing,
+    telegramFilesError,
+    telegramUploading,
+    accept,
+    telegramAvailable,
+    telegramAgent,
+    selectedIsTelegramWorkspace,
+    telegramWorkspaceEditable,
+    promptStats,
+    telegramPromptStats,
+    tabs,
+    setEditor,
+    setActiveTab,
+    setCreateModal,
+    loadOverview,
+    loadSelectedWorkspace,
+    refreshFiles,
+    refreshTelegramFiles,
+    openCreateModal,
+    closeCreateModal,
+    createAgent,
+    saveWorkspace,
+    uploadFile,
+    removeFile,
+    uploadTelegramFile,
+    removeTelegramFile,
+  } = useAgentWorkspace(addToast);
 
-  const accept = useMemo(() => ".pdf,.png,.jpg,.jpeg,.webp,.txt,.docx,.json", []);
-  const promptValue = agent?.systemPrompt ?? "";
-  const promptStats = useMemo(() => {
-    const trimmed = promptValue.trim();
-    const words = trimmed ? trimmed.split(/\s+/).length : 0;
-    return { chars: promptValue.length, words };
-  }, [promptValue]);
+  if (loading) return <AgentSkeleton />;
+  if (error && agents.length === 0) return <InlineAlert tone="danger" icon={<AlertCircle size={18} aria-hidden="true" />} title="Erro ao carregar agentes"><div className="space-y-3"><p>{error}</p><Button variant="secondary" size="sm" onClick={() => { void loadOverview(); }}>Tente novamente</Button></div></InlineAlert>;
 
-  const selectedVoiceProvider = useMemo(
-    () => voiceOptions?.providers.find((provider) => provider.id === agent?.voiceProvider) ?? null,
-    [agent?.voiceProvider, voiceOptions?.providers],
-  );
-
-  const voiceProviderLabel = selectedVoiceProvider?.label ?? "Nao configurado";
-  const textProviderLabel = agent?.instanceChatProvider ? agent.instanceChatProvider : "fallback automatico";
-
-  const refreshFiles = useCallback(async (agentId: string, soft?: boolean) => {
-    if (soft) setFilesRefreshing(true);
-    else setFilesLoading(true);
-    setFilesError(null);
-    try {
-      const fls = await api.get<KnowledgeFile[]>(`/files/agent/${agentId}`);
-      setFiles(fls.data);
-    } catch (err) {
-      console.error(err);
-      setFiles([]);
-      setFilesError("Não foi possível carregar os arquivos da base.");
-    } finally {
-      setFilesLoading(false);
-      setFilesRefreshing(false);
-    }
-  }, []);
-
-  const load = useCallback(async () => {
-    setError(null);
-    try {
-      const [agentsRes, eligibleRes, voiceOptionsRes] = await Promise.all([
-        api.get<AgentSummary[]>("/agent/agents"),
-        api.get<EligibleInstance[]>("/agent/agents/eligible-instances"),
-        api.get<VoiceOptionsResponse>("/agent/agents/voice-options"),
-      ]);
-
-      setAgents(agentsRes.data);
-      setEligibleInstances(eligibleRes.data);
-      setVoiceOptions(voiceOptionsRes.data);
-
-      if (!selectedAgentId) {
-        setAgent(null);
-        setFiles([]);
-        if (agentsRes.data.length > 0) {
-          navigate(`/agente?agentId=${agentsRes.data[0].id}`, { replace: true });
-          return;
-        }
-        setShowCreate(true);
-        return;
-      }
-
-      const agentRes = await api.get<AgentWorkspace>(`/agent/agents/${selectedAgentId}`);
-      setAgent(agentRes.data);
-      void refreshFiles(agentRes.data.id);
-    } catch (err) {
-      console.error(err);
-      setError("Não foi possível carregar os agentes.");
-      setAgent(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [navigate, refreshFiles, selectedAgentId]);
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => {
-      load().catch(() => {});
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, [load]);
-
-  const createBlocked = eligibleInstances.length === 0;
-
-  const createAgent = async () => {
-    if (!createName.trim() || !selectedInstanceId) return;
-    setCreating(true);
-    try {
-      const res = await api.post<AgentWorkspace>("/agent/agents", {
-        name: createName.trim(),
-        instanceId: selectedInstanceId,
-      });
-      setCreateName("");
-      setSelectedInstanceId("");
-      setShowCreate(false);
-      addToast("Agente criado com sucesso", "success");
-      navigate(`/agente?agentId=${res.data.id}`);
-    } catch (err: unknown) {
-      const errorObj = err as { response?: { data?: { error?: string } } };
-      addToast(errorObj?.response?.data?.error || "Erro ao criar agente", "error");
-    } finally {
-      setCreating(false);
-    }
-  };
-
-  const upload = async (file: File) => {
-    if (!agent) return;
-    setUploading(true);
-    setFilesError(null);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      await api.post(`/files/agent/${agent.id}/upload`, fd);
-      await refreshFiles(agent.id, true);
-      addToast("Arquivo enviado com sucesso", "success");
-    } catch (err) {
-      setFilesError("Falha ao enviar arquivo. Tente novamente.");
-      addToast("Erro ao enviar arquivo", "error");
-      console.error(err);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const remove = async (id: string) => {
-    if (!agent) return;
-    if (!window.confirm("Excluir este arquivo da base de conhecimento?")) return;
-    try {
-      await api.delete(`/files/${id}`);
-      await refreshFiles(agent.id, true);
-      addToast("Arquivo removido", "success");
-    } catch (err) {
-      setFilesError("Não foi possível remover o arquivo.");
-      addToast("Erro ao remover arquivo", "error");
-      console.error(err);
-    }
-  };
-
-  const saveAgentConfig = async () => {
-    if (!agent) return;
-    setSaving(true);
-    try {
-      const res = await api.put<AgentWorkspace>(`/agent/agents/${agent.id}`, {
-        systemPrompt: agent.systemPrompt,
-        voiceEnabled: agent.voiceEnabled,
-        voiceProvider: agent.voiceProvider,
-        voiceModel: agent.voiceModel,
-        voicePersona: agent.voicePersona,
-      });
-      setAgent(res.data);
-      addToast("Configuracao do agente salva com sucesso", "success");
-    } catch (err) {
-      addToast("Erro ao salvar configuracao do agente", "error");
-      console.error(err);
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  if (loading) {
-    return <AgentSkeleton />;
-  }
-
-  if (error) {
-    return (
-      <InlineAlert tone="danger" icon={<AlertCircle size={18} aria-hidden="true" />} title="Erro ao carregar agentes">
-        <div className="space-y-3">
-          <p>{error}</p>
-          <Button variant="secondary" size="sm" onClick={() => { setLoading(true); void load(); }}>
-            Tente novamente
-          </Button>
-        </div>
-      </InlineAlert>
-    );
-  }
-
-  return (
+  return <>
     <div className="space-y-6">
-      <Toolbar aria-label="Ações dos agentes">
-        <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600 dark:text-slate-400">
-            <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
-              <StatusDot tone={agents.length > 0 ? "success" : "warning"} pulse={agents.length > 0} />
-              {agents.length} agentes criados
-            </span>
-            <span>{eligibleInstances.length} instâncias elegíveis</span>
-            {agent ? <span>Canal: {agent.instanceName}</span> : <span>Crie um agente para iniciar</span>}
-          </div>
-          <Button onClick={() => setShowCreate((value) => !value)} className="w-full sm:w-auto" variant={showCreate ? "secondary" : "primary"}>
-            <Plus className="mr-2 h-4 w-4" aria-hidden="true" />
-            {showCreate ? "Ocultar criação" : "Criar agente"}
-          </Button>
-        </div>
-      </Toolbar>
-
-      {showCreate && (
-        <Section title="Criar agente" description="Selecione apenas instâncias conectadas e ainda livres.">
-          <Panel className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-              <span className="mb-1.5 block">Nome do agente</span>
-              <input
-                value={createName}
-                onChange={(event) => setCreateName(event.target.value)}
-                maxLength={80}
-                placeholder="Ex.: Agente Comercial"
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-              />
-            </label>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-              <span className="mb-1.5 block">Instância WhatsApp live e livre</span>
-              <select
-                value={selectedInstanceId}
-                onChange={(event) => setSelectedInstanceId(event.target.value)}
-                disabled={createBlocked}
-                className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-              >
-                <option value="">Selecione uma instância</option>
-                {eligibleInstances.map((instance) => (
-                  <option key={instance.id} value={instance.id}>
-                    Slot {instance.slot} · {instance.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <Button onClick={() => void createAgent()} disabled={createBlocked || !createName.trim() || !selectedInstanceId || creating} loading={creating} className="w-full lg:w-auto">
-              <Bot className="mr-2 h-4 w-4" aria-hidden="true" />
-              Salvar agente
-            </Button>
-          </Panel>
-          <div className="mt-3">
-            {createBlocked ? (
-              <InlineAlert tone="warning" icon={<AlertCircle size={16} aria-hidden="true" />}>
-                Nenhuma instância conectada e livre está disponível agora. Conecte uma instância WhatsApp antes de criar o agente.
-              </InlineAlert>
-            ) : (
-              <InlineAlert tone="info" icon={<StatusDot tone="info" />}>
-                Telegram nasce pré-definido como capacidade lógica do agente, mas continua singleton operacional da plataforma nesta story.
-              </InlineAlert>
-            )}
-          </div>
-        </Section>
-      )}
-
-      {agents.length > 0 && (
-        <Section title="Agentes" description="Selecione um agente para abrir sua base de conhecimento.">
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {agents.map((item) => {
-              const active = item.id === agent?.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => navigate(`/agente?agentId=${item.id}`)}
-                  className={`rounded-xl border p-4 text-left transition-colors duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${active ? "border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/25" : "border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"}`}
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="truncate text-sm font-semibold text-slate-950 dark:text-slate-50">{item.name}</p>
-                    <StatusDot tone={item.instanceStatus === "CONNECTED" ? "success" : item.instanceStatus === "RECONNECTING" ? "warning" : "danger"} pulse={item.instanceStatus === "CONNECTED"} />
-                  </div>
-                  <p className="mt-2 text-xs text-slate-600 dark:text-slate-400">Slot {item.instanceSlot} · {item.instanceName}</p>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Telegram {item.telegramEnabled ? "pré-definido" : "desativado"}</p>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Voz {item.voiceEnabled && item.voiceProvider ? item.voiceProvider : "desligada"}</p>
-                </button>
-              );
-            })}
-          </div>
-        </Section>
-      )}
-
-      {!agent ? (
-        <EmptyState
-          icon={<Bot size={22} aria-hidden="true" />}
-          title="Nenhum agente aberto"
-          description={agents.length === 0 ? "Crie o primeiro agente para acessar a base de conhecimento." : "Selecione um agente acima para editar prompt e arquivos."}
-          className="py-10"
-        />
-      ) : (
-        <>
-          <Toolbar aria-label="Resumo do agente">
-            <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600 dark:text-slate-400">
-                <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
-                  <StatusDot tone={promptValue.trim() ? "success" : "warning"} pulse={Boolean(promptValue.trim())} />
-                  Prompt {promptValue.trim() ? "configurado" : "vazio"}
-                </span>
-                <span>{promptStats.words} palavras</span>
-                <span>{files.length} arquivos</span>
-                <span>Instância {agent.instanceName}</span>
-                <span>Texto: {textProviderLabel}</span>
-                <span>Voz: {agent.voiceEnabled ? voiceProviderLabel : "desligada"}</span>
-              </div>
-              <Button onClick={() => void saveAgentConfig()} disabled={saving} loading={saving} className="w-full sm:w-auto">
-                <Save className="mr-2 h-4 w-4" aria-hidden="true" />
-                Salvar agente
-              </Button>
-            </div>
-          </Toolbar>
-
-          <Section
-            title="Voz do agente"
-            description="Esta camada e logica do agente. O provider textual continua na instancia WhatsApp vinculada."
-          >
-            <Panel className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-              <div className="rounded-xl border border-amber-200 bg-amber-50/80 p-4 text-sm text-amber-950 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-100">
-                <div className="flex items-center gap-2 font-semibold">
-                  <FileAudio2 className="h-4 w-4" aria-hidden="true" />
-                  Separacao operacional
-                </div>
-                <p className="mt-2">Texto da instancia: <span className="font-semibold">{textProviderLabel}</span>{agent.instanceOpenrouterModel ? ` · modelo ${agent.instanceOpenrouterModel}` : ""}</p>
-                <p className="mt-1">Voz do agente: <span className="font-semibold">{agent.voiceEnabled ? voiceProviderLabel : "desligada"}</span>{agent.voiceEnabled && agent.voiceModel ? ` · modelo ${agent.voiceModel}` : ""}</p>
-                <p className="mt-2 text-xs opacity-80">Audio recebido usa a configuracao de voz do agente quando ativada. Mensagens de texto continuam usando o provider configurado na instancia.</p>
-              </div>
-
-              <label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
-                <input
-                  type="checkbox"
-                  checked={agent.voiceEnabled}
-                  onChange={(event) => setAgent({ ...agent, voiceEnabled: event.target.checked, voiceProvider: event.target.checked ? (agent.voiceProvider ?? voiceOptions?.providers[0]?.id ?? null) : agent.voiceProvider, voiceModel: event.target.checked ? (agent.voiceModel ?? voiceOptions?.providers[0]?.defaultModel ?? null) : agent.voiceModel })}
-                  className="mt-0.5 h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                />
-                <span>
-                  <span className="block font-semibold text-slate-950 dark:text-slate-50">Ativar voz por agente</span>
-                  <span className="mt-1 block text-xs text-slate-600 dark:text-slate-400">Quando desligado, o projeto continua no fluxo padrao de audio/transcricao da instancia.</span>
-                </span>
-              </label>
-
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                <span className="mb-1.5 block">Provider de voz</span>
-                <select
-                  value={agent.voiceProvider ?? ""}
-                  onChange={(event) => {
-                    const nextProvider = event.target.value === "" ? null : (event.target.value as AgentWorkspace["voiceProvider"]);
-                    const providerMeta = voiceOptions?.providers.find((provider) => provider.id === nextProvider) ?? null;
-                    setAgent({
-                      ...agent,
-                      voiceProvider: nextProvider,
-                      voiceModel: providerMeta?.defaultModel ?? null,
-                    });
-                  }}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                >
-                  <option value="">Selecione um provider</option>
-                  {(voiceOptions?.providers ?? []).map((provider) => (
-                    <option key={provider.id} value={provider.id}>{provider.label}</option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Catalogo de voz independente do provider textual da instancia.</p>
-              </label>
-
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                <span className="mb-1.5 block">Modelo de voz</span>
-                <select
-                  value={agent.voiceModel ?? ""}
-                  onChange={(event) => setAgent({ ...agent, voiceModel: event.target.value === "" ? null : event.target.value })}
-                  disabled={!selectedVoiceProvider}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                >
-                  <option value="">Selecione um modelo</option>
-                  {(selectedVoiceProvider?.models ?? []).map((model) => (
-                    <option key={model.id} value={model.id}>{model.label}</option>
-                  ))}
-                </select>
-                <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
-                  {selectedVoiceProvider?.description ?? "Selecione um provider para ver os modelos disponiveis."}
-                </p>
-                {agent.voiceModelFallback && (
-                  <p className="mt-1 text-xs font-medium text-amber-700 dark:text-amber-300">O modelo salvo anterior caiu para o default suportado do provider.</p>
-                )}
-              </label>
-
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 lg:col-span-2">
-                <span className="mb-1.5 block">Persona de voz</span>
-                <textarea
-                  value={agent.voicePersona ?? ""}
-                  onChange={(event) => setAgent({ ...agent, voicePersona: event.target.value })}
-                  maxLength={280}
-                  rows={4}
-                  placeholder="Ex.: Voz objetiva, acolhedora e profissional para respostas em audio e operacao futura de voz do agente."
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm leading-6 text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
-                />
-                <div className="mt-1 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
-                  <span>Identidade operacional de voz do agente, separada do prompt textual da instancia.</span>
-                  <span>{(agent.voicePersona ?? "").length}/280</span>
-                </div>
-              </label>
-            </Panel>
-          </Section>
-
-          <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
-            <Section title={agent.name} description="Base de conhecimento e comportamento do agente vinculado à instância selecionada.">
-              <Panel className="flex min-h-[34rem] flex-col overflow-hidden">
-                <div className="flex flex-col gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/45 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-950 dark:text-slate-50">
-                    <FileText className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
-                    Prompt do sistema
-                  </div>
-                  <div className="text-xs text-slate-600 dark:text-slate-400">{promptStats.chars} caracteres</div>
-                </div>
-                <label className="sr-only" htmlFor="system-prompt">Prompt do sistema</label>
-                <textarea
-                  id="system-prompt"
-                  value={promptValue}
-                  onChange={(e) => setAgent({ ...agent, systemPrompt: e.target.value })}
-                  className="min-h-[28rem] flex-1 resize-none border-0 bg-white px-4 py-4 font-mono text-sm leading-6 text-slate-950 outline-none focus:ring-2 focus:ring-inset focus:ring-emerald-500 dark:bg-slate-900 dark:text-slate-100"
-                  placeholder="Defina tom, limites, contexto do negócio e regras de atendimento do agente."
-                />
-              </Panel>
-            </Section>
-
-            <aside className="space-y-4 xl:sticky xl:top-6 xl:self-start">
-              <Section
-                title="Base de conhecimento"
-                description="Arquivos usados como contexto do agente."
-                actions={
-                  <Button variant="ghost" size="sm" onClick={() => void refreshFiles(agent.id, true)} disabled={filesRefreshing || filesLoading}>
-                    <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
-                    Atualizar
-                  </Button>
-                }
-              >
-                <Panel className={`p-4 transition-opacity duration-200 ${filesRefreshing ? "opacity-70" : ""}`}>
-                  <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center transition-colors duration-200 hover:border-emerald-400 hover:bg-emerald-50/50 focus-within:border-emerald-500 dark:border-slate-700 dark:bg-slate-950/45 dark:hover:border-emerald-700 dark:hover:bg-emerald-950/20">
-                    <input
-                      type="file"
-                      accept={accept}
-                      className="sr-only"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) void upload(file);
-                        e.currentTarget.value = "";
-                      }}
-                      disabled={uploading}
-                    />
-                    <span className="rounded-lg bg-white p-3 text-slate-600 shadow-sm dark:bg-slate-900 dark:text-slate-300">
-                      <Upload className={`h-5 w-5 ${uploading ? "motion-safe:animate-pulse" : ""}`} aria-hidden="true" />
-                    </span>
-                    <span className="mt-3 text-sm font-semibold text-slate-950 dark:text-slate-50">
-                      {uploading ? "Enviando arquivo" : "Adicionar conhecimento"}
-                    </span>
-                    <span className="mt-1 text-xs text-slate-600 dark:text-slate-400">PDF, DOCX, TXT, JSON e imagens até 10MB</span>
-                  </label>
-
-                  {filesError && (
-                    <InlineAlert tone="warning" className="mt-4" icon={<AlertCircle size={16} aria-hidden="true" />}>
-                      {filesError}
-                    </InlineAlert>
-                  )}
-
-                  <div className="mt-4 max-h-[28rem] space-y-2 overflow-y-auto pr-1">
-                    {filesLoading && (
-                      <div className="space-y-2" aria-busy="true">
-                        <Skeleton className="h-16" />
-                        <Skeleton className="h-16" />
-                        <Skeleton className="h-16" />
-                      </div>
-                    )}
-
-                    {!filesLoading && files.length === 0 && !filesError && (
-                      <EmptyState
-                        icon={<FileText size={22} aria-hidden="true" />}
-                        title="Nenhum arquivo indexado"
-                        description="Envie documentos para ampliar o contexto do agente."
-                        className="py-8"
-                      />
-                    )}
-
-                    {!filesLoading && files.map((file) => (
-                      <div key={file.id} className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-                        <div className="flex min-w-0 items-center gap-3">
-                          <div className="shrink-0 rounded-lg bg-slate-100 p-2 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-                            <FileText className="h-4 w-4" aria-hidden="true" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-slate-950 dark:text-slate-50">{file.filename}</p>
-                            <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">{fileKind(file)} · {formatDate(file.createdAt)}</p>
-                          </div>
-                        </div>
-                        <Button type="button" variant="ghost" size="sm" onClick={() => void remove(file.id)} aria-label={`Excluir ${file.filename}`}>
-                          <Trash2 className="h-4 w-4 text-red-600 dark:text-red-400" aria-hidden="true" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                </Panel>
-              </Section>
-            </aside>
-          </div>
-        </>
-      )}
+      <Toolbar aria-label="Resumo dos agentes"><div className="flex w-full flex-col gap-4 lg:flex-row lg:items-end lg:justify-between"><div className="space-y-3"><div className="flex flex-wrap items-center gap-2"><StatusPill tone={agents.length > 0 ? "success" : "warning"} pulse={agents.length > 0} label={`${agents.length} agentes`} /><StatusPill tone={eligibleInstances.length > 0 ? "info" : "neutral"} label={`${eligibleInstances.length} WhatsApp disponível${eligibleInstances.length === 1 ? "" : "s"}`} /><StatusPill tone={telegramAvailable ? "success" : "neutral"} pulse={telegramAvailable} label={telegramAvailable ? "Telegram online" : "Telegram indisponível"} /></div><div><p className="text-sm font-semibold text-slate-950 dark:text-slate-50">Workspace único de agentes</p><p className="text-sm text-slate-600 dark:text-slate-400">Criação por canal, cards clicáveis e configuração compacta no mesmo fluxo.</p></div></div><div className="flex w-full justify-start lg:w-auto lg:justify-end"><Button onClick={openCreateModal} className="w-full sm:w-auto"><Bot className="mr-2 h-4 w-4" aria-hidden="true" />Criar agente</Button></div></div></Toolbar>
+      <Section title="Agentes" description="Crie um novo agente ou abra um card existente para editar contexto, runtime e integrações."><div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3"><button type="button" onClick={openCreateModal} className="group rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-5 text-left transition hover:border-emerald-400 hover:bg-emerald-50/60 dark:border-slate-700 dark:bg-slate-950/35 dark:hover:border-emerald-600 dark:hover:bg-emerald-950/20"><div className="flex h-full min-h-[13rem] flex-col justify-between"><div><div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white text-emerald-700 shadow-sm dark:bg-slate-900 dark:text-emerald-300"><Bot className="h-5 w-5" aria-hidden="true" /></div><h2 className="mt-4 text-lg font-semibold text-slate-950 dark:text-slate-50">Criar agente</h2><p className="mt-2 text-sm text-slate-600 dark:text-slate-400">Escolha o canal, vincule a instância operacional e entre direto no painel compacto.</p></div><p className="mt-4 text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">WhatsApp ou Telegram</p></div></button>{agents.map((item) => { const selected = item.id === selectedAgentId; const telegramLinked = Boolean(telegramStatus?.instanceId && item.instanceId === telegramStatus.instanceId); return <button key={item.id} type="button" onClick={() => navigate(`/agente?agentId=${item.id}`)} className={`rounded-2xl border p-5 text-left transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${selected ? "border-emerald-300 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/25" : "border-slate-200 bg-white hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:hover:bg-slate-800"}`}><div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="flex flex-wrap items-center gap-2"><ChannelBadge channel="WHATSAPP" />{telegramLinked ? <ChannelBadge channel="TELEGRAM" /> : null}</div><h2 className="mt-3 truncate text-lg font-semibold text-slate-950 dark:text-slate-50">{item.name}</h2><p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Instância {item.instanceName}</p></div><StatusDot tone={statusTone(item.instanceStatus)} pulse={item.instanceStatus === "CONNECTED"} /></div><div className="mt-5 grid gap-2 text-xs text-slate-500 dark:text-slate-400"><p>ID {item.id}</p><p>Status {statusText(item.instanceStatus)}</p><p>Runtime {item.instanceChatProvider ?? "fallback automático"}</p><p>Transcrição de áudio {item.audioTranscriptionEnabled ? "habilitada" : "desabilitada"}</p></div></button>; })}</div></Section>
+      {!selectedAgentId ? <EmptyState icon={<Bot size={22} aria-hidden="true" />} title="Selecione um agente" description={agents.length === 0 ? "Crie o primeiro agente para abrir o workspace de conhecimento." : "Escolha um card acima para editar configurações, runtime e arquivos."} className="py-12" /> : workspaceLoading ? <Skeleton className="h-[44rem]" /> : workspaceError || !editor ? <InlineAlert tone="warning" icon={<AlertCircle size={18} aria-hidden="true" />} title="Workspace indisponível"><div className="space-y-3"><p>{workspaceError || "Agente não encontrado."}</p><Button variant="secondary" size="sm" onClick={() => void loadSelectedWorkspace()}>Recarregar</Button></div></InlineAlert> : <Panel className="overflow-hidden"><div className="border-b border-slate-200 bg-slate-50/80 px-5 py-4 dark:border-slate-800 dark:bg-slate-950/35"><div className="flex items-start justify-between gap-4"><div><div className="flex flex-wrap items-center gap-2"><ChannelBadge channel="WHATSAPP" />{selectedIsTelegramWorkspace ? <ChannelBadge channel="TELEGRAM" /> : null}<StatusPill tone={statusTone(editor.instanceStatus)} pulse={editor.instanceStatus === "CONNECTED"} label={statusText(editor.instanceStatus)} /></div><h2 className="mt-3 text-xl font-semibold text-slate-950 dark:text-slate-50">{editor.name}</h2><p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Instância vinculada: {editor.instanceName} • ID {editor.instanceId}</p></div><Button variant="ghost" size="sm" onClick={() => navigate("/agente", { replace: true })}><X className="mr-2 h-4 w-4" aria-hidden="true" />Fechar</Button></div></div><div className="border-b border-slate-200 px-5 py-3 dark:border-slate-800"><Tabs items={tabs} value={activeTab} onChange={(value) => setActiveTab(value as typeof activeTab)} ariaLabel="Categorias do agente" /></div><div className="space-y-5 p-5">
+        {activeTab === "agent" ? <Section title="Configuração principal" description="Nome do agente e contexto central do workspace."><div className="grid gap-5 xl:grid-cols-[24rem_minmax(0,1fr)]"><Panel className="space-y-4 p-4"><label className="block text-sm font-medium text-slate-700 dark:text-slate-300"><span className="mb-1.5 block">Nome do agente</span><input value={editor.name} onChange={(event) => setEditor({ ...editor, name: event.target.value })} maxLength={80} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" /></label><label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/45"><div><p className="text-sm font-semibold text-slate-950 dark:text-slate-50">Transcrição de áudio</p><p className="text-xs text-slate-600 dark:text-slate-400">Controla se o agente pode transcrever anexos de áudio.</p></div><input type="checkbox" checked={editor.audioTranscriptionEnabled} onChange={(event) => setEditor({ ...editor, audioTranscriptionEnabled: event.target.checked })} className="h-4 w-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500" /></label></Panel><Panel className="space-y-4 p-4"><label className="block text-sm font-medium text-slate-700 dark:text-slate-300"><span className="mb-1.5 block">Prompt principal</span><textarea value={editor.systemPrompt} onChange={(event) => setEditor({ ...editor, systemPrompt: event.target.value })} rows={16} placeholder="Defina tom, regras, contexto e comportamento do agente." className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm leading-6 text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" /></label><div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400"><span>Prompt central usado como base do runtime deste agente.</span><span>{promptStats.words} palavras • {promptStats.chars} caracteres</span></div></Panel></div></Section> : null}
+        {activeTab === "ai" ? <div className="space-y-5"><Panel className="p-4"><p className="mb-3 text-sm font-semibold text-slate-950 dark:text-slate-50">Runtime do agente</p><div className="grid gap-4 md:grid-cols-2"><label className="block text-sm font-medium text-slate-700 dark:text-slate-300"><span className="mb-1.5 block">Provedor</span><select value={editor.runtime.chatProvider} onChange={(event) => setEditor({ ...editor, runtime: { ...editor.runtime, chatProvider: event.target.value as typeof editor.runtime.chatProvider } })} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"><option value="">Fallback automático</option><option value="groq">Groq</option><option value="gemini">Gemini</option><option value="openrouter">OpenRouter</option></select></label><label className="block text-sm font-medium text-slate-700 dark:text-slate-300"><span className="mb-1.5 block">Memória</span><input type="number" min={1} max={50} value={editor.runtime.memoryLimit} onChange={(event) => setEditor({ ...editor, runtime: { ...editor.runtime, memoryLimit: Number(event.target.value) } })} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" /></label><label className="md:col-span-2 block text-sm font-medium text-slate-700 dark:text-slate-300"><span className="mb-1.5 block">Modelo OpenRouter</span><input value={editor.runtime.openrouterModel} onChange={(event) => setEditor({ ...editor, runtime: { ...editor.runtime, openrouterModel: event.target.value } })} disabled={editor.runtime.chatProvider !== "openrouter"} placeholder="Ex.: openai/gpt-4o-mini" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" /><p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Só é usado quando o provedor selecionado for OpenRouter.</p></label></div></Panel><Panel className="p-4"><p className="mb-3 text-sm font-semibold text-slate-950 dark:text-slate-50">Fallback e leitura atual</p><div className="grid gap-4 md:grid-cols-2"><div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/45"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Provider</p><p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{editor.runtime.providerFallback ? (editor.runtime.providerFallbackLabel ?? "Fallback automático") : (editor.runtime.chatProvider || "Fallback automático")}</p><p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{editor.runtime.providerFallback ? "O runtime caiu para um provedor disponível." : "O runtime seguirá a preferência salva acima."}</p></div><div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/45"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Modelo</p><p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{editor.runtime.modelFallback ? (editor.runtime.modelFallbackLabel ?? "Default do provider") : (editor.runtime.openrouterModel || "Default do provider")}</p><p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{editor.runtime.modelFallback ? "O modelo salvo anterior foi substituído por um default suportado." : "Modelo atual sem fallback registrado."}</p></div></div></Panel></div> : null}
+        {activeTab === "files" ? <KnowledgeFilesSection title="Arquivos do agente" description="Base de conhecimento principal usada nas respostas do agente." emptyTitle="Nenhum arquivo indexado" emptyDescription="Envie documentos para ampliar o contexto principal do agente." files={files} loading={filesLoading} refreshing={filesRefreshing} error={filesError} uploading={uploading} accept={accept} uploadLabel="Adicionar conhecimento" uploadHint="PDF, DOCX, TXT, JSON e imagens até 10MB" onUpload={(file) => uploadFile(file)} onRefresh={() => editor ? refreshFiles(editor.id, true) : Promise.resolve()} onRemove={removeFile} /> : null}
+        {activeTab === "integrations" ? (selectedIsTelegramWorkspace ? <div className="space-y-5"><Panel className="p-4"><p className="mb-3 text-sm font-semibold text-slate-950 dark:text-slate-50">Telegram operacional</p><div className="grid gap-4 md:grid-cols-2"><div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/45"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Instância Telegram</p><p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{telegramStatus?.instanceName || editor.instanceName}</p><p className="mt-1 text-xs text-slate-600 dark:text-slate-400">O singleton do Telegram está vinculado a este mesmo agente.</p></div><div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/45"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Status do bot</p><p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{telegramStatus?.online ? "Online" : telegramStatus?.configured ? "Configurado" : "Sem token"}</p><p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{telegramStatus?.label ? `Bot ${telegramStatus.label}` : "Sem identificador público carregado."}</p></div></div></Panel><Panel className="p-4"><p className="mb-3 text-sm font-semibold text-slate-950 dark:text-slate-50">Prompt do Telegram</p>{!telegramWorkspaceEditable && telegramConfig?.blockingReason ? <InlineAlert tone="warning" className="mb-4" icon={<AlertCircle size={16} aria-hidden="true" />}>{telegramConfig.blockingReason}</InlineAlert> : null}<label className="block text-sm font-medium text-slate-700 dark:text-slate-300"><span className="mb-1.5 block">Instruções do canal</span><textarea value={editor.telegramPrompt} onChange={(event) => setEditor({ ...editor, telegramPrompt: event.target.value })} disabled={!telegramWorkspaceEditable} rows={10} placeholder="Defina o comportamento específico do canal Telegram." className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm leading-6 text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/25 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" /></label><div className="mt-2 flex items-center justify-between text-xs text-slate-600 dark:text-slate-400"><span>{telegramWorkspaceEditable ? "Prompt dedicado ao atendimento do Telegram dentro deste agente." : (telegramConfig?.blockingReason || "Vincule um agente ao Telegram para liberar este canal.")}</span><span>{telegramPromptStats.words} palavras • {telegramPromptStats.chars} caracteres</span></div></Panel><KnowledgeFilesSection title="Arquivos do Telegram" description="Base complementar usada apenas pelo canal Telegram deste agente." emptyTitle="Nenhum arquivo do Telegram" emptyDescription={telegramWorkspaceEditable ? "Envie documentos para ampliar o contexto exclusivo do canal Telegram." : (telegramConfig?.blockingReason || "Vincule um agente à instância Telegram para liberar a base deste canal.")} accent="sky" files={telegramFiles} loading={telegramFilesLoading} refreshing={telegramFilesRefreshing} error={telegramFilesError} uploading={telegramUploading} accept={accept} uploadLabel="Adicionar conhecimento do Telegram" uploadHint="PDF, DOCX, TXT, JSON e imagens até 10MB" disabled={!telegramWorkspaceEditable || !telegramConfig?.agentWorkspaceId} onUpload={(file) => uploadTelegramFile(file)} onRefresh={() => telegramConfig?.agentWorkspaceId ? refreshTelegramFiles(telegramConfig.agentWorkspaceId, true) : Promise.resolve()} onRemove={removeTelegramFile} /></div> : <EmptyState icon={<Send size={22} aria-hidden="true" />} title="Telegram não vinculado a este agente" description="Abra o agente que está na instância operacional do Telegram para editar prompt e arquivos desse canal." className="py-10" />) : null}
+      </div><div className="sticky bottom-0 border-t border-slate-200 bg-white/95 px-5 py-4 backdrop-blur dark:border-slate-800 dark:bg-slate-950/95"><div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"><p className="text-xs font-medium text-slate-600 dark:text-slate-400">{saving ? "Salvando alterações do agente..." : "Ajustes aplicados ao runtime e contexto do agente selecionado."}</p><div className="flex flex-col gap-2 sm:flex-row"><Button variant="secondary" onClick={() => navigate("/agente", { replace: true })}>Fechar</Button><Button onClick={() => void saveWorkspace()} disabled={saving || !editor.name.trim()} loading={saving}><Save className="mr-2 h-4 w-4" aria-hidden="true" />Salvar</Button></div></div></div></Panel>}
     </div>
-  );
+    {createModal.open ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4"><Panel className="max-h-[90vh] w-full max-w-3xl overflow-hidden"><div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50/80 px-5 py-4 dark:border-slate-800 dark:bg-slate-950/35"><div><h3 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Criar agente</h3><p className="text-sm text-slate-600 dark:text-slate-400">Escolha o canal e conclua o vínculo operacional no mesmo fluxo.</p></div><button type="button" onClick={closeCreateModal} className="rounded-xl border border-slate-200 bg-white p-2 text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800" aria-label="Fechar criação"><X size={18} aria-hidden="true" /></button></div><div className="space-y-5 overflow-y-auto p-5"><div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]"><div className="space-y-3"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Canal</p><button type="button" onClick={() => setCreateModal((current) => ({ ...current, channel: "WHATSAPP", error: null }))} className={`w-full rounded-2xl border p-4 text-left transition ${createModal.channel === "WHATSAPP" ? "border-emerald-500 bg-emerald-50/80 shadow-sm dark:border-emerald-500 dark:bg-emerald-950/25" : "border-slate-200 bg-white hover:border-emerald-300 dark:border-slate-800 dark:bg-slate-900"}`}><ChannelBadge channel="WHATSAPP" /><p className="mt-3 text-sm font-semibold text-slate-950 dark:text-slate-50">WhatsApp</p><p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Define nome e escolhe uma instância live e livre.</p></button><button type="button" onClick={() => telegramAvailable ? setCreateModal((current) => ({ ...current, channel: "TELEGRAM", error: null })) : undefined} disabled={!telegramAvailable} className={`w-full rounded-2xl border p-4 text-left transition ${createModal.channel === "TELEGRAM" ? "border-sky-500 bg-sky-50/80 shadow-sm dark:border-sky-500 dark:bg-sky-950/25" : "border-slate-200 bg-white hover:border-sky-300 dark:border-slate-800 dark:bg-slate-900"} ${!telegramAvailable ? "cursor-not-allowed opacity-60" : ""}`}><ChannelBadge channel="TELEGRAM" /><p className="mt-3 text-sm font-semibold text-slate-950 dark:text-slate-50">Telegram</p><p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{telegramAvailable ? "Usa a instância Telegram conectada e continua no mesmo popup." : "Indisponível enquanto não houver Telegram operacional conectado."}</p></button></div><Panel tone="muted" className="p-4">{createModal.error ? <InlineAlert tone="warning" icon={<AlertCircle size={16} aria-hidden="true" />}>{createModal.error}</InlineAlert> : null}{createModal.channel === "WHATSAPP" ? <div className="space-y-4"><div className="grid gap-4 md:grid-cols-2"><label className="block text-sm font-medium text-slate-700 dark:text-slate-300"><span className="mb-1.5 block">Nome do agente</span><input value={createModal.name} onChange={(event) => setCreateModal((current) => ({ ...current, name: event.target.value, error: null }))} maxLength={80} placeholder="Ex.: Comercial, Suporte, Operação" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" /></label><label className="block text-sm font-medium text-slate-700 dark:text-slate-300"><span className="mb-1.5 block">Instância WhatsApp</span><select value={createModal.instanceId} onChange={(event) => setCreateModal((current) => ({ ...current, instanceId: event.target.value, error: null }))} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"><option value="">Selecione uma instância</option>{eligibleInstances.map((instance) => <option key={instance.id} value={instance.id}>Slot {instance.slot} • {instance.name}</option>)}</select></label></div><div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">Apenas instâncias conectadas e ainda não utilizadas aparecem na lista.</div><div className="flex flex-col gap-2 sm:flex-row sm:justify-end"><Button variant="secondary" onClick={closeCreateModal}>Fechar</Button><Button onClick={() => void createAgent()} disabled={createModal.submitting || !createModal.name.trim() || !createModal.instanceId} loading={createModal.submitting}><Bot className="mr-2 h-4 w-4" aria-hidden="true" />Continuar</Button></div></div> : <div className="space-y-4">{telegramAgent ? <div className="space-y-4"><div className="rounded-xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-950 dark:border-sky-900/60 dark:bg-sky-950/25 dark:text-sky-100">O Telegram já está vinculado ao agente <span className="font-semibold">{telegramAgent.name}</span>. Continuar abrirá esse workspace.</div><div className="grid gap-4 md:grid-cols-2"><div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Instância conectada</p><p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{telegramStatus?.instanceName || "Telegram"}</p></div><div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Bot</p><p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{telegramStatus?.label || "Online"}</p></div></div></div> : <div className="space-y-4"><label className="block text-sm font-medium text-slate-700 dark:text-slate-300"><span className="mb-1.5 block">Nome do agente</span><input value={createModal.name} onChange={(event) => setCreateModal((current) => ({ ...current, name: event.target.value, error: null }))} maxLength={80} placeholder="Ex.: Concierge Telegram" className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100" /></label><div className="grid gap-4 md:grid-cols-2"><div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Instância conectada</p><p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{telegramStatus?.instanceName || "Telegram"}</p></div><div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-900"><p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Bot</p><p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{telegramStatus?.label || "Online"}</p></div></div></div>}<div className="flex flex-col gap-2 sm:flex-row sm:justify-end"><Button variant="secondary" onClick={closeCreateModal}>Fechar</Button><Button onClick={() => void createAgent()} disabled={createModal.submitting || (!telegramAgent && !createModal.name.trim())} loading={createModal.submitting}><Bot className="mr-2 h-4 w-4" aria-hidden="true" />Continuar</Button></div></div>}</Panel></div></div></Panel></div> : null}
+  </>;
 }

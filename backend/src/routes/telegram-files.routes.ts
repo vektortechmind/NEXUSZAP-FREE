@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { FastifyInstance } from "fastify";
 import { prisma } from "../database/prisma";
 import { verifyJwt } from "../security/middlewares";
@@ -15,8 +16,13 @@ import {
   getKnowledgeOwnerByAgent,
   listKnowledgeFilesByAgent,
   listKnowledgeFilesByInstance,
-} from "../services/knowledgeService";
-import { getOrCreatePrimaryAgent } from "../services/agent.service";
+  loadKnowledgeFileBuffer,
+} from "../services/knowledge/knowledge.service";
+import {
+  buildKnowledgeStoragePath,
+  deleteKnowledgeBinary,
+  writeKnowledgeBinary,
+} from "../services/knowledge/fileStorage.service";
 
 async function extractKnowledgeText(
   fastify: FastifyInstance,
@@ -43,7 +49,8 @@ export async function telegramFilesRoutes(fastify: FastifyInstance) {
 
     const headers = buildSafeDownloadHeaders(file.filename, file.mimetype);
     for (const [key, value] of Object.entries(headers)) reply.header(key, value);
-    return reply.send(file.data);
+    const buffer = await loadKnowledgeFileBuffer(file as any);
+    return reply.send(buffer);
   });
 
   fastify.get("/agent/:agentId", async (request, reply) => {
@@ -91,24 +98,41 @@ export async function telegramFilesRoutes(fastify: FastifyInstance) {
           });
 
           const existingFiles = (await listKnowledgeFilesByAgent(agentId, "TELEGRAM")) ?? [];
-          await assertStorageQuota({ existingFiles, nextBytes: buffer.length });
+          await assertStorageQuota({ existingFiles: existingFiles as any, nextBytes: buffer.length });
 
           let extractedText: string | null = null;
           if (normalized.canExtract) {
             extractedText = await extractKnowledgeText(fastify, buffer, normalized.mimetype);
           }
 
-          savedFile = await prisma.file.create({
-            data: {
-              instanceId: owner.instanceId,
-              agentId: owner.id,
-              filename: normalized.filename,
-              mimetype: normalized.mimetype,
-              data: buffer,
-              extracted: extractedText,
-              channel: "TELEGRAM",
-            },
+          const fileId = randomUUID();
+          const storagePath = buildKnowledgeStoragePath({
+            instanceId: owner.instanceId,
+            channel: "TELEGRAM",
+            fileId,
+            filename: normalized.filename,
           });
+          await writeKnowledgeBinary(storagePath, buffer);
+
+          try {
+            savedFile = await (prisma.file as any).create({
+              data: {
+                id: fileId,
+                instanceId: owner.instanceId,
+                agentId: owner.id,
+                filename: normalized.filename,
+                mimetype: normalized.mimetype,
+                storagePath,
+                sizeBytes: buffer.length,
+                data: Buffer.alloc(0),
+                extracted: extractedText,
+                channel: "TELEGRAM",
+              },
+            });
+          } catch (err) {
+            await deleteKnowledgeBinary(storagePath);
+            throw err;
+          }
         } catch (e) {
           if (e instanceof FileSecurityError) {
             return reply.status(400).send({ error: e.message });
@@ -131,7 +155,27 @@ export async function telegramFilesRoutes(fastify: FastifyInstance) {
       config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
     },
     async (request, reply) => {
-      const primaryAgent = await getOrCreatePrimaryAgent();
+      const { instanceId } = request.params as { instanceId: string };
+      const instance = await prisma.instance.findUnique({
+        where: { id: instanceId },
+        select: {
+          id: true,
+          agent: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      });
+
+      if (!instance) {
+        return reply.status(404).send({ error: "Instância Telegram não encontrada." });
+      }
+
+      if (!instance.agent) {
+        return reply.status(409).send({ error: "Vincule ou crie um agente para a instância Telegram antes de enviar arquivos." });
+      }
+
       const parts = request.parts();
       let savedFile = null;
 
@@ -146,25 +190,42 @@ export async function telegramFilesRoutes(fastify: FastifyInstance) {
             buffer,
           });
 
-          const existingFiles = (await listKnowledgeFilesByAgent(primaryAgent.id, "TELEGRAM")) ?? [];
-          await assertStorageQuota({ existingFiles, nextBytes: buffer.length });
+          const existingFiles = (await listKnowledgeFilesByAgent(instance.agent.id, "TELEGRAM")) ?? [];
+          await assertStorageQuota({ existingFiles: existingFiles as any, nextBytes: buffer.length });
 
           let extractedText: string | null = null;
           if (normalized.canExtract) {
             extractedText = await extractKnowledgeText(fastify, buffer, normalized.mimetype);
           }
 
-          savedFile = await prisma.file.create({
-            data: {
-              instanceId: primaryAgent.instanceId,
-              agentId: primaryAgent.id,
-              filename: normalized.filename,
-              mimetype: normalized.mimetype,
-              data: buffer,
-              extracted: extractedText,
-              channel: "TELEGRAM",
-            },
+          const fileId = randomUUID();
+          const storagePath = buildKnowledgeStoragePath({
+            instanceId: instance.id,
+            channel: "TELEGRAM",
+            fileId,
+            filename: normalized.filename,
           });
+          await writeKnowledgeBinary(storagePath, buffer);
+
+          try {
+            savedFile = await (prisma.file as any).create({
+              data: {
+                id: fileId,
+                instanceId: instance.id,
+                agentId: instance.agent.id,
+                filename: normalized.filename,
+                mimetype: normalized.mimetype,
+                storagePath,
+                sizeBytes: buffer.length,
+                data: Buffer.alloc(0),
+                extracted: extractedText,
+                channel: "TELEGRAM",
+              },
+            });
+          } catch (err) {
+            await deleteKnowledgeBinary(storagePath);
+            throw err;
+          }
         } catch (e) {
           if (e instanceof FileSecurityError) {
             return reply.status(400).send({ error: e.message });
@@ -190,6 +251,7 @@ export async function telegramFilesRoutes(fastify: FastifyInstance) {
       const { fileId } = request.params as { fileId: string };
       const file = await prisma.file.findUnique({ where: { id: fileId } });
       if (file && file.channel === "TELEGRAM") {
+        await deleteKnowledgeBinary((file as any).storagePath);
         await prisma.file.delete({ where: { id: fileId } });
       }
       return reply.send({ success: true, message: "Excluído da base do Telegram." });

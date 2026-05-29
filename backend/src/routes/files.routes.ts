@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { FastifyInstance } from "fastify";
 import { prisma } from "../database/prisma";
 import { verifyJwt } from "../security/middlewares";
@@ -15,7 +16,13 @@ import {
   getKnowledgeOwnerByAgent,
   listKnowledgeFilesByAgent,
   listKnowledgeFilesByInstance,
-} from "../services/knowledgeService";
+  loadKnowledgeFileBuffer,
+} from "../services/knowledge/knowledge.service";
+import {
+  buildKnowledgeStoragePath,
+  deleteKnowledgeBinary,
+  writeKnowledgeBinary,
+} from "../services/knowledge/fileStorage.service";
 
 async function extractKnowledgeText(
   fastify: FastifyInstance,
@@ -55,7 +62,8 @@ export async function filesRoutes(fastify: FastifyInstance) {
 
     const headers = buildSafeDownloadHeaders(file.filename, file.mimetype);
     for (const [key, value] of Object.entries(headers)) reply.header(key, value);
-    return reply.send(file.data);
+    const buffer = await loadKnowledgeFileBuffer(file as any);
+    return reply.send(buffer);
   });
 
   fastify.get("/agent/:agentId", async (request, reply) => {
@@ -105,24 +113,41 @@ export async function filesRoutes(fastify: FastifyInstance) {
           });
 
           const existingFiles = (await listKnowledgeFilesByAgent(agentId, "WHATSAPP")) ?? [];
-          await assertStorageQuota({ existingFiles, nextBytes: buffer.length });
+          await assertStorageQuota({ existingFiles: existingFiles as any, nextBytes: buffer.length });
 
           let extractedText: string | null = null;
           if (normalized.canExtract) {
             extractedText = await extractKnowledgeText(fastify, buffer, normalized.mimetype, "WHATSAPP");
           }
 
-          savedFile = await prisma.file.create({
-            data: {
-              instanceId: owner.instanceId,
-              agentId: owner.id,
-              filename: normalized.filename,
-              mimetype: normalized.mimetype,
-              data: buffer,
-              extracted: extractedText,
-              channel: "WHATSAPP",
-            },
+          const fileId = randomUUID();
+          const storagePath = buildKnowledgeStoragePath({
+            instanceId: owner.instanceId,
+            channel: "WHATSAPP",
+            fileId,
+            filename: normalized.filename,
           });
+          await writeKnowledgeBinary(storagePath, buffer);
+
+          try {
+            savedFile = await (prisma.file as any).create({
+              data: {
+                id: fileId,
+                instanceId: owner.instanceId,
+                agentId: owner.id,
+                filename: normalized.filename,
+                mimetype: normalized.mimetype,
+                storagePath,
+                sizeBytes: buffer.length,
+                data: Buffer.alloc(0),
+                extracted: extractedText,
+                channel: "WHATSAPP",
+              },
+            });
+          } catch (err) {
+            await deleteKnowledgeBinary(storagePath);
+            throw err;
+          }
         } catch (e) {
           if (e instanceof FileSecurityError) {
             return reply.status(400).send({ error: e.message });
@@ -173,24 +198,41 @@ export async function filesRoutes(fastify: FastifyInstance) {
           });
 
           const existingFiles = (await listKnowledgeFilesByInstance(instanceId, "WHATSAPP")) ?? [];
-          await assertStorageQuota({ existingFiles, nextBytes: buffer.length });
+          await assertStorageQuota({ existingFiles: existingFiles as any, nextBytes: buffer.length });
 
           let extractedText: string | null = null;
           if (normalized.canExtract) {
             extractedText = await extractKnowledgeText(fastify, buffer, normalized.mimetype, "WHATSAPP");
           }
 
-          savedFile = await prisma.file.create({
-            data: {
-              instanceId,
-              agentId: instance.agent?.id ?? null,
-              filename: normalized.filename,
-              mimetype: normalized.mimetype,
-              data: buffer,
-              extracted: extractedText,
-              channel: "WHATSAPP",
-            },
+          const fileId = randomUUID();
+          const storagePath = buildKnowledgeStoragePath({
+            instanceId,
+            channel: "WHATSAPP",
+            fileId,
+            filename: normalized.filename,
           });
+          await writeKnowledgeBinary(storagePath, buffer);
+
+          try {
+            savedFile = await (prisma.file as any).create({
+              data: {
+                id: fileId,
+                instanceId,
+                agentId: instance.agent?.id ?? null,
+                filename: normalized.filename,
+                mimetype: normalized.mimetype,
+                storagePath,
+                sizeBytes: buffer.length,
+                data: Buffer.alloc(0),
+                extracted: extractedText,
+                channel: "WHATSAPP",
+              },
+            });
+          } catch (err) {
+            await deleteKnowledgeBinary(storagePath);
+            throw err;
+          }
         } catch (e) {
           if (e instanceof FileSecurityError) {
             return reply.status(400).send({ error: e.message });
@@ -216,6 +258,7 @@ export async function filesRoutes(fastify: FastifyInstance) {
       const { fileId } = request.params as { fileId: string };
       const file = await prisma.file.findUnique({ where: { id: fileId } });
       if (file && file.channel === "WHATSAPP") {
+        await deleteKnowledgeBinary((file as any).storagePath);
         await prisma.file.delete({ where: { id: fileId } });
       }
       return reply.send({ success: true, message: "Excluído da Máquina." });

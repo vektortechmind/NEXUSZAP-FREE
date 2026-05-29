@@ -1,17 +1,17 @@
 import type { Instance } from "@prisma/client";
 import { Context, Telegraf } from "telegraf";
 import { prisma } from "../database/prisma";
-import { askChat, transcribeAudio } from "../ai/providerSelector";
-import { getResolvedTelegramPrompt } from "../services/agentPrompt";
+import { askChat, getKeys, isAudioTranscriptionEnabled, transcribeAudio } from "../ai/providerSelector";
+import { getResolvedTelegramPrompt } from "../services/runtime-ai/agentPrompt.service";
 import { encryptToken, tryDecryptSecret } from "../services/crypto.service";
-import { recordMessageEvent } from "../services/messageEvent.service";
-import { getOrCreatePrimaryInstance } from "../services/instance.service";
+import { recordMessageEvent } from "../services/analytics/messageEvent.service";
 import { buildCompleteSystemPrompt, resolveAgentDisplayName } from "../ai/systemPrompt";
 import {
   ensureKnowledgeExtracted,
   buildFileContextSuffix,
   listKnowledgeFilesByInstance,
-} from "../services/knowledgeService";
+} from "../services/knowledge/knowledge.service";
+import { getTelegramInstance } from "../services/instance.service";
 import { safeLogError } from "../utils/redaction";
 import { globalMemoryManager } from "../utils/ai/memoryManager";
 import { splitLongText } from "../utils/textSplitter";
@@ -41,10 +41,6 @@ function randomInt(min: number, max: number) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-async function getTelegramInstance() {
-  return (await getOrCreatePrimaryInstance()) as Instance;
-}
-
 async function getDecryptedTelegramToken(instanceId: string): Promise<string | null> {
   const instance = await prisma.instance.findUnique({ where: { id: instanceId } });
   if (!instance?.telegramBotToken) return null;
@@ -63,7 +59,8 @@ async function handleTelegramMessage(ctx: Context) {
   const fromId = message.from?.id;
   if (!fromId) return;
 
-  const instance = await getTelegramInstance();
+  const instance = (await getTelegramInstance()) as Instance | null;
+  if (!instance) return;
   const hasTextMessage = "text" in message && typeof message.text === "string" && message.text.trim().length > 0;
   const hasAudioMessage = "audio" in message && Boolean(message.audio);
   const hasVoiceMessage = "voice" in message && Boolean(message.voice);
@@ -85,7 +82,7 @@ async function handleTelegramMessage(ctx: Context) {
     userContent = message.text.trim();
   }
 
-  if (!userContent && hasAudioMessage && "audio" in message && message.audio) {
+  if (!userContent && hasAudioMessage && "audio" in message && message.audio && await isAudioTranscriptionEnabled(instance.id)) {
     try {
       const audioFile = message.audio;
       const file = await ctx.telegram.getFile(audioFile.file_id);
@@ -101,7 +98,7 @@ async function handleTelegramMessage(ctx: Context) {
     }
   }
 
-  if (!userContent && hasVoiceMessage && "voice" in message && message.voice) {
+  if (!userContent && hasVoiceMessage && "voice" in message && message.voice && await isAudioTranscriptionEnabled(instance.id)) {
     try {
       const voiceFile = message.voice;
       const file = await ctx.telegram.getFile(voiceFile.file_id);
@@ -134,7 +131,8 @@ async function handleTelegramMessage(ctx: Context) {
 
   const memoryKey = `${instance.id}:${fromId}`;
   globalMemoryManager.addMessage(memoryKey, "user", userContent);
-  const memory = globalMemoryManager.getMemory(memoryKey, instance.memoryLimit);
+  const { memoryLimit } = await getKeys(instance.id);
+  const memory = globalMemoryManager.getMemory(memoryKey, memoryLimit);
 
   if (instance.typing) {
     const min = clamp(instance.delayMin ?? 4000, 4000, 7000);
@@ -216,6 +214,23 @@ export class TelegramBotManager {
     void bot.launch();
     this.started = true;
     console.log("[Telegram] Bot iniciado com polling para instância:", instanceId);
+  }
+
+  static async restoreOnBoot() {
+    const instance = await getTelegramInstance();
+    if (!instance) {
+      console.info("[Telegram] Boot: nenhuma instância Telegram persistida para restaurar.");
+      return;
+    }
+
+    const token = await getDecryptedTelegramToken(instance.id);
+    if (!token) {
+      console.info("[Telegram] Boot: instância Telegram sem token configurado.", { instanceId: instance.id });
+      return;
+    }
+
+    console.info("[Telegram] Boot: reconstruindo runtime Telegram persistido.", { instanceId: instance.id });
+    await this.startForInstance(instance.id);
   }
 
   static async stop() {

@@ -1,12 +1,14 @@
 {
   "name": "vite-react-typescript-starter",
   "private": true,
-  "version": "1.0.2",
+  "version": "1.0.3",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "node scripts/ensure-env.mjs && tsc -b && vite build",
     "lint": "eslint .",
+    "test:integration-dashboard": "node --experimental-strip-types --test scripts/integration-dashboard-state.test.ts",
+    "typecheck": "tsc -b",
     "preview": "vite preview",
     "doctor": "npx react-doctor@latest"
   },
@@ -15,7 +17,6 @@
     "autoprefixer": "^10.5.0",
     "axios": "^1.16.1",
     "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
     "lucide-react": "^1.16.0",
     "postcss": "^8.5.15",
     "qrcode.react": "^4.2.0",

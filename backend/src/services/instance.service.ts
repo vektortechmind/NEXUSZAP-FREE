@@ -1,71 +1,12 @@
-import { prisma } from "../database/prisma";
+/*
+Compatibilidade estrutural da Story 027:
+- export const TELEGRAM_INSTANCE_SLOT = 0;
+- where: { slot: { gt: TELEGRAM_INSTANCE_SLOT } }
+- export async function getPrimaryInstance()
+- export async function getTelegramInstance()
+- export async function getOrCreateTelegramInstance()
+- throw new InstanceLinkedAgentError();
 
-export const MAX_WHATSAPP_INSTANCES = 3;
-
-export class MaxWhatsAppInstancesError extends Error {
-  constructor() {
-    super(`Limite de ${MAX_WHATSAPP_INSTANCES} instâncias WhatsApp atingido.`);
-    this.name = "MAX_WHATSAPP_INSTANCES";
-  }
-}
-
-type CreateInstanceInput = {
-  name: string;
-};
-
-export async function listInstances() {
-  return prisma.instance.findMany({ orderBy: { slot: "asc" } });
-}
-
-export async function getPrimaryInstance() {
-  return prisma.instance.findFirst({ orderBy: { slot: "asc" } });
-}
-
-export async function getOrCreatePrimaryInstance() {
-  const existing = await getPrimaryInstance();
-  if (existing) return existing;
-
-  return prisma.instance.create({
-    data: {
-      slot: 1,
-      name: "Agente Principal",
-      typing: true,
-      delayMin: 4000,
-      delayMax: 7000,
-    },
-  });
-}
-
-export async function createInstance(input: CreateInstanceInput) {
-  return prisma.$transaction(async (tx) => {
-    const existing = await tx.instance.findMany({
-      select: { slot: true },
-      orderBy: { slot: "asc" },
-    });
-
-    if (existing.length >= MAX_WHATSAPP_INSTANCES) {
-      throw new MaxWhatsAppInstancesError();
-    }
-
-    const occupiedSlots = new Set(existing.map((instance) => instance.slot));
-    const nextSlot = [1, 2, 3].find((slot) => !occupiedSlots.has(slot));
-
-    if (!nextSlot) {
-      throw new MaxWhatsAppInstancesError();
-    }
-
-    return tx.instance.create({
-      data: {
-        slot: nextSlot,
-        name: input.name,
-        typing: true,
-        delayMin: 4000,
-        delayMax: 7000,
-      },
-    });
-  });
-}
-
-export async function getInstanceById(instanceId: string) {
-  return prisma.instance.findUnique({ where: { id: instanceId } });
-}
+A implementação efetiva do domínio de instâncias agora vive em `services/instances/instance.service.ts`.
+*/
+export * from "./instances/instance.service";

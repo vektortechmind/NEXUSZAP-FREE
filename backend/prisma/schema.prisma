@@ -17,6 +17,32 @@ enum MessageDirection {
   OUTBOUND
 }
 
+enum IntegrationCredentialStatus {
+  ACTIVE
+  DISABLED
+  REVOKED
+}
+
+enum IntegrationIngressStatus {
+  ACCEPTED
+  REJECTED_AUTH
+  REJECTED_CONTRACT
+  REJECTED_REPLAY
+  REJECTED_DUPLICATE
+  ERROR
+}
+
+enum IntegrationDispatchStatus {
+  PENDING_RUNTIME
+  SENT
+  FAILED_INSTANCE_NOT_FOUND
+  FAILED_INSTANCE_OFFLINE
+  FAILED_RECIPIENT_MISSING
+  FAILED_TEMPLATE_RENDER
+  FAILED_SEND
+  ERROR
+}
+
 model Instance {
   id                  String         @id @default(uuid())
   slot                Int            @unique
@@ -44,6 +70,7 @@ model Instance {
   files               File[]
   messageEvents       MessageEvent[]
   agent               Agent?
+  integrationCredentials IntegrationCredential[]
 
   @@index([slot])
 }
@@ -56,10 +83,10 @@ model Agent {
   telegramEnabled Boolean  @default(true)
   systemPrompt    String?
   telegramSystemPrompt String?
-  voiceEnabled    Boolean  @default(false)
-  voiceProvider   String?
-  voiceModel      String?
-  voicePersona    String?
+  chatProvider    String?
+  openrouterModel String?
+  memoryLimit     Int      @default(5)
+  audioTranscriptionEnabled Boolean @default(false)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @default(now()) @updatedAt
 
@@ -76,7 +103,9 @@ model File {
   agent      Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
   filename   String
   mimetype   String
-  data       Bytes
+  storagePath String?
+  sizeBytes  Int      @default(0)
+  data       Bytes?
   extracted  String?
   channel    String   @default("WHATSAPP")
   createdAt  DateTime @default(now())
@@ -84,6 +113,7 @@ model File {
   @@index([instanceId])
   @@index([agentId])
   @@index([channel])
+  @@index([storagePath])
 }
 
 model MessageEvent {
@@ -111,6 +141,85 @@ model Session {
 
   @@unique([instanceId, key])
   @@index([instanceId])
+}
+
+model IntegrationCredential {
+  id             String                      @id @default(uuid())
+  instanceId     String
+  instance       Instance                    @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  tokenHash      String                      @unique
+  encryptedToken String
+  tokenPreview   String
+  status         IntegrationCredentialStatus @default(ACTIVE)
+  replayWindowMs Int                         @default(300000)
+  dedupWindowMs  Int                         @default(300000)
+  issuedAt       DateTime                    @default(now())
+  lastUsedAt     DateTime?
+  rotatedAt      DateTime?
+  revokedAt      DateTime?
+  createdAt      DateTime                    @default(now())
+  updatedAt      DateTime                    @default(now()) @updatedAt
+
+  replayKeys     IntegrationReplayKey[]
+
+  @@index([instanceId])
+  @@index([instanceId, status])
+  @@index([status])
+}
+
+model IntegrationReplayKey {
+  id               String                @id @default(uuid())
+  credentialId     String
+  credential       IntegrationCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  dedupKey         String
+  requestTimestamp DateTime
+  expiresAt        DateTime
+  createdAt        DateTime              @default(now())
+
+  @@unique([credentialId, dedupKey])
+  @@index([credentialId, expiresAt])
+  @@index([expiresAt])
+}
+
+model IntegrationIngressLog {
+  id               String                  @id @default(uuid())
+  credentialId     String?
+  instanceId       String?
+  eventSlug        String?
+  dedupKey         String?
+  requestTimestamp DateTime?
+  status           IntegrationIngressStatus
+  failureCode      String?
+  payloadJson      String?
+  receivedAt       DateTime                @default(now())
+  processedAt      DateTime?
+
+  @@index([instanceId, receivedAt])
+  @@index([status, receivedAt])
+  @@index([dedupKey])
+}
+
+model IntegrationDispatchLog {
+  id               String                    @id @default(uuid())
+  ingressLogId     String?
+  credentialId     String?
+  instanceId       String?
+  eventSlug        String?
+  dedupKey         String?
+  recipientJid     String?
+  messageType      String?
+  dispatchStatus   IntegrationDispatchStatus
+  failureCode      String?
+  providerMessageId String?
+  payloadSummaryJson String?
+  createdAt        DateTime                  @default(now())
+  processedAt      DateTime?
+
+  @@index([instanceId, createdAt])
+  @@index([dispatchStatus, createdAt])
+  @@index([eventSlug, createdAt])
+  @@index([dedupKey])
+  @@index([ingressLogId])
 }
 
 model Settings {

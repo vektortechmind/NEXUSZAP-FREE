@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useMemo, useRef } from "react";
 import { AlertCircle, Check, Info, AlertTriangle } from "lucide-react";
 import { useTheme } from "./useTheme";
 
@@ -82,30 +82,31 @@ export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
     return colors[type];
   };
 
+  const value = useMemo(() => ({ toasts, addToast, removeToast }), [toasts, addToast, removeToast]);
+
   return (
-    <ToastContext.Provider value={{ toasts, addToast, removeToast }}>
+    <ToastContext.Provider value={value}>
       {children}
       <div className="fixed bottom-6 right-6 z-50 space-y-3">
         {toasts.map((toast) => {
           const colors = getColors(toast.type);
           return (
-            <div
+            <button
               key={toast.id}
+              type="button"
               className={`${colors.bg} ${colors.border} border rounded-2xl backdrop-blur-xl shadow-[0_20px_40px_-24px_rgba(15,23,42,0.6)] p-4 flex items-center gap-3 min-w-[320px] animate-in slide-in-from-right-5`}
               onClick={() => removeToast(toast.id)}
+              aria-label={`Dispensar notificação: ${toast.message}`}
             >
               <div className={colors.icon}>{getIcon(toast.type)}</div>
               <p className={`${colors.text} font-medium flex-1`}>{toast.message}</p>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeToast(toast.id);
-                }}
+              <span
+                aria-hidden="true"
                 className="text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
               >
                 ✕
-              </button>
-            </div>
+              </span>
+            </button>
           );
         })}
       </div>

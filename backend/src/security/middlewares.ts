@@ -4,7 +4,8 @@ import { FastifyReply, FastifyRequest } from "fastify";
 const CSRF_COOKIE_NAME = "csrfToken";
 const CSRF_HEADER_NAME = "x-csrf-token";
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-const CSRF_EXEMPT_PATHS = new Set(["/api/auth/login", "/api/setup/docker", "/api/setup/admin"]);
+const CSRF_EXEMPT_PATHS = new Set(["/api/auth/login", "/api/setup/docker", "/api/setup/admin", "/api/integrations/events"]);
+const ORIGIN_GUARD_EXEMPT_PATHS = new Set(["/api/integrations/events"]);
 
 export const csrfCookieName = CSRF_COOKIE_NAME;
 export const csrfHeaderName = CSRF_HEADER_NAME;
@@ -34,6 +35,10 @@ function isMutatingRequest(request: FastifyRequest): boolean {
 
 function isCsrfExempt(request: FastifyRequest): boolean {
   return CSRF_EXEMPT_PATHS.has(requestPath(request));
+}
+
+function isOriginGuardExempt(request: FastifyRequest): boolean {
+  return ORIGIN_GUARD_EXEMPT_PATHS.has(requestPath(request));
 }
 
 function sameOriginFromRequest(request: FastifyRequest): string | null {
@@ -88,7 +93,7 @@ export function createOriginGuard(
   env: "development" | "test" | "production"
 ) {
   return async function verifyOrigin(request: FastifyRequest, reply: FastifyReply) {
-    if (!isMutatingRequest(request)) return;
+    if (!isMutatingRequest(request) || isOriginGuardExempt(request)) return;
 
     const origin = headerOrigin(request.headers.origin);
     const refererOrigin = headerOrigin(request.headers.referer);
