@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, CheckCircle2, Cog, MessageCircle, Plus, Power, QrCode, RefreshCw, Send, Smartphone, Square, Trash2, X } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Button } from "../components/ui/Button";
@@ -66,15 +66,17 @@ export function Instancia() {
   const [token, setToken] = useState("");
   const [showTelegramToken, setShowTelegramToken] = useState(false);
   const [createModal, setCreateModal] = useState<CreateModalState>(initialCreateModalState);
-  const [pairingIntentIds, setPairingIntentIds] = useState<string[]>([]);
+  const pairingIntentIdsRef = useRef<string[]>([]);
   const { addToast } = useToast();
 
   const markPairingIntent = useCallback((instanceId: string) => {
-    setPairingIntentIds((current) => current.includes(instanceId) ? current : [...current, instanceId]);
+    if (!pairingIntentIdsRef.current.includes(instanceId)) {
+      pairingIntentIdsRef.current = [...pairingIntentIdsRef.current, instanceId];
+    }
   }, []);
 
   const clearPairingIntent = useCallback((instanceId: string) => {
-    setPairingIntentIds((current) => current.filter((id) => id !== instanceId));
+    pairingIntentIdsRef.current = pairingIntentIdsRef.current.filter((id) => id !== instanceId);
   }, []);
 
   const loadData = useCallback(async () => {
@@ -84,10 +86,10 @@ export function Instancia() {
         api.get<TelegramStatus>("/agent/telegram/status").catch(() => ({ data: { configured: false, online: false, label: null, instanceId: undefined, instanceName: null, channel: "TELEGRAM" as const } })),
       ]);
       setInstances(instancesRes.data);
-      setPairingIntentIds((current) => current.filter((id) => {
+      pairingIntentIdsRef.current = pairingIntentIdsRef.current.filter((id) => {
         const instance = instancesRes.data.find((item) => item.id === id);
         return Boolean(instance && !instance.connected);
-      }));
+      });
       setTelegramStatus(telegramRes.data); setError(null);
     } catch (err) { console.error(err); setError("Não foi possível carregar as instâncias."); }
     finally { setLoading(false); }
@@ -124,7 +126,7 @@ export function Instancia() {
 
   const openDetails = (card: ChannelCard, showTokenField = false) => { setSelectedKey(card.key); setShowTelegramToken(showTokenField); };
   const closeDetails = async () => {
-    if (selectedCard?.channel === "WHATSAPP" && pairingIntentIds.includes(selectedCard.id) && !selectedCard.connected) {
+    if (selectedCard?.channel === "WHATSAPP" && pairingIntentIdsRef.current.includes(selectedCard.id) && !selectedCard.connected) {
       await cancelWhatsappPairing(selectedCard.id);
       await loadData();
     }
