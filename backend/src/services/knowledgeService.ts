@@ -22,11 +22,8 @@ export async function listKnowledgeFilesByAgent(agentId: string, channel: Knowle
 
   return prisma.file.findMany({
     where: {
+      instanceId: owner.instanceId,
       channel,
-      OR: [
-        { agentId: owner.id },
-        { agentId: null, instanceId: owner.instanceId },
-      ],
     },
     orderBy: { createdAt: "asc" },
   });
@@ -35,26 +32,10 @@ export async function listKnowledgeFilesByAgent(agentId: string, channel: Knowle
 export async function listKnowledgeFilesByInstance(instanceId: string, channel: KnowledgeChannel) {
   const instance = await prisma.instance.findUnique({
     where: { id: instanceId },
-    select: {
-      id: true,
-      agent: { select: { id: true } },
-    },
+    select: { id: true },
   });
 
   if (!instance) return null;
-
-  if (instance.agent) {
-    return prisma.file.findMany({
-      where: {
-        channel,
-        OR: [
-          { agentId: instance.agent.id },
-          { agentId: null, instanceId },
-        ],
-      },
-      orderBy: { createdAt: "asc" },
-    });
-  }
 
   return prisma.file.findMany({
     where: { instanceId, channel },
@@ -68,16 +49,16 @@ export async function ensureKnowledgeExtracted(
 ) {
   for (const file of files) {
     if (file.extracted && file.extracted.trim()) continue;
-    
+
     const canExtract = [
       "application/pdf",
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
       "application/json",
       "text/plain"
     ].includes(file.mimetype);
-    
+
     if (!canExtract) continue;
-    
+
     try {
       const text = await extractTextFromBuffer(Buffer.from(file.data), file.mimetype);
       if (text && text.trim()) {
