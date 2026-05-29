@@ -8,6 +8,7 @@ import { Instancia } from "./pages/Instancia";
 import { Agente } from "./pages/Agente";
 import { Apis } from "./pages/Apis";
 import { Dashboard } from "./pages/Dashboard";
+import { Integracoes } from "./pages/Integracoes";
 import { DockerSetup } from "./pages/DockerSetup";
 import { CreateAdmin } from "./pages/CreateAdmin";
 import { Sidebar } from "./components/Sidebar";
@@ -108,6 +109,7 @@ function AppRoutes() {
       <Route element={<PrivateRoute />}>
         <Route index element={<Instancia />} />
         <Route path="agente" element={<Agente />} />
+        <Route path="integracoes" element={<Integracoes />} />
         <Route path="telegram" element={<Navigate to="/agente" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="settings" element={<Apis />} />

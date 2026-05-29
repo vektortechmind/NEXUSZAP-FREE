@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Bot, Boxes, KeyRound, LayoutDashboard, LogOut, X } from "lucide-react";
+import { Bot, LogOut, X } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { APP_VERSION } from "../version";
+import { APP_NAV_GROUPS } from "../features/navigation/appNavigation";
 
 type SidebarProps = {
   mobileOpen: boolean;
@@ -14,28 +15,6 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
   const { logout } = useAuth();
   const [desktopExpanded, setDesktopExpanded] = useState(false);
   const desktopCompact = !desktopExpanded;
-
-  const navGroups = [
-    {
-      label: "Operação",
-      items: [
-        { name: "Dashboard", path: "/dashboard", icon: <LayoutDashboard size={18} /> },
-        { name: "Instâncias", path: "/", icon: <Boxes size={18} /> },
-      ],
-    },
-    {
-      label: "Inteligência",
-      items: [
-        { name: "Agente IA", path: "/agente", icon: <Bot size={18} /> },
-      ],
-    },
-    {
-      label: "Sistema",
-      items: [
-        { name: "Configurações", path: "/settings", icon: <KeyRound size={18} /> },
-      ],
-    },
-  ];
 
   return (
     <>
@@ -77,13 +56,14 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
         </div>
 
         <nav className="flex-1 space-y-6 overflow-y-auto px-3 py-5" aria-label="Navegação principal">
-          {navGroups.map((group) => (
+          {APP_NAV_GROUPS.map((group) => (
             <div key={group.label}>
               <p className={`px-3 pb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-500 transition-opacity duration-200 dark:text-slate-500 ${desktopExpanded ? "lg:opacity-100" : "lg:opacity-0 lg:pointer-events-none"}`}>
                 {group.label}
               </p>
               <div className="space-y-1">
                 {group.items.map((nav) => {
+                  const Icon = nav.icon;
                   const isActive = nav.path === "/" ? pathname === "/" : pathname.startsWith(nav.path);
                   return (
                     <Link
@@ -99,7 +79,7 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
                       }`}
                     >
                       <span className={isActive ? "text-emerald-700 dark:text-emerald-400" : "text-slate-500 dark:text-slate-400"}>
-                        {nav.icon}
+                        <Icon size={18} />
                       </span>
                       <span className={`truncate overflow-hidden transition-[max-width,opacity] duration-200 ${desktopExpanded ? "lg:max-w-[8.5rem] lg:opacity-100" : "lg:max-w-0 lg:opacity-0"}`}>{nav.name}</span>
                       {isActive && <span className={`ml-auto h-1.5 w-1.5 rounded-full bg-emerald-500 transition-opacity duration-200 ${desktopExpanded ? "lg:opacity-100" : "lg:opacity-0"}`} aria-hidden="true" />}
