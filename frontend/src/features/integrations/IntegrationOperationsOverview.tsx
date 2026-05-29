@@ -1,4 +1,4 @@
-import { Activity, AlertTriangle, Clock3, ShieldOff, Webhook } from "lucide-react";
+import { Activity, AlertTriangle, Clock3, Webhook } from "lucide-react";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Metric } from "../../components/ui/Metric";
 import { Panel } from "../../components/ui/Panel";
@@ -51,12 +51,11 @@ export function IntegrationOperationsOverview({ overview }: IntegrationOperation
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Metric label="Conexões ativas" value={integrationSummary.activeConnections} description="Credenciais ativas" icon={<Webhook size={20} aria-hidden="true" />} tone="success" />
         <Metric label="Atividade recente" value={integrationSummary.recentActivity} description="Integrações com uso recente" icon={<Activity size={20} aria-hidden="true" />} tone="success" />
         <Metric label="Sem atividade" value={integrationSummary.idle} description="Ativas sem uso recente" icon={<Clock3 size={20} aria-hidden="true" />} tone="info" />
         <Metric label="Falhas recentes" value={integrationSummary.failures} description="Ingressos ou dispatches com erro" icon={<AlertTriangle size={20} aria-hidden="true" />} tone="danger" />
-        <Metric label="Sem credencial" value={integrationSummary.missingCredential} description="Instâncias sem integração ativa" icon={<ShieldOff size={20} aria-hidden="true" />} tone="warning" />
       </div>
 
       <Panel className="p-4">
