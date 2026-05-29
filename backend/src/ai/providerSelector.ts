@@ -1,6 +1,11 @@
-import { prisma } from "../database/prisma";
-import { getPrimaryInstance } from "../services/instance.service";
 import { tryDecryptSecret } from "../services/crypto.service";
+import {
+  loadRuntimeConfigSource,
+  resolveChatProvider,
+  resolveMemoryLimit,
+  resolveOpenRouterModel,
+  resolveRawSecrets,
+} from "../services/runtimeConfig.service";
 import { safeErrorMessage, safeLogError } from "../utils/redaction";
 import { geminiChat } from "./gemini";
 import { groqChat, groqWhisper } from "./groq";
@@ -60,10 +65,6 @@ function decryptNullableSecret(value: string | null | undefined) {
   return value ? tryDecryptSecret(value) : value;
 }
 
-function pickInstanceValue<T>(instanceValue: T | null | undefined, primaryValue: T | null | undefined) {
-  return instanceValue ?? primaryValue;
-}
-
 function buildProviderSequence(selectedProvider: string | null | undefined) {
   const base: ChatProviderId[] = ["groq", "gemini", "openrouter"];
   if (!isChatProviderId(selectedProvider)) return base;
@@ -71,31 +72,22 @@ function buildProviderSequence(selectedProvider: string | null | undefined) {
 }
 
 export async function getKeys(instanceId?: string): Promise<EffectiveInstanceKeys> {
-  const primary = await getPrimaryInstance();
-  const instance = instanceId
-    ? await prisma.instance.findUnique({ where: { id: instanceId } })
-    : primary;
-  const agent = instanceId
-    ? await prisma.agent.findFirst({
-        where: { instanceId },
-        select: { chatProvider: true, openrouterModel: true, memoryLimit: true },
-      })
-    : null;
-
-  const current = instance ?? primary;
+  const source = await loadRuntimeConfigSource(instanceId);
+  const secrets = resolveRawSecrets(source);
 
   return {
-    chatProvider: agent?.chatProvider ?? current?.chatProvider ?? null,
-    groqKey: decryptNullableSecret(pickInstanceValue(current?.groqKey, primary?.groqKey)),
-    geminiKey: decryptNullableSecret(pickInstanceValue(current?.geminiKey, primary?.geminiKey)),
-    openrouterKey: decryptNullableSecret(pickInstanceValue(current?.openrouterKey, primary?.openrouterKey)),
-    openrouterModel: agent?.openrouterModel ?? current?.openrouterModel ?? null,
-    groqAudioKey: decryptNullableSecret(pickInstanceValue(current?.groqAudioKey, primary?.groqAudioKey ?? primary?.groqKey)),
-    memoryLimit: agent?.memoryLimit ?? current?.memoryLimit ?? 5,
+    chatProvider: resolveChatProvider(source),
+    groqKey: decryptNullableSecret(secrets.groqKey),
+    geminiKey: decryptNullableSecret(secrets.geminiKey),
+    openrouterKey: decryptNullableSecret(secrets.openrouterKey),
+    openrouterModel: resolveOpenRouterModel(source),
+    groqAudioKey: decryptNullableSecret(secrets.groqAudioKey),
+    memoryLimit: resolveMemoryLimit(source),
   };
 }
 
 export async function isAudioTranscriptionEnabled(instanceId: string): Promise<boolean> {
+  const { prisma } = await import("../database/prisma");
   const agent = await prisma.agent.findUnique({
     where: { instanceId },
     select: {

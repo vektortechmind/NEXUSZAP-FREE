@@ -45,12 +45,14 @@ function assertTelegramManagerContracts() {
 }
 
 function assertProviderFallbackIsolationContracts() {
-  const source = read("src/ai/providerSelector.ts");
+  const providerSource = read("src/ai/providerSelector.ts");
+  const runtimeSource = read("src/services/runtimeConfig.service.ts");
   const telegramFilesSource = read("src/routes/telegram-files.routes.ts");
 
-  assert.ok(source.includes('import { getPrimaryInstance } from "../services/instance.service";'), "provider selector deve depender da instancia primaria de WhatsApp");
-  assert.ok(source.includes("const primary = await getPrimaryInstance();"), "getKeys deve usar lookup explicito da instancia primaria de WhatsApp");
-  assert.ok(!source.includes('findFirst({ orderBy: { slot: "asc" } })'), "fallback global nao deve usar a primeira instancia absoluta por slot");
+  assert.ok(providerSource.includes('from "../services/runtimeConfig.service"'), "provider selector deve centralizar precedencia em runtimeConfig.service");
+  assert.ok(runtimeSource.includes('import { getPrimaryInstance, TELEGRAM_INSTANCE_SLOT } from "./instance.service";'), "runtime config deve depender da instancia primaria de WhatsApp");
+  assert.ok(runtimeSource.includes("current && current.slot > TELEGRAM_INSTANCE_SLOT"), "fallback global deve valer apenas para instancias WhatsApp");
+  assert.ok(!providerSource.includes('findFirst({ orderBy: { slot: "asc" } })'), "fallback global nao deve usar a primeira instancia absoluta por slot");
   assert.ok(!telegramFilesSource.includes("getPrimaryAgent"), "upload Telegram por instancia nao deve mais depender do owner primario");
   assert.ok(telegramFilesSource.includes("if (!instance.agent)"), "upload Telegram por instancia deve bloquear quando nao houver agente vinculado");
   assert.ok(telegramFilesSource.includes("instanceId: instance.id"), "upload Telegram por instancia deve persistir no owner real da instancia");
@@ -83,5 +85,4 @@ assertProviderFallbackIsolationContracts();
 assertFrontendContracts();
 
 console.log("instance-cards-api: OK");
-
 
