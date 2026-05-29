@@ -51,6 +51,11 @@ export interface IntegrationIngressStore {
     payloadJson?: string | null;
     processedAt?: Date | null;
   }): Promise<IntegrationIngressLogRecord>;
+  updateLog(id: string, input: {
+    status?: IntegrationIngressStatus;
+    failureCode?: string | null;
+    processedAt?: Date | null;
+  }): Promise<IntegrationIngressLogRecord>;
 }
 
 function serializePayload(payload: unknown): string | null {
@@ -94,6 +99,22 @@ export function createPrismaIntegrationIngressStore(db: typeof prisma): Integrat
         processedAt: record.processedAt ?? null,
       };
     },
+    async updateLog(id, input) {
+      const record = await db.integrationIngressLog.update({
+        where: { id },
+        data: {
+          status: input.status,
+          failureCode: input.failureCode,
+          processedAt: input.processedAt ?? new Date(),
+        },
+      });
+
+      return {
+        ...record,
+        requestTimestamp: record.requestTimestamp ?? null,
+        processedAt: record.processedAt ?? null,
+      };
+    },
   };
 }
 
@@ -109,6 +130,13 @@ export function createIntegrationIngressService(store: IntegrationIngressStore) 
         status: input.status,
         failureCode: input.failureCode ?? null,
         payloadJson: serializePayload(input.payload),
+        processedAt: input.processedAt ?? new Date(),
+      });
+    },
+    async updateLog(id: string, input: { status?: IntegrationIngressStatus; failureCode?: string | null; processedAt?: Date | null }) {
+      return store.updateLog(id, {
+        status: input.status,
+        failureCode: input.failureCode,
         processedAt: input.processedAt ?? new Date(),
       });
     },
@@ -139,6 +167,21 @@ export function createInMemoryIntegrationIngressStore(seed?: { logs?: Integratio
         processedAt: input.processedAt ?? now,
       };
       logs.set(record.id, record);
+      return { ...record };
+    },
+    async updateLog(id, input) {
+      const current = logs.get(id);
+      if (!current) {
+        throw new Error(`Integration ingress log not found: ${id}`);
+      }
+
+      const record: IntegrationIngressLogRecord = {
+        ...current,
+        status: input.status ?? current.status,
+        failureCode: input.failureCode === undefined ? current.failureCode : input.failureCode,
+        processedAt: input.processedAt ?? new Date(),
+      };
+      logs.set(id, record);
       return { ...record };
     },
   };
