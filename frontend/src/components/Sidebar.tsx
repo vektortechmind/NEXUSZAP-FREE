@@ -119,6 +119,7 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
             </div>
           </div>
           <button
+            type="button"
             onClick={() => {
               onCloseMobile();
               logout();

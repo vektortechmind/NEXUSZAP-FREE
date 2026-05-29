@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from "react";
 import { api } from "../lib/axios";
 
 /** Payload JWT retornado por `/api/auth/me` */
@@ -39,7 +39,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = async (emailParam: string, passwordParam: string) => {
+  const login = useCallback(async (emailParam: string, passwordParam: string) => {
     const loginRes = await api.post<{ user?: AuthUser }>("/auth/login", { email: emailParam, password: passwordParam });
     if (loginRes.data.user) {
       setUser(loginRes.data.user);
@@ -47,15 +47,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
     const res = await api.get("/auth/me");
     setUser(res.data.user);
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     await api.post("/auth/logout");
     setUser(null);
-  };
+  }, []);
+
+  const value = useMemo(() => ({ user, loading, login, logout, error }), [user, loading, login, logout, error]);
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, error }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
