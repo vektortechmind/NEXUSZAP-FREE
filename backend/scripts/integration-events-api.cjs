@@ -43,8 +43,12 @@ function createApp(authBehavior) {
 
 function validPayload(overrides = {}) {
   return {
-    event: "order.created",
-    payload: { orderId: "123", amount: 99.9 },
+    event: "pedido_pago",
+    payload: {
+      customer: { name: "Maria", phone: "(11) 99876-5432" },
+      order: { product: { name: "Curso" } },
+      checkout_link: "https://checkout.example.com/c/123",
+    },
     instanceId: "instance-a",
     timestamp: "2026-05-29T14:00:00.000Z",
     dedupKey: "evt-001",
@@ -153,6 +157,29 @@ function validPayload(overrides = {}) {
     assert.equal(response.statusCode, 409, response.body);
     assert.equal(JSON.parse(response.body).error.code, "DUPLICATE_INTEGRATION_REQUEST");
     assert.equal(Array.from(logStore.logs.values())[0].status, INTEGRATION_INGRESS_STATUS.REJECTED_DUPLICATE);
+    await app.close();
+  }
+
+  {
+    let authCalled = false;
+    const { app, logStore } = createApp(async () => {
+      authCalled = true;
+      return {
+        credential: { id: "cred-unsupported" },
+        requestTimestamp: new Date("2026-05-29T14:00:00.000Z"),
+      };
+    });
+    await app.ready();
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/integrations/events",
+      headers: { authorization: "Bearer valid-token" },
+      payload: validPayload({ event: "webhook.test" }),
+    });
+    assert.equal(response.statusCode, 400, response.body);
+    assert.equal(JSON.parse(response.body).error.code, "UNSUPPORTED_INTEGRATION_EVENT");
+    assert.equal(authCalled, false);
+    assert.equal(Array.from(logStore.logs.values())[0].status, INTEGRATION_INGRESS_STATUS.REJECTED_CONTRACT);
     await app.close();
   }
 

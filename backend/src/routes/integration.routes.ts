@@ -14,6 +14,10 @@ import {
   integrationIngressService,
   parseOptionalDate,
 } from "../services/integrations/integrationIngress.service";
+import {
+  UnsupportedIntegrationEventError,
+  integrationEventCatalogService,
+} from "../services/integrations/integrationEventCatalog.service";
 import { redactSensitiveText, safeLogError } from "../utils/redaction";
 
 const integrationHeadersSchema = {
@@ -77,6 +81,7 @@ type IntegrationEventBody = {
 type IntegrationRouteDeps = {
   authService?: Pick<typeof integrationAuthService, "authorizeRequest">;
   ingressService?: Pick<typeof integrationIngressService, "persistLog">;
+  eventCatalogService?: Pick<typeof integrationEventCatalogService, "normalizeEventContext">;
 };
 
 function extractBearerToken(headerValue: string): string {
@@ -104,6 +109,9 @@ function requestSummary(request: FastifyRequest) {
 }
 
 function authFailureMessage(error: Error): { statusCode: number; code: string; message: string } {
+  if (error instanceof UnsupportedIntegrationEventError) {
+    return { statusCode: error.statusCode, code: error.code, message: error.message };
+  }
   if (error instanceof InvalidIntegrationTokenError) {
     return { statusCode: 401, code: error.code, message: error.message };
   }
@@ -122,6 +130,7 @@ function authFailureMessage(error: Error): { statusCode: number; code: string; m
 export function createIntegrationRoutes(deps: IntegrationRouteDeps = {}) {
   const authService = deps.authService ?? integrationAuthService;
   const ingressService = deps.ingressService ?? integrationIngressService;
+  const eventCatalogService = deps.eventCatalogService ?? integrationEventCatalogService;
 
   return async function integrationRoutes(fastify: FastifyInstance) {
     fastify.post<{ Headers: IntegrationEventHeaders; Body: IntegrationEventBody }>("/events", {
@@ -156,6 +165,24 @@ export function createIntegrationRoutes(deps: IntegrationRouteDeps = {}) {
 
       const body = request.body;
       const token = extractBearerToken(request.headers.authorization);
+
+      try {
+        eventCatalogService.normalizeEventContext(body.event, body.payload);
+      } catch (error) {
+        const mapped = authFailureMessage(error as Error);
+        await ingressService.persistLog({
+          instanceId: body.instanceId,
+          eventSlug: body.event,
+          dedupKey: body.dedupKey,
+          requestTimestamp: parseOptionalDate(body.timestamp),
+          status: INTEGRATION_INGRESS_STATUS.REJECTED_CONTRACT,
+          failureCode: mapped.code,
+          payload: body.payload,
+        });
+
+        fastify.log.warn({ ingress: requestSummary(request), err: safeLogError(error) }, "integration ingress event rejected by catalog");
+        return sendError(reply, mapped.statusCode, mapped.code, mapped.message);
+      }
 
       let authorization: AuthorizedIntegrationRequest | null = null;
       try {
