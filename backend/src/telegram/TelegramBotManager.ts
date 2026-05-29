@@ -216,6 +216,23 @@ export class TelegramBotManager {
     console.log("[Telegram] Bot iniciado com polling para instância:", instanceId);
   }
 
+  static async restoreOnBoot() {
+    const instance = await getTelegramInstance();
+    if (!instance) {
+      console.info("[Telegram] Boot: nenhuma instância Telegram persistida para restaurar.");
+      return;
+    }
+
+    const token = await getDecryptedTelegramToken(instance.id);
+    if (!token) {
+      console.info("[Telegram] Boot: instância Telegram sem token configurado.", { instanceId: instance.id });
+      return;
+    }
+
+    console.info("[Telegram] Boot: reconstruindo runtime Telegram persistido.", { instanceId: instance.id });
+    await this.startForInstance(instance.id);
+  }
+
   static async stop() {
     if (!this.bot) return;
     try {

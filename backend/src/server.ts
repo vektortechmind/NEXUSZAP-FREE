@@ -20,6 +20,7 @@ import { InstanceManager } from "./whatsapp/InstanceManager";
 import { TelegramBotManager } from "./telegram/TelegramBotManager";
 import { buildAllowedOrigins, createOriginGuard, isCorsOriginAllowedForRequest, verifyCsrf } from "./security/middlewares";
 import { safeLogError } from "./utils/redaction";
+import { globalMemoryManager } from "./utils/ai/memoryManager";
 
 export async function buildServer() {
   const fastify = Fastify({
@@ -30,7 +31,7 @@ export async function buildServer() {
     global: true,
     contentSecurityPolicy: true
   });
-  
+
   const defaultOrigins = ["http://localhost:5173", "http://127.0.0.1:5173"];
   const extraOrigins =
     env.CORS_ORIGINS?.split(",")
@@ -65,30 +66,32 @@ export async function buildServer() {
       signed: false
     }
   });
-  
+
   await fastify.register(multipart, {
     limits: {
-      fileSize: 5 * 1024 * 1024 // 5MB Upload Restritiva API Global
+      fileSize: 5 * 1024 * 1024
     }
   });
 
   await fastify.register(rateLimit, {
-    /** Polling /agent/status + várias abas: limite alto para evitar 429 no painel. */
     max: 800,
     timeWindow: "1 minute"
   });
 
-  // Healthcheck ultra-rápido (antes de any async operations)
   fastify.get("/api/ping", { config: { rateLimit: false } }, async () => {
     return { pong: true };
   });
 
-  // Healthcheck simples (para o front testar conectividade)
   fastify.get("/api/health", { config: { rateLimit: false } }, async () => {
-    return { ok: true, ts: Date.now() };
+    return {
+      ok: true,
+      ts: Date.now(),
+      memory: globalMemoryManager.getDiagnostics(),
+      whatsappRuntime: InstanceManager.getRuntimeDiagnostics(),
+      telegramRuntime: TelegramBotManager.getStatus(),
+    };
   });
 
-  // Rotas da Plataforma (Arquitetura Modular)
   await fastify.register(authRoutes, { prefix: "/api/auth" });
   await fastify.register(agentRoutes, { prefix: "/api/agent" });
   await fastify.register(filesRoutes, { prefix: "/api/files" });
@@ -111,13 +114,13 @@ async function bootstrap() {
     await fastify.listen({ port: env.PORT, host: "0.0.0.0" });
     console.log(`✅ Servidor rodando na porta ${env.PORT}`);
 
-    // Carrega instâncias em background com timeout
     setTimeout(async () => {
       try {
         await InstanceManager.loadInstancesOnBoot();
-        console.log("✅ Instâncias WhatsApp carregadas.");
+        await TelegramBotManager.restoreOnBoot();
+        console.log("✅ Runtimes suportados reconstruídos no boot.");
       } catch (err) {
-        console.error("⚠️ Erro ao carregar instâncias:", safeLogError(err));
+        console.error("⚠️ Erro ao carregar runtimes no boot:", safeLogError(err));
       }
     }, 1000);
 
