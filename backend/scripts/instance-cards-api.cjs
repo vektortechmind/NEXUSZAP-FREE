@@ -60,21 +60,20 @@ function assertProviderFallbackIsolationContracts() {
 
 function assertFrontendContracts() {
   const source = fs.readFileSync(path.resolve(__dirname, "..", "..", "frontend", "src", "pages", "Instancia.tsx"), "utf8");
-  const telegramSource = fs.readFileSync(path.resolve(__dirname, "..", "..", "frontend", "src", "pages", "Telegram.tsx"), "utf8");
+  const instancesHookSource = fs.readFileSync(path.resolve(__dirname, "..", "..", "frontend", "src", "features", "instances", "useInstancesOverview.ts"), "utf8");
+  const telegramWorkspaceSource = fs.readFileSync(path.resolve(__dirname, "..", "..", "frontend", "src", "features", "agents", "useAgentWorkspace.ts"), "utf8");
   const agenteSource = fs.readFileSync(path.resolve(__dirname, "..", "..", "frontend", "src", "pages", "Agente.tsx"), "utf8");
 
-  assert.ok(source.includes("if (!telegramStatus?.instanceId) return whatsappCards;"), "card Telegram so pode existir com instanceId persistido");
-  assert.ok(source.includes("markPairingIntent(instanceId);"), "fluxo deve marcar pareamento transitorio ao iniciar conexao");
-  assert.ok(source.includes("await cancelWhatsappPairing(selectedCard.id);"), "fechar detalhes deve cancelar pareamento pendente");
-  assert.ok(source.includes("await cancelWhatsappPairing(createModal.createdInstanceId);"), "fechar modal deve cancelar pareamento pendente");
+  assert.ok(instancesHookSource.includes("if (!telegramStatus?.instanceId) return whatsappCards;"), "card Telegram so pode existir com instanceId persistido");
+  assert.ok(instancesHookSource.includes("markPairingIntent(instanceId);"), "fluxo deve marcar pareamento transitorio ao iniciar conexao");
+  assert.ok(instancesHookSource.includes("await cancelWhatsappPairing(selectedCard.id);"), "fechar detalhes deve cancelar pareamento pendente");
+  assert.ok(instancesHookSource.includes("await cancelWhatsappPairing(createModal.createdInstanceId);"), "fechar modal deve cancelar pareamento pendente");
   assert.ok(source.includes("Nenhum pareamento ativo"), "detalhes devem exibir estado neutro antes de conectar");
   assert.ok(!source.includes("QR ainda não disponível"), "UI nao deve exibir placeholder antigo de QR");
   assert.ok(!source.includes("Use Conectar para iniciar o pareamento desta instância."), "UI nao deve antecipar copy de pareamento");
-  assert.ok(telegramSource.includes('api.get<TelegramConfig>("/agent/telegram/config")'), "pagina Telegram deve carregar config isolada");
-  assert.ok(telegramSource.includes('api.put<TelegramConfig>("/agent/telegram/config"'), "pagina Telegram deve salvar config isolada");
-  assert.ok(telegramSource.includes("cfg?.blockingReason"), "pagina Telegram deve exibir bloqueio quando nao houver agente vinculado");
-  assert.ok(agenteSource.includes('api.get<TelegramAgentConfig>("/agent/telegram/config")'), "workspace do agente deve ler prompt Telegram pela rota isolada");
-  assert.ok(agenteSource.includes('api.put("/agent/telegram/config"'), "workspace do agente deve salvar prompt Telegram pela rota isolada");
+  assert.ok(telegramWorkspaceSource.includes('api.get<TelegramAgentConfig>("/agent/telegram/config")'), "workspace do agente deve ler config isolada do Telegram");
+  assert.ok(telegramWorkspaceSource.includes('api.put("/agent/telegram/config"'), "workspace do agente deve salvar config isolada do Telegram");
+  assert.ok(telegramWorkspaceSource.includes("telegramConfig?.blockingReason"), "workspace do agente deve exibir bloqueio quando nao houver agente vinculado");
   assert.ok(agenteSource.includes("telegramWorkspaceEditable"), "workspace do agente deve bloquear edicao Telegram sem owner valido");
 }
 
@@ -85,4 +84,7 @@ assertProviderFallbackIsolationContracts();
 assertFrontendContracts();
 
 console.log("instance-cards-api: OK");
+
+
+
 
