@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { prisma } from "../../database/prisma";
-import { getOrCreateTelegramInstance, getTelegramInstance } from "../../services/instance.service";
+import { getOrCreateTelegramInstance, getTelegramInstance } from "../../services/instances/instance.service";
 import { TelegramBotManager } from "../../telegram/TelegramBotManager";
 import { emptyToNull } from "./shared";
 

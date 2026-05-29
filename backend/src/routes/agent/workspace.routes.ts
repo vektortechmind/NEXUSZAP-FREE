@@ -8,7 +8,7 @@ import {
   listAgents,
   listEligibleInstances,
   updateAgentWorkspace,
-} from "../../services/agent.service";
+} from "../../services/agents/agent.service";
 import {
   createAgentSchema,
   isChatProviderId,

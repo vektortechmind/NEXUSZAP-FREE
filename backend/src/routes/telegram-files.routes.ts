@@ -15,7 +15,7 @@ import {
   getKnowledgeOwnerByAgent,
   listKnowledgeFilesByAgent,
   listKnowledgeFilesByInstance,
-} from "../services/knowledgeService";
+} from "../services/knowledge/knowledge.service";
 
 async function extractKnowledgeText(
   fastify: FastifyInstance,
