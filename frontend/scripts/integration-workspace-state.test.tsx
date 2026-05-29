@@ -7,9 +7,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { APP_NAV_GROUPS, getAppRouteTitle } from "../src/features/navigation/appNavigation.ts";
 import { EMPTY_INTEGRATION_CREDENTIALS_WORKSPACE } from "../src/features/integrations/credentials.ts";
+import { INTEGRATION_DOCUMENTATION_ROUTE } from "../src/features/integrations/integrationDocumentationContent.ts";
 import { EMPTY_INTEGRATIONS } from "../src/features/integrations/workspace.ts";
 import { IntegrationWorkspacePage } from "../src/features/integrations/IntegrationWorkspacePage.tsx";
 import { INTEGRATION_WORKSPACE_SECTIONS } from "../src/features/integrations/workspace.ts";
+
+globalThis.React = React;
 
 test("integration workspace is exposed in app navigation and route meta", () => {
   const operationGroup = APP_NAV_GROUPS.find((group) => group.label === "Operação");
@@ -39,6 +42,10 @@ test("integration route renders the dedicated workspace sections", () => {
   assert.match(html, /Operação/);
   assert.match(html, /Documentação/);
   assert.match(html, /Atualizar operação/);
+  assert.match(html, /Abrir documentação/);
+  assert.match(html, /href="\/integracoes\/documentacao"/);
+  assert.doesNotMatch(html, /docs\/integrations\/nexuszap-plugin-api\.md/);
+  assert.equal(EMPTY_INTEGRATIONS.documentation.path, INTEGRATION_DOCUMENTATION_ROUTE);
 });
 
 test("dashboard no longer embeds the integration workspace directly", () => {

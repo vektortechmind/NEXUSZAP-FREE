@@ -9,6 +9,7 @@ import { Agente } from "./pages/Agente";
 import { Apis } from "./pages/Apis";
 import { Dashboard } from "./pages/Dashboard";
 import { Integracoes } from "./pages/Integracoes";
+import { IntegracoesDocumentacao } from "./pages/IntegracoesDocumentacao";
 import { DockerSetup } from "./pages/DockerSetup";
 import { CreateAdmin } from "./pages/CreateAdmin";
 import { Sidebar } from "./components/Sidebar";
@@ -110,6 +111,7 @@ function AppRoutes() {
         <Route index element={<Instancia />} />
         <Route path="agente" element={<Agente />} />
         <Route path="integracoes" element={<Integracoes />} />
+        <Route path="integracoes/documentacao" element={<IntegracoesDocumentacao />} />
         <Route path="telegram" element={<Navigate to="/agente" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="settings" element={<Apis />} />

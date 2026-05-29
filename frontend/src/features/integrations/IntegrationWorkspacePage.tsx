@@ -1,9 +1,11 @@
 import { ArrowRight, BookOpenText, Cable, KeyRound, LifeBuoy, RefreshCw } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Button } from "../../components/ui/Button";
 import { Panel } from "../../components/ui/Panel";
 import { Section } from "../../components/ui/Section";
 import { type IntegrationDashboardResponse } from "../dashboard/integrationDashboard";
 import { type IntegrationCredentialDetail, type IntegrationCredentialsWorkspace } from "./credentials";
+import { INTEGRATION_DOCUMENTATION_ROUTE } from "./integrationDocumentationContent";
 import { IntegrationCredentialsSection } from "./IntegrationCredentialsSection";
 import { IntegrationOperationsOverview } from "./IntegrationOperationsOverview";
 import { INTEGRATION_WORKSPACE_SECTIONS } from "./workspace";
@@ -39,6 +41,8 @@ export function IntegrationWorkspacePage({
   onRotateCredential,
   onCopyCredentialField,
 }: IntegrationWorkspacePageProps) {
+  const documentationPath = overview.documentation.path || INTEGRATION_DOCUMENTATION_ROUTE;
+
   return (
     <div className="space-y-8">
       <div aria-label="Ações da área de integrações" className="rounded-3xl border border-slate-200 bg-white/80 p-4 shadow-[0_20px_50px_-35px_rgba(15,23,42,0.35)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/70 sm:p-5">
@@ -98,12 +102,18 @@ export function IntegrationWorkspacePage({
         <Panel tone="muted" className="p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div className="max-w-3xl">
-              <p className="text-sm font-semibold text-slate-950 dark:text-slate-50">Página própria de documentação na próxima fase</p>
-              <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">A documentação técnica será promovida para uma rota dedicada do frontend. O objetivo é abrir uma página própria a partir daqui, com contrato navegável, exemplos e orientação explícita de onde obter `instanceId` e `secretToken` no próprio painel.</p>
+              <p className="text-sm font-semibold text-slate-950 dark:text-slate-50">Página própria de documentação disponível no painel</p>
+              <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">Abra a documentação pública do endpoint para consultar auth, body, eventos suportados, respostas HTTP e troubleshooting. O fluxo correto continua sendo selecionar a instância e obter `instanceId`, `endpointUrl` e `secretToken` na seção `Credenciais` antes de configurar o sistema externo.</p>
             </div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
-              <LifeBuoy size={14} aria-hidden="true" />
-              Story 040
+            <div className="flex flex-col items-stretch gap-3 sm:items-end">
+              <Link to={documentationPath} className="inline-flex min-h-10 items-center justify-center rounded-lg border border-emerald-600 bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:border-emerald-500 hover:bg-emerald-500 dark:border-emerald-500 dark:bg-emerald-500 dark:text-slate-950 dark:hover:border-emerald-400 dark:hover:bg-emerald-400">
+                <BookOpenText className="mr-2 h-4 w-4" aria-hidden="true" />
+                Abrir documentação
+              </Link>
+              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
+                <LifeBuoy size={14} aria-hidden="true" />
+                Story 040
+              </div>
             </div>
           </div>
         </Panel>
