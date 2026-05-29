@@ -8,7 +8,7 @@ import {
   InstanceLinkedAgentError,
   listInstances,
   MaxWhatsAppInstancesError,
-} from "../../services/instance.service";
+} from "../../services/instances/instance.service";
 import { TelegramBotManager } from "../../telegram/TelegramBotManager";
 import { InstanceManager } from "../../whatsapp/InstanceManager";
 import {

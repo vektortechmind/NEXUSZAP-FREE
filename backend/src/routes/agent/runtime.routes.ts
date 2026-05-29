@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { getOrCreatePrimaryInstance } from "../../services/instance.service";
+import { getOrCreatePrimaryInstance } from "../../services/instances/instance.service";
 import { getLabelsForInstance } from "../../whatsapp/labelsCache";
 import { InstanceManager } from "../../whatsapp/InstanceManager";
 import { waitForQr } from "./shared";

@@ -1,7 +1,7 @@
 import { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { verifyJwt } from "../security/middlewares";
-import { getDashboardStats } from "../services/messageEvent.service";
+import { getDashboardStats } from "../services/analytics/messageEvent.service";
 
 export async function dashboardRoutes(fastify: FastifyInstance) {
   fastify.addHook("preValidation", verifyJwt);

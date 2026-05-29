@@ -2,15 +2,15 @@ import type { Instance } from "@prisma/client";
 import { Context, Telegraf } from "telegraf";
 import { prisma } from "../database/prisma";
 import { askChat, getKeys, isAudioTranscriptionEnabled, transcribeAudio } from "../ai/providerSelector";
-import { getResolvedTelegramPrompt } from "../services/agentPrompt";
+import { getResolvedTelegramPrompt } from "../services/runtime-ai/agentPrompt.service";
 import { encryptToken, tryDecryptSecret } from "../services/crypto.service";
-import { recordMessageEvent } from "../services/messageEvent.service";
+import { recordMessageEvent } from "../services/analytics/messageEvent.service";
 import { buildCompleteSystemPrompt, resolveAgentDisplayName } from "../ai/systemPrompt";
 import {
   ensureKnowledgeExtracted,
   buildFileContextSuffix,
   listKnowledgeFilesByInstance,
-} from "../services/knowledgeService";
+} from "../services/knowledge/knowledge.service";
 import { getTelegramInstance } from "../services/instance.service";
 import { safeLogError } from "../utils/redaction";
 import { globalMemoryManager } from "../utils/ai/memoryManager";

@@ -8,7 +8,7 @@ import { Boom } from "@hapi/boom";
 import NodeCache from "node-cache";
 import P from "pino";
 import { prisma } from "../database/prisma";
-import { getOrCreatePrimaryInstance, getPrimaryInstance, listInstances } from "../services/instance.service";
+import { getOrCreatePrimaryInstance, getPrimaryInstance, listInstances } from "../services/instances/instance.service";
 import { safeLogError } from "../utils/redaction";
 import { onInstanceLabelEdit } from "./labelsCache";
 import { handleIncomingMessage } from "./messageHandler";
