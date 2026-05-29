@@ -3,16 +3,42 @@ import { Button } from "../../components/ui/Button";
 import { Panel } from "../../components/ui/Panel";
 import { Section } from "../../components/ui/Section";
 import { type IntegrationDashboardResponse } from "../dashboard/integrationDashboard";
+import { type IntegrationCredentialDetail, type IntegrationCredentialsWorkspace } from "./credentials";
+import { IntegrationCredentialsSection } from "./IntegrationCredentialsSection";
 import { IntegrationOperationsOverview } from "./IntegrationOperationsOverview";
 import { INTEGRATION_WORKSPACE_SECTIONS } from "./workspace";
 
 type IntegrationWorkspacePageProps = {
   overview: IntegrationDashboardResponse;
+  credentialsWorkspace: IntegrationCredentialsWorkspace;
+  selectedCredentialInstanceId: string | null;
+  credentialDetail: IntegrationCredentialDetail | null;
+  credentialsLoading: boolean;
+  credentialDetailLoading: boolean;
+  credentialActionLoading: "issue" | "rotate" | null;
   refreshing: boolean;
   onRefresh: () => void;
+  onSelectCredentialInstance: (instanceId: string) => void;
+  onIssueCredential: () => void;
+  onRotateCredential: () => void;
+  onCopyCredentialField: (label: string, value: string | null) => void;
 };
 
-export function IntegrationWorkspacePage({ overview, refreshing, onRefresh }: IntegrationWorkspacePageProps) {
+export function IntegrationWorkspacePage({
+  overview,
+  credentialsWorkspace,
+  selectedCredentialInstanceId,
+  credentialDetail,
+  credentialsLoading,
+  credentialDetailLoading,
+  credentialActionLoading,
+  refreshing,
+  onRefresh,
+  onSelectCredentialInstance,
+  onIssueCredential,
+  onRotateCredential,
+  onCopyCredentialField,
+}: IntegrationWorkspacePageProps) {
   return (
     <div className="space-y-8">
       <div aria-label="Ações da área de integrações" className="rounded-3xl border border-slate-200 bg-white/80 p-4 shadow-[0_20px_50px_-35px_rgba(15,23,42,0.35)] backdrop-blur dark:border-slate-800 dark:bg-slate-950/70 sm:p-5">
@@ -50,18 +76,18 @@ export function IntegrationWorkspacePage({ overview, refreshing, onRefresh }: In
       </div>
 
       <Section id="credenciais" title="Credenciais" description="Superfície operacional reservada para a próxima entrega: seleção da instância, leitura de instanceId, endpointUrl e geração ou rotação do secretToken.">
-        <Panel tone="muted" className="p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="max-w-3xl">
-              <p className="text-sm font-semibold text-slate-950 dark:text-slate-50">Preparando a superfície de credenciais por instância</p>
-              <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">A próxima etapa desta área vai centralizar a escolha da instância, o `instanceId`, o `endpointUrl` final e a emissão do `secretToken`, evitando depender de documentação ou inferência manual para integrar sistemas externos.</p>
-            </div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300">
-              <KeyRound size={14} aria-hidden="true" />
-              Story 039
-            </div>
-          </div>
-        </Panel>
+        <IntegrationCredentialsSection
+          workspace={credentialsWorkspace}
+          selectedInstanceId={selectedCredentialInstanceId}
+          detail={credentialDetail}
+          loadingWorkspace={credentialsLoading}
+          loadingDetail={credentialDetailLoading}
+          actionLoading={credentialActionLoading}
+          onSelectInstance={onSelectCredentialInstance}
+          onIssueCredential={onIssueCredential}
+          onRotateCredential={onRotateCredential}
+          onCopyField={onCopyCredentialField}
+        />
       </Section>
 
       <Section id="operacao" title="Operação" description="Estado básico das integrações por instância com base em credenciais, ingressos e dispatches persistidos.">

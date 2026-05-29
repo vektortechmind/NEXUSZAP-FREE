@@ -6,6 +6,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { APP_NAV_GROUPS, getAppRouteTitle } from "../src/features/navigation/appNavigation.ts";
+import { EMPTY_INTEGRATION_CREDENTIALS_WORKSPACE } from "../src/features/integrations/credentials.ts";
 import { EMPTY_INTEGRATIONS } from "../src/features/integrations/workspace.ts";
 import { IntegrationWorkspacePage } from "../src/features/integrations/IntegrationWorkspacePage.tsx";
 import { INTEGRATION_WORKSPACE_SECTIONS } from "../src/features/integrations/workspace.ts";
@@ -28,7 +29,7 @@ test("integration route renders the dedicated workspace sections", () => {
   const html = renderToStaticMarkup(
     <MemoryRouter initialEntries={["/integracoes"]}>
       <Routes>
-        <Route path="/integracoes" element={<IntegrationWorkspacePage overview={EMPTY_INTEGRATIONS} refreshing={false} onRefresh={() => undefined} />} />
+        <Route path="/integracoes" element={<IntegrationWorkspacePage overview={EMPTY_INTEGRATIONS} credentialsWorkspace={EMPTY_INTEGRATION_CREDENTIALS_WORKSPACE} selectedCredentialInstanceId={null} credentialDetail={null} credentialsLoading={false} credentialDetailLoading={false} credentialActionLoading={null} refreshing={false} onRefresh={() => undefined} onSelectCredentialInstance={() => undefined} onIssueCredential={() => undefined} onRotateCredential={() => undefined} onCopyCredentialField={() => undefined} />} />
       </Routes>
     </MemoryRouter>,
   );

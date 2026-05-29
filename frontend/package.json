@@ -8,6 +8,7 @@
     "build": "node scripts/ensure-env.mjs && tsc -b && vite build",
     "lint": "eslint .",
     "test:integration-dashboard": "node --experimental-strip-types --test scripts/integration-dashboard-state.test.ts",
+    "test:integration-credentials": "node ../node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.app.json --test scripts/integration-credentials-state.test.tsx",
     "test:integration-workspace": "node ../node_modules/tsx/dist/cli.mjs --tsconfig tsconfig.app.json --test scripts/integration-workspace-state.test.tsx",
     "typecheck": "tsc -b",
     "preview": "vite preview",
