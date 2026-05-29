@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node scripts/integration-event-normalization-api.cjs && node scripts/integration-events-api.cjs && node scripts/integration-auth-api.cjs && node scripts/security-api.cjs && node scripts/secrets-api.cjs && node scripts/file-security.cjs && node scripts/prompt-injection.cjs && node scripts/update-disabled.cjs && node scripts/setup-api.cjs && node scripts/ops-postgresql-cleanup.cjs && node scripts/smoke-api.cjs && node scripts/instance-cards-api.cjs && node scripts/provider-fallback-api.cjs && node scripts/knowledge-isolation-api.cjs && node scripts/memory-runtime-api.cjs && node scripts/local-file-storage-api.cjs",
+    "test": "node scripts/integration-dispatch-template-api.cjs && node scripts/integration-event-normalization-api.cjs && node scripts/integration-events-api.cjs && node scripts/integration-auth-api.cjs && node scripts/security-api.cjs && node scripts/secrets-api.cjs && node scripts/file-security.cjs && node scripts/prompt-injection.cjs && node scripts/update-disabled.cjs && node scripts/setup-api.cjs && node scripts/ops-postgresql-cleanup.cjs && node scripts/smoke-api.cjs && node scripts/instance-cards-api.cjs && node scripts/provider-fallback-api.cjs && node scripts/knowledge-isolation-api.cjs && node scripts/memory-runtime-api.cjs && node scripts/local-file-storage-api.cjs",
     "typecheck": "tsc --noEmit",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
