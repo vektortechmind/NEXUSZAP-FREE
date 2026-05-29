@@ -2,6 +2,24 @@
 
 Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
+## [1.0.3] - 2026-05-29
+
+### Added
+
+- Modelo de autenticação de integrações por instância com persistência dedicada no backend.
+- Endpoint de ingress para eventos de plugin com normalização e trilha operacional de recebimento.
+- Catálogo oficial de eventos suportados para integrações e templates predefinidos de dispatch.
+- Observabilidade de dispatch em runtime com histórico operacional para integrações Baileys.
+- Endpoint `GET /api/dashboard/integrations` e visão consolidada no dashboard para credenciais, ingressos, dispatches e saúde operacional.
+- Teste leve do estado do dashboard de integrações no frontend e suíte de API para os fluxos de integração no backend.
+
+### Changed
+
+- Gates de qualidade do projeto passaram a expor `npm run lint` e `npm run typecheck` no nível raiz.
+- Dashboard principal passou a exibir um overview operacional de integrações sem exigir navegação para uma tela separada.
+- Documentação e artefatos públicos de integração foram consolidados para refletir o fluxo atual do plugin/API.
+- Versão do frontend, backend, `backend/VERSION`, `README` e artefatos de release atualizada para `1.0.3`.
+
 ## [1.0.2] - 2026-05-28
 
 ### Added
