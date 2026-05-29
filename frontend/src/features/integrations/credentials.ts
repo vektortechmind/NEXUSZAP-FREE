@@ -37,6 +37,11 @@ export type IntegrationCredentialAction = {
   helper: string;
 };
 
+export type IntegrationCredentialFieldSummary = {
+  label: string;
+  value: string;
+};
+
 export const EMPTY_INTEGRATION_CREDENTIALS_WORKSPACE: IntegrationCredentialsWorkspace = {
   endpointUrl: null,
   instances: [],
@@ -84,6 +89,10 @@ export function getCredentialPrimaryAction(status: IntegrationCredentialsSurface
   };
 }
 
+export function getIssuableCredentialInstances(workspace: IntegrationCredentialsWorkspace) {
+  return workspace.instances.filter((instance) => instance.credentialStatus !== "ACTIVE");
+}
+
 export function formatCredentialTimestamp(value: string | null): string {
   if (!value) return "Sem registro";
   const date = new Date(value);
@@ -94,4 +103,25 @@ export function formatCredentialTimestamp(value: string | null): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+export function formatCredentialWindow(windowMs: number | null): string {
+  if (!windowMs) return "N/D";
+  return `${Math.round(windowMs / 60000)} min`;
+}
+
+export function getCredentialSecretLabel(detail: IntegrationCredentialDetail | null): string {
+  if (!detail) return "Carregue o card para operar a credencial.";
+  if (detail.secretToken) return detail.secretToken;
+  if (detail.credentialStatus === "ACTIVE") return "Disponível somente após emissão ou rotação.";
+  return "Emita uma credencial para liberar o secretToken.";
+}
+
+export function getCredentialOperationalSummary(detail: IntegrationCredentialDetail): IntegrationCredentialFieldSummary[] {
+  return [
+    { label: "Emissão", value: formatCredentialTimestamp(detail.issuedAt) },
+    { label: "Último uso", value: formatCredentialTimestamp(detail.lastUsedAt) },
+    { label: "Replay window", value: formatCredentialWindow(detail.replayWindowMs) },
+    { label: "Dedup window", value: formatCredentialWindow(detail.dedupWindowMs) },
+  ];
 }

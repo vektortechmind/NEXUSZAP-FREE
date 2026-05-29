@@ -5,6 +5,7 @@ import { useToast } from "../contexts/ToastContext";
 import type { IntegrationDashboardResponse } from "../features/dashboard/integrationDashboard";
 import {
   EMPTY_INTEGRATION_CREDENTIALS_WORKSPACE,
+  getIssuableCredentialInstances,
   type IntegrationCredentialDetail,
   type IntegrationCredentialsWorkspace,
 } from "../features/integrations/credentials";
@@ -26,8 +27,10 @@ function IntegracoesSkeleton() {
 export function Integracoes() {
   const [overview, setOverview] = useState<IntegrationDashboardResponse | null>(null);
   const [credentialsWorkspace, setCredentialsWorkspace] = useState<IntegrationCredentialsWorkspace>(EMPTY_INTEGRATION_CREDENTIALS_WORKSPACE);
-  const [selectedCredentialInstanceId, setSelectedCredentialInstanceId] = useState<string | null>(null);
+  const [expandedCredentialInstanceId, setExpandedCredentialInstanceId] = useState<string | null>(null);
   const [credentialDetail, setCredentialDetail] = useState<IntegrationCredentialDetail | null>(null);
+  const [issueModalOpen, setIssueModalOpen] = useState(false);
+  const [issueModalInstanceId, setIssueModalInstanceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [credentialsLoading, setCredentialsLoading] = useState(true);
   const [credentialDetailLoading, setCredentialDetailLoading] = useState(false);
@@ -61,32 +64,37 @@ export function Integracoes() {
     }
   }, [addToast]);
 
-  const loadCredentialsWorkspace = useCallback(async (preferredInstanceId?: string | null, options?: { loadDetail?: boolean }) => {
+  const loadCredentialsWorkspace = useCallback(async (preferredInstanceId?: string | null) => {
     setCredentialsLoading(true);
     try {
       const response = await api.get<IntegrationCredentialsWorkspace>("/dashboard/integrations/credentials");
       setCredentialsWorkspace(response.data);
-      const nextInstanceId = response.data.instances.some((item) => item.instanceId === preferredInstanceId)
-        ? preferredInstanceId ?? null
-        : response.data.instances[0]?.instanceId ?? null;
-      setSelectedCredentialInstanceId(nextInstanceId);
-      const shouldLoadDetail = options?.loadDetail ?? true;
-      if (nextInstanceId && shouldLoadDetail) {
-        await loadCredentialDetail(nextInstanceId);
-      } else if (!nextInstanceId) {
-        setCredentialDetail(null);
-      }
+
+      setExpandedCredentialInstanceId((current) => {
+        const target = preferredInstanceId ?? current;
+        if (!target) return null;
+        return response.data.instances.some((item) => item.instanceId === target) ? target : null;
+      });
+
+      setIssueModalInstanceId((current) => {
+        const target = preferredInstanceId ?? current;
+        const issuable = getIssuableCredentialInstances(response.data);
+        if (target && issuable.some((item) => item.instanceId === target)) return target;
+        return issuable[0]?.instanceId ?? null;
+      });
+
       return true;
     } catch {
       addToast("Erro ao carregar workspace de credenciais", "error");
       setCredentialsWorkspace(EMPTY_INTEGRATION_CREDENTIALS_WORKSPACE);
-      setSelectedCredentialInstanceId(null);
+      setExpandedCredentialInstanceId(null);
+      setIssueModalInstanceId(null);
       setCredentialDetail(null);
       return false;
     } finally {
       setCredentialsLoading(false);
     }
-  }, [addToast, loadCredentialDetail]);
+  }, [addToast]);
 
   useEffect(() => {
     let active = true;
@@ -113,17 +121,43 @@ export function Integracoes() {
   const refreshOverview = useCallback(async () => {
     setRefreshing(true);
     try {
-      const loaded = await loadOverview();
-      if (loaded) addToast("Visão operacional atualizada", "success");
+      const [overviewLoaded] = await Promise.all([
+        loadOverview(),
+        loadCredentialsWorkspace(expandedCredentialInstanceId),
+      ]);
+      if (expandedCredentialInstanceId) {
+        await loadCredentialDetail(expandedCredentialInstanceId);
+      }
+      if (overviewLoaded) addToast("Visão operacional atualizada", "success");
     } finally {
       setRefreshing(false);
     }
-  }, [addToast, loadOverview]);
+  }, [addToast, expandedCredentialInstanceId, loadCredentialDetail, loadCredentialsWorkspace, loadOverview]);
 
-  const handleCredentialSelection = useCallback((instanceId: string) => {
-    setSelectedCredentialInstanceId(instanceId);
+  const handleToggleCredentialInstance = useCallback((instanceId: string) => {
+    if (expandedCredentialInstanceId === instanceId) {
+      setExpandedCredentialInstanceId(null);
+      setCredentialDetail(null);
+      return;
+    }
+
+    setExpandedCredentialInstanceId(instanceId);
+    if (credentialDetail?.instanceId === instanceId) return;
     void loadCredentialDetail(instanceId);
-  }, [loadCredentialDetail]);
+  }, [credentialDetail?.instanceId, expandedCredentialInstanceId, loadCredentialDetail]);
+
+  const handleOpenIssueModal = useCallback((instanceId?: string | null) => {
+    const issuableInstances = getIssuableCredentialInstances(credentialsWorkspace);
+    const nextInstanceId = instanceId && issuableInstances.some((item) => item.instanceId === instanceId)
+      ? instanceId
+      : issuableInstances[0]?.instanceId ?? null;
+    setIssueModalInstanceId(nextInstanceId);
+    setIssueModalOpen(true);
+  }, [credentialsWorkspace]);
+
+  const handleCloseIssueModal = useCallback(() => {
+    setIssueModalOpen(false);
+  }, []);
 
   const handleCopyCredentialField = useCallback(async (label: string, value: string | null) => {
     if (!value) {
@@ -139,20 +173,23 @@ export function Integracoes() {
     }
   }, [addToast]);
 
-  const submitCredentialAction = useCallback(async (action: "issue" | "rotate") => {
-    if (!selectedCredentialInstanceId) return;
+  const submitCredentialAction = useCallback(async (instanceId: string, action: "issue" | "rotate") => {
     setCredentialActionLoading(action);
     try {
-      const response = await api.post<IntegrationCredentialDetail>(`/dashboard/integrations/credentials/${selectedCredentialInstanceId}/${action}`);
+      const response = await api.post<IntegrationCredentialDetail>(`/dashboard/integrations/credentials/${instanceId}/${action}`);
       addToast(action === "issue" ? "secretToken gerado com sucesso" : "secretToken rotacionado com sucesso", "success");
-      await loadCredentialsWorkspace(selectedCredentialInstanceId, { loadDetail: false });
+      await loadCredentialsWorkspace(instanceId);
+      setExpandedCredentialInstanceId(instanceId);
       setCredentialDetail(response.data);
+      if (action === "issue") {
+        setIssueModalOpen(false);
+      }
     } catch {
       addToast(action === "issue" ? "Erro ao gerar secretToken" : "Erro ao rotacionar secretToken", "error");
     } finally {
       setCredentialActionLoading(null);
     }
-  }, [addToast, loadCredentialsWorkspace, selectedCredentialInstanceId]);
+  }, [addToast, loadCredentialsWorkspace]);
 
   if (loading && !overview) {
     return <IntegracoesSkeleton />;
@@ -164,16 +201,21 @@ export function Integracoes() {
     <IntegrationWorkspacePage
       overview={data}
       credentialsWorkspace={credentialsWorkspace}
-      selectedCredentialInstanceId={selectedCredentialInstanceId}
+      expandedCredentialInstanceId={expandedCredentialInstanceId}
       credentialDetail={credentialDetail}
+      issueModalOpen={issueModalOpen}
+      issueModalInstanceId={issueModalInstanceId}
       credentialsLoading={credentialsLoading}
       credentialDetailLoading={credentialDetailLoading}
       credentialActionLoading={credentialActionLoading}
       refreshing={refreshing}
       onRefresh={() => void refreshOverview()}
-      onSelectCredentialInstance={handleCredentialSelection}
-      onIssueCredential={() => void submitCredentialAction("issue")}
-      onRotateCredential={() => void submitCredentialAction("rotate")}
+      onToggleCredentialInstance={handleToggleCredentialInstance}
+      onOpenIssueModal={handleOpenIssueModal}
+      onCloseIssueModal={handleCloseIssueModal}
+      onSelectIssueInstance={setIssueModalInstanceId}
+      onIssueCredential={(instanceId) => void submitCredentialAction(instanceId, "issue")}
+      onRotateCredential={(instanceId) => void submitCredentialAction(instanceId, "rotate")}
       onCopyCredentialField={(label, value) => void handleCopyCredentialField(label, value)}
     />
   );

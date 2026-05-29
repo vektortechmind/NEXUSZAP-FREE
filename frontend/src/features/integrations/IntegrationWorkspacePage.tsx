@@ -13,30 +13,40 @@ import { INTEGRATION_WORKSPACE_SECTIONS } from "./workspace";
 type IntegrationWorkspacePageProps = {
   overview: IntegrationDashboardResponse;
   credentialsWorkspace: IntegrationCredentialsWorkspace;
-  selectedCredentialInstanceId: string | null;
+  expandedCredentialInstanceId: string | null;
   credentialDetail: IntegrationCredentialDetail | null;
+  issueModalOpen: boolean;
+  issueModalInstanceId: string | null;
   credentialsLoading: boolean;
   credentialDetailLoading: boolean;
   credentialActionLoading: "issue" | "rotate" | null;
   refreshing: boolean;
   onRefresh: () => void;
-  onSelectCredentialInstance: (instanceId: string) => void;
-  onIssueCredential: () => void;
-  onRotateCredential: () => void;
+  onToggleCredentialInstance: (instanceId: string) => void;
+  onOpenIssueModal: (instanceId?: string | null) => void;
+  onCloseIssueModal: () => void;
+  onSelectIssueInstance: (instanceId: string) => void;
+  onIssueCredential: (instanceId: string) => void;
+  onRotateCredential: (instanceId: string) => void;
   onCopyCredentialField: (label: string, value: string | null) => void;
 };
 
 export function IntegrationWorkspacePage({
   overview,
   credentialsWorkspace,
-  selectedCredentialInstanceId,
+  expandedCredentialInstanceId,
   credentialDetail,
+  issueModalOpen,
+  issueModalInstanceId,
   credentialsLoading,
   credentialDetailLoading,
   credentialActionLoading,
   refreshing,
   onRefresh,
-  onSelectCredentialInstance,
+  onToggleCredentialInstance,
+  onOpenIssueModal,
+  onCloseIssueModal,
+  onSelectIssueInstance,
   onIssueCredential,
   onRotateCredential,
   onCopyCredentialField,
@@ -81,15 +91,20 @@ export function IntegrationWorkspacePage({
         })}
       </div>
 
-      <Section id="credenciais" title="Credenciais" description="Superfície operacional reservada para a próxima entrega: seleção da instância, leitura de instanceId, endpointUrl e geração ou rotação do secretToken.">
+      <Section id="credenciais" title="Credenciais" description="Cards compactos por instância com emissão guiada, rotação explícita e detalhamento sob demanda do `secretToken`.">
         <IntegrationCredentialsSection
           workspace={credentialsWorkspace}
-          selectedInstanceId={selectedCredentialInstanceId}
+          expandedInstanceId={expandedCredentialInstanceId}
           detail={credentialDetail}
+          issueModalOpen={issueModalOpen}
+          issueModalInstanceId={issueModalInstanceId}
           loadingWorkspace={credentialsLoading}
           loadingDetail={credentialDetailLoading}
           actionLoading={credentialActionLoading}
-          onSelectInstance={onSelectCredentialInstance}
+          onToggleInstance={onToggleCredentialInstance}
+          onOpenIssueModal={onOpenIssueModal}
+          onCloseIssueModal={onCloseIssueModal}
+          onSelectIssueInstance={onSelectIssueInstance}
           onIssueCredential={onIssueCredential}
           onRotateCredential={onRotateCredential}
           onCopyField={onCopyCredentialField}
