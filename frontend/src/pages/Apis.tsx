@@ -1,5 +1,5 @@
 import type React from "react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
 import { api, apiLong } from "../lib/axios";
 import { AlertCircle, BookOpen, Check, Layers, RefreshCw, Save, Search, Shield, Wifi } from "lucide-react";
@@ -15,134 +15,16 @@ import { StatusDot } from "../components/ui/StatusDot";
 import { Tabs } from "../components/ui/Tabs";
 import { Toolbar } from "../components/ui/Toolbar";
 import { useToast } from "../contexts/ToastContext";
-
-type ProviderId = "gemini" | "groq" | "groq-audio" | "openrouter";
-type ApiKeyField = "geminiKey" | "groqKey" | "groqAudioKey" | "openrouterKey";
-type StatusTone = "neutral" | "success" | "warning" | "danger" | "info";
-
-type ProviderHealth = {
-  preferredChatProvider: string | null;
-  results: {
-    provider: ProviderId;
-    configured: boolean;
-    ok: boolean;
-    latencyMs?: number;
-    error?: string;
-  }[];
-};
-
-type AgentConfig = {
-  id: string;
-  name: string;
-  agentName: string | null;
-  status: string;
-  typing: boolean;
-  delayMin: number;
-  delayMax: number;
-  systemPrompt: string | null;
-  chatProvider: string | null;
-  groqKey: string | null;
-  groqAudioKey: string | null;
-  geminiKey: string | null;
-  openrouterKey: string | null;
-  groqKeyConfigured?: boolean;
-  groqKeyMasked?: string | null;
-  groqAudioKeyConfigured?: boolean;
-  groqAudioKeyMasked?: string | null;
-  geminiKeyConfigured?: boolean;
-  geminiKeyMasked?: string | null;
-  openrouterKeyConfigured?: boolean;
-  openrouterKeyMasked?: string | null;
-  openrouterModel: string | null;
-};
-
-type OpenRouterModelRow = {
-  id: string;
-  name: string;
-  contextLength: number | null;
-  tier: "free" | "paid";
-  pricingPrompt: string | null;
-  pricingCompletion: string | null;
-};
-
-type OpenRouterModelsResponse = {
-  free: OpenRouterModelRow[];
-  paid: OpenRouterModelRow[];
-  totalFree: number;
-  totalPaid: number;
-};
-
-type ProviderMeta = {
-  id: ProviderId;
-  label: string;
-  shortLabel: string;
-  field: ApiKeyField;
-  placeholder: string;
-  description: string;
-  canBePreferred: boolean;
-};
-
-const providers: ProviderMeta[] = [
-  { id: "gemini", label: "Google Gemini", shortLabel: "Gemini", field: "geminiKey", placeholder: "AIza...", description: "Modelo Google para respostas em texto.", canBePreferred: true },
-  { id: "groq", label: "Groq Chat", shortLabel: "Groq", field: "groqKey", placeholder: "gsk_...", description: "Chat rápido para respostas operacionais.", canBePreferred: true },
-  { id: "groq-audio", label: "Groq Audio", shortLabel: "Audio", field: "groqAudioKey", placeholder: "gsk_...", description: "Chave opcional para transcrição/áudio. Se vazio, mantém a chave salva.", canBePreferred: false },
-  { id: "openrouter", label: "OpenRouter", shortLabel: "OpenRouter", field: "openrouterKey", placeholder: "sk-or-...", description: "Roteamento de modelos externos e seleção de modelo principal.", canBePreferred: true },
-];
-
-function buildConfigSavePayload(cfg: AgentConfig) {
-  const openrouterModel = cfg.openrouterModel?.trim();
-  const payload: Record<string, unknown> = {
-    name: cfg.name,
-    agentName: cfg.agentName,
-    typing: cfg.typing,
-    delayMin: cfg.delayMin,
-    delayMax: cfg.delayMax,
-    systemPrompt: cfg.systemPrompt,
-    chatProvider: cfg.chatProvider,
-    openrouterModel: openrouterModel && openrouterModel.length > 0 ? openrouterModel : null,
-  };
-
-  const keys: ApiKeyField[] = ["groqKey", "groqAudioKey", "geminiKey", "openrouterKey"];
-  for (const key of keys) {
-    const value = cfg[key]?.trim();
-    if (value) payload[key] = value;
-  }
-  return payload;
-}
-
-function configuredLabel(cfg: AgentConfig, field: ApiKeyField): string | null {
-  const masked = cfg[`${field}Masked` as keyof AgentConfig];
-  const configured = cfg[`${field}Configured` as keyof AgentConfig];
-  if (typeof masked === "string" && masked) return masked;
-  if (configured) return "Chave salva";
-  return null;
-}
-
-function usdPerMillionTokens(perTokenUsd: string | null): string {
-  if (perTokenUsd === null || perTokenUsd === "") return "-";
-  const n = parseFloat(perTokenUsd);
-  if (!Number.isFinite(n)) return perTokenUsd;
-  if (n === 0) return "US$ 0";
-  return `US$ ${(n * 1e6).toFixed(4)} / 1M`;
-}
-
-function openRouterModelIdSet(models: OpenRouterModelsResponse | null): Set<string> {
-  if (!models) return new Set();
-  return new Set([...models.free.map((m) => m.id), ...models.paid.map((m) => m.id)]);
-}
-
-function toneForHealth(result: ProviderHealth["results"][number] | null): StatusTone {
-  if (!result) return "neutral";
-  if (!result.configured) return "warning";
-  return result.ok ? "success" : "danger";
-}
-
-function labelForHealth(result: ProviderHealth["results"][number] | null) {
-  if (!result) return "Aguardando teste";
-  if (!result.configured) return "Sem chave";
-  if (result.ok) return typeof result.latencyMs === "number" ? `Online · ${result.latencyMs}ms` : "Online";
-  return result.error ? `Erro · ${result.error.slice(0, 72)}` : "Erro";
-}
+import {
+  buildConfigSavePayload,
+  configuredLabel,
+  labelForHealth,
+  providers,
+  toneForHealth,
+  usdPerMillionTokens,
+} from "../features/settings/providerSettings";
+import type { AgentConfig, ProviderHealth, ProviderId } from "../features/settings/providerSettings";
+import { useOpenRouterModels } from "../features/settings/useOpenRouterModels";
 
 function ApiSkeleton() {
   return (
@@ -165,27 +47,7 @@ export function Apis() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<ProviderId>("gemini");
-  const [modelTab, setModelTab] = useState("free");
-  const [modelSearch, setModelSearch] = useState("");
-  const [orDebouncedKey, setOrDebouncedKey] = useState("");
-  const [orModels, setOrModels] = useState<OpenRouterModelsResponse | null>(null);
-  const [orLoading, setOrLoading] = useState(false);
-  const [orError, setOrError] = useState<string | null>(null);
   const { addToast } = useToast();
-
-  const orIdSet = useMemo(() => openRouterModelIdSet(orModels), [orModels]);
-  const selectedMeta = providers.find((provider) => provider.id === selectedProvider) ?? providers[0];
-  const selectedHealth = health?.results?.find((result) => result.provider === selectedProvider) ?? null;
-  const configuredCount = providers.filter((provider) => configuredLabel(cfg ?? ({} as AgentConfig), provider.field)).length;
-  const onlineCount = health?.results?.filter((result) => result.configured && result.ok).length ?? 0;
-
-  const listedModels = useMemo(() => {
-    if (!orModels) return [];
-    const source = modelTab === "free" ? orModels.free : orModels.paid;
-    const query = modelSearch.trim().toLowerCase();
-    if (!query) return source;
-    return source.filter((model) => `${model.name} ${model.id}`.toLowerCase().includes(query));
-  }, [modelSearch, modelTab, orModels]);
 
   const load = useCallback(async () => {
     try {
@@ -229,46 +91,23 @@ export function Apis() {
     void init();
   }, [load, test]);
 
-  useEffect(() => {
-    const key = cfg?.openrouterKey?.trim() ?? "";
-    const timer = window.setTimeout(() => setOrDebouncedKey(key), 550);
-    return () => window.clearTimeout(timer);
-  }, [cfg?.openrouterKey]);
+  const {
+    modelTab,
+    setModelTab,
+    modelSearch,
+    setModelSearch,
+    models: orModels,
+    loading: orLoading,
+    error: orError,
+    listedModels,
+    idSet: orIdSet,
+    refreshModels,
+  } = useOpenRouterModels(cfg?.openrouterKey);
 
-  useEffect(() => {
-    if (!orDebouncedKey || orDebouncedKey.length < 12) {
-      const timer = window.setTimeout(() => {
-        setOrModels(null);
-        setOrError(null);
-        setOrLoading(false);
-      }, 0);
-      return () => window.clearTimeout(timer);
-    }
-
-    const controller = new AbortController();
-    const timer = window.setTimeout(() => {
-      setOrLoading(true);
-      setOrError(null);
-      setOrModels(null);
-    }, 0);
-    api
-      .post<OpenRouterModelsResponse>("/agent/openrouter-models", { openrouterKey: orDebouncedKey }, { signal: controller.signal })
-      .then((res) => setOrModels(res.data))
-      .catch((err: unknown) => {
-        if (axios.isCancel(err)) return;
-        if (axios.isAxiosError(err) && err.code === "ERR_CANCELED") return;
-        const msg = axios.isAxiosError(err) && err.response?.data?.error ? String(err.response.data.error) : "Não foi possível listar os modelos OpenRouter";
-        setOrError(msg);
-        setOrModels(null);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setOrLoading(false);
-      });
-    return () => {
-      window.clearTimeout(timer);
-      controller.abort();
-    };
-  }, [orDebouncedKey]);
+  const selectedMeta = providers.find((provider) => provider.id === selectedProvider) ?? providers[0];
+  const selectedHealth = health?.results?.find((result) => result.provider === selectedProvider) ?? null;
+  const configuredCount = providers.filter((provider) => configuredLabel(cfg ?? ({} as AgentConfig), provider.field)).length;
+  const onlineCount = health?.results?.filter((result) => result.configured && result.ok).length ?? 0;
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -289,24 +128,6 @@ export function Apis() {
       console.error(err);
     } finally {
       setSaving(false);
-    }
-  };
-
-  const refreshModels = async () => {
-    if (!cfg) return;
-    const key = cfg.openrouterKey?.trim() ?? "";
-    if (key.length < 12) return;
-    setOrLoading(true);
-    setOrError(null);
-    try {
-      const res = await api.post<OpenRouterModelsResponse>("/agent/openrouter-models", { openrouterKey: key });
-      setOrModels(res.data);
-    } catch (err: unknown) {
-      const msg = axios.isAxiosError(err) && err.response?.data?.error ? String(err.response.data.error) : "Não foi possível listar os modelos";
-      setOrError(msg);
-      setOrModels(null);
-    } finally {
-      setOrLoading(false);
     }
   };
 
@@ -521,3 +342,4 @@ export function Apis() {
     </form>
   );
 }
+
