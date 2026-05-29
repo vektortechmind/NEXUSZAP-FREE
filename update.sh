@@ -20,6 +20,23 @@ require() {
   fi
 }
 
+docker_compose_available() {
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    return 0
+  fi
+
+  command -v docker-compose >/dev/null 2>&1
+}
+
+docker_compose() {
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    docker compose "$@"
+    return
+  fi
+
+  docker-compose "$@"
+}
+
 random_key() {
   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 }
@@ -224,7 +241,7 @@ echo ""
 echo "[5/5] Build e restart Docker seletivo, se disponivel..."
 npm run build
 
-if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+if docker_compose_available; then
   load_env
   ensure_frontend_port
 
@@ -247,10 +264,10 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; 
   fi
 
   if [[ "$update_stack" == "true" ]]; then
-    docker compose up -d --build
+    docker_compose up -d --build
   else
     if [[ "$update_backend" == "true" || "$update_frontend" == "true" ]]; then
-      docker compose up -d --build backend frontend
+      docker_compose up -d --build backend frontend
     fi
     if [[ "$update_backend" != "true" && "$update_frontend" != "true" && -n "$CHANGED_FILES" ]]; then
       echo "Mudancas sem impacto em containers. Nenhum restart Docker necessario."
@@ -258,7 +275,7 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; 
   fi
 
   if [[ "$update_backend" == "true" || "$update_stack" == "true" ]]; then
-    docker compose ps backend
+    docker_compose ps backend
   fi
   echo "Stack Docker atualizada."
 else

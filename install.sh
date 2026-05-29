@@ -26,6 +26,23 @@ require() {
   fi
 }
 
+docker_compose_available() {
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    return 0
+  fi
+
+  command -v docker-compose >/dev/null 2>&1
+}
+
+docker_compose() {
+  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+    docker compose "$@"
+    return
+  fi
+
+  docker-compose "$@"
+}
+
 ensure_repo_checkout() {
   if [[ -f "package.json" && -d "backend" && -d "frontend" ]]; then
     return 0
@@ -55,7 +72,7 @@ sudo_cmd() {
 }
 
 install_docker_debian_ubuntu() {
-  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  if docker_compose_available; then
     return 0
   fi
 
@@ -308,10 +325,10 @@ npm run build
 
 echo ""
 echo "[5/5] Subindo stack Docker, se Docker estiver disponivel..."
-if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+if docker_compose_available; then
   load_env
   ensure_frontend_port
-  docker compose up -d --build
+  docker_compose up -d --build
   PUBLIC_BASE_URL="$(public_base_url "$(public_ip)")"
   SETUP_URL="${PUBLIC_BASE_URL}/docker-setup?token=${SETUP_TOKEN:-}"
   ADMIN_URL="${PUBLIC_BASE_URL}/criar-admin?token=${SETUP_TOKEN:-}"
