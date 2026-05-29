@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "node scripts/security-api.cjs && node scripts/secrets-api.cjs && node scripts/file-security.cjs && node scripts/prompt-injection.cjs && node scripts/update-disabled.cjs && node scripts/setup-api.cjs && node scripts/ops-postgresql-cleanup.cjs && node scripts/smoke-api.cjs && node scripts/instance-cards-api.cjs && node scripts/provider-fallback-api.cjs && node scripts/knowledge-isolation-api.cjs && node scripts/memory-runtime-api.cjs && node scripts/local-file-storage-api.cjs",
+    "test": "node scripts/integration-auth-api.cjs && node scripts/security-api.cjs && node scripts/secrets-api.cjs && node scripts/file-security.cjs && node scripts/prompt-injection.cjs && node scripts/update-disabled.cjs && node scripts/setup-api.cjs && node scripts/ops-postgresql-cleanup.cjs && node scripts/smoke-api.cjs && node scripts/instance-cards-api.cjs && node scripts/provider-fallback-api.cjs && node scripts/knowledge-isolation-api.cjs && node scripts/memory-runtime-api.cjs && node scripts/local-file-storage-api.cjs",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc",
     "start:prod": "node dist/server.js",
@@ -53,3 +53,4 @@
     "typescript": "^6.0.3"
   }
 }
+
