@@ -1,0 +1,8 @@
+ALTER TABLE "File"
+  ADD COLUMN IF NOT EXISTS "storagePath" TEXT,
+  ADD COLUMN IF NOT EXISTS "sizeBytes" INTEGER NOT NULL DEFAULT 0;
+
+ALTER TABLE "File"
+  ALTER COLUMN "data" DROP NOT NULL;
+
+CREATE INDEX IF NOT EXISTS "File_storagePath_idx" ON "File"("storagePath");

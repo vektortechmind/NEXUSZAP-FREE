@@ -76,7 +76,9 @@ model File {
   agent      Agent?   @relation(fields: [agentId], references: [id], onDelete: SetNull)
   filename   String
   mimetype   String
-  data       Bytes
+  storagePath String?
+  sizeBytes  Int      @default(0)
+  data       Bytes?
   extracted  String?
   channel    String   @default("WHATSAPP")
   createdAt  DateTime @default(now())
@@ -84,6 +86,7 @@ model File {
   @@index([instanceId])
   @@index([agentId])
   @@index([channel])
+  @@index([storagePath])
 }
 
 model MessageEvent {

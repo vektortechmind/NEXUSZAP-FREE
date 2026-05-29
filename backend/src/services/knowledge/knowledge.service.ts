@@ -6,8 +6,19 @@ import {
   MAX_FILE_CONTEXT_TOTAL_CHARS,
   normalizeUntrustedText
 } from "../../ai/promptGuard";
+import { readKnowledgeBinary, storagePathExists } from "./fileStorage.service";
 
 type KnowledgeChannel = "WHATSAPP" | "TELEGRAM";
+
+type KnowledgeBinaryRecord = {
+  id: string;
+  mimetype: string;
+  data?: Buffer | Uint8Array | null;
+  storagePath?: string | null;
+  sizeBytes?: number | null;
+  extracted: string | null;
+  channel?: string;
+};
 
 export async function getKnowledgeOwnerByAgent(agentId: string) {
   return prisma.agent.findUnique({
@@ -43,8 +54,26 @@ export async function listKnowledgeFilesByInstance(instanceId: string, channel: 
   });
 }
 
+export async function loadKnowledgeFileBuffer(file: KnowledgeBinaryRecord): Promise<Buffer> {
+  if (file.storagePath && await storagePathExists(file.storagePath)) {
+    return readKnowledgeBinary(file.storagePath);
+  }
+
+  if (file.data && Buffer.from(file.data).length > 0) {
+    return Buffer.from(file.data);
+  }
+
+  throw new Error(`Arquivo binário indisponível para o registro ${file.id}`);
+}
+
+export function getKnowledgeFileSize(file: { sizeBytes?: number | null; data?: Buffer | Uint8Array | null }) {
+  if (typeof file.sizeBytes === "number" && file.sizeBytes > 0) return file.sizeBytes;
+  if (file.data) return Buffer.from(file.data).length;
+  return 0;
+}
+
 export async function ensureKnowledgeExtracted(
-  files: Array<{ id: string; mimetype: string; data: Buffer; extracted: string | null; channel?: string }>,
+  files: Array<KnowledgeBinaryRecord>,
   logger?: { warn: (obj: unknown, msg?: string) => void }
 ) {
   for (const file of files) {
@@ -60,7 +89,8 @@ export async function ensureKnowledgeExtracted(
     if (!canExtract) continue;
 
     try {
-      const text = await extractTextFromBuffer(Buffer.from(file.data), file.mimetype);
+      const buffer = await loadKnowledgeFileBuffer(file);
+      const text = await extractTextFromBuffer(buffer, file.mimetype);
       if (text && text.trim()) {
         await prisma.file.update({ where: { id: file.id }, data: { extracted: text } });
         file.extracted = text;
