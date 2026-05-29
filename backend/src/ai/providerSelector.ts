@@ -1,5 +1,5 @@
-import type { Instance } from "@prisma/client";
 import { prisma } from "../database/prisma";
+import { getPrimaryInstance } from "../services/instance.service";
 import { tryDecryptSecret } from "../services/crypto.service";
 import { safeErrorMessage, safeLogError } from "../utils/redaction";
 import { geminiChat } from "./gemini";
@@ -71,9 +71,9 @@ function buildProviderSequence(selectedProvider: string | null | undefined) {
 }
 
 export async function getKeys(instanceId?: string): Promise<EffectiveInstanceKeys> {
-  const primary = (await prisma.instance.findFirst({ orderBy: { slot: "asc" } })) as Instance | null;
+  const primary = await getPrimaryInstance();
   const instance = instanceId
-    ? ((await prisma.instance.findUnique({ where: { id: instanceId } })) as Instance | null)
+    ? await prisma.instance.findUnique({ where: { id: instanceId } })
     : primary;
   const agent = instanceId
     ? await prisma.agent.findFirst({

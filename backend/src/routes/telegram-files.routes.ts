@@ -16,7 +16,6 @@ import {
   listKnowledgeFilesByAgent,
   listKnowledgeFilesByInstance,
 } from "../services/knowledgeService";
-import { getPrimaryAgent } from "../services/agent.service";
 
 async function extractKnowledgeText(
   fastify: FastifyInstance,
@@ -131,10 +130,27 @@ export async function telegramFilesRoutes(fastify: FastifyInstance) {
       config: { rateLimit: { max: 20, timeWindow: "1 minute" } },
     },
     async (request, reply) => {
-      const primaryAgent = await getPrimaryAgent();
-      if (!primaryAgent) {
-        return reply.status(404).send({ error: "Agente do Telegram não encontrado." });
+      const { instanceId } = request.params as { instanceId: string };
+      const instance = await prisma.instance.findUnique({
+        where: { id: instanceId },
+        select: {
+          id: true,
+          agent: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      });
+
+      if (!instance) {
+        return reply.status(404).send({ error: "Instância Telegram não encontrada." });
       }
+
+      if (!instance.agent) {
+        return reply.status(409).send({ error: "Vincule ou crie um agente para a instância Telegram antes de enviar arquivos." });
+      }
+
       const parts = request.parts();
       let savedFile = null;
 
@@ -149,7 +165,7 @@ export async function telegramFilesRoutes(fastify: FastifyInstance) {
             buffer,
           });
 
-          const existingFiles = (await listKnowledgeFilesByAgent(primaryAgent.id, "TELEGRAM")) ?? [];
+          const existingFiles = (await listKnowledgeFilesByAgent(instance.agent.id, "TELEGRAM")) ?? [];
           await assertStorageQuota({ existingFiles, nextBytes: buffer.length });
 
           let extractedText: string | null = null;
@@ -159,8 +175,8 @@ export async function telegramFilesRoutes(fastify: FastifyInstance) {
 
           savedFile = await prisma.file.create({
             data: {
-              instanceId: primaryAgent.instanceId,
-              agentId: primaryAgent.id,
+              instanceId: instance.id,
+              agentId: instance.agent.id,
               filename: normalized.filename,
               mimetype: normalized.mimetype,
               data: buffer,

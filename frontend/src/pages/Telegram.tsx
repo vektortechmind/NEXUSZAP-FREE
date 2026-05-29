@@ -12,9 +12,13 @@ import { Toolbar } from "../components/ui/Toolbar";
 import { useToast } from "../contexts/ToastContext";
 
 type TelegramConfig = {
-  id: string;
-  agentWorkspaceId: string;
+  instanceId: string | null;
+  instanceName: string | null;
+  agentWorkspaceId: string | null;
+  agentWorkspaceName: string | null;
   telegramSystemPrompt: string | null;
+  canEdit: boolean;
+  blockingReason: string | null;
 };
 
 type KnowledgeFile = {
@@ -86,20 +90,21 @@ export function Telegram() {
   const load = useCallback(async () => {
     setError(null);
     try {
-      const agent = await api.get<TelegramConfig & { telegramSystemPrompt?: string | null }>("/agent/config");
-      const nextCfg = {
-        id: agent.data.id,
-        agentWorkspaceId: agent.data.agentWorkspaceId,
-        telegramSystemPrompt: agent.data.telegramSystemPrompt ?? null,
-      };
+      const response = await api.get<TelegramConfig>("/agent/telegram/config");
+      const nextCfg = response.data;
       setCfg(nextCfg);
       setError(null);
       setLoading(false);
-      void refreshFiles(nextCfg.agentWorkspaceId);
+      if (nextCfg.agentWorkspaceId) {
+        void refreshFiles(nextCfg.agentWorkspaceId);
+      } else {
+        setFiles([]);
+      }
     } catch (err) {
       setError("Não foi possível carregar as configurações");
       console.error(err);
       setCfg(null);
+      setFiles([]);
       setLoading(false);
     }
   }, [refreshFiles]);
@@ -117,7 +122,10 @@ export function Telegram() {
   }, [load]);
 
   const upload = async (file: File) => {
-    if (!cfg) return;
+    if (!cfg?.canEdit || !cfg.agentWorkspaceId) {
+      addToast(cfg?.blockingReason || "Vincule um agente ao Telegram antes de enviar arquivos.", "error");
+      return;
+    }
     setUploading(true);
     setFilesError(null);
     try {
@@ -136,7 +144,10 @@ export function Telegram() {
   };
 
   const remove = async (id: string) => {
-    if (!cfg) return;
+    if (!cfg?.canEdit || !cfg.agentWorkspaceId) {
+      addToast(cfg?.blockingReason || "Vincule um agente ao Telegram antes de remover arquivos.", "error");
+      return;
+    }
     if (!window.confirm("Excluir este arquivo da base de conhecimento do Telegram?")) return;
     try {
       await api.delete(`/telegram-files/${id}`);
@@ -150,13 +161,18 @@ export function Telegram() {
   };
 
   const savePrompt = async () => {
-    if (!cfg) return;
+    if (!cfg?.canEdit) {
+      addToast(cfg?.blockingReason || "Vincule um agente ao Telegram antes de editar o prompt.", "error");
+      return;
+    }
     setSaving(true);
     try {
-      await api.put("/agent/config", { telegramSystemPrompt: cfg.telegramSystemPrompt });
+      const response = await api.put<TelegramConfig>("/agent/telegram/config", { telegramSystemPrompt: cfg.telegramSystemPrompt });
+      setCfg(response.data);
       addToast("Prompt salvo com sucesso", "success");
-    } catch (err) {
-      addToast("Erro ao salvar prompt", "error");
+    } catch (err: unknown) {
+      const errorObj = err as { response?: { data?: { error?: string } } };
+      addToast(errorObj?.response?.data?.error || "Erro ao salvar prompt", "error");
       console.error(err);
     } finally {
       setSaving(false);
@@ -184,18 +200,24 @@ export function Telegram() {
         <div className="flex w-full flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600 dark:text-slate-400">
             <span className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">
-              <StatusDot tone={promptValue.trim() ? "info" : "warning"} pulse={Boolean(promptValue.trim())} />
-              Prompt {promptValue.trim() ? "configurado" : "vazio"}
+              <StatusDot tone={cfg.canEdit && promptValue.trim() ? "info" : "warning"} pulse={Boolean(cfg.canEdit && promptValue.trim())} />
+              {cfg.canEdit ? `Prompt ${promptValue.trim() ? "configurado" : "vazio"}` : "Edição bloqueada"}
             </span>
             <span>{promptStats.words} palavras</span>
             <span>{files.length} arquivos</span>
           </div>
-          <Button onClick={() => void savePrompt()} disabled={saving} loading={saving} className="w-full sm:w-auto">
+          <Button onClick={() => void savePrompt()} disabled={saving || !cfg.canEdit} loading={saving} className="w-full sm:w-auto">
             <Save className="mr-2 h-4 w-4" aria-hidden="true" />
             Salvar prompt
           </Button>
         </div>
       </Toolbar>
+
+      {!cfg.canEdit && cfg.blockingReason ? (
+        <InlineAlert tone="warning" icon={<AlertCircle size={16} aria-hidden="true" />}>
+          {cfg.blockingReason}
+        </InlineAlert>
+      ) : null}
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_24rem]">
         <Section title="Editor do Telegram" description="Prompt do sistema usado para orientar respostas e comportamento do canal Telegram.">
@@ -212,7 +234,8 @@ export function Telegram() {
               id="telegram-system-prompt"
               value={promptValue}
               onChange={(e) => setCfg({ ...cfg, telegramSystemPrompt: e.target.value })}
-              className="min-h-[28rem] flex-1 resize-none border-0 bg-white px-4 py-4 font-mono text-sm leading-6 text-slate-950 outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 dark:bg-slate-900 dark:text-slate-100"
+              disabled={!cfg.canEdit}
+              className="min-h-[28rem] flex-1 resize-none border-0 bg-white px-4 py-4 font-mono text-sm leading-6 text-slate-950 outline-none focus:ring-2 focus:ring-inset focus:ring-sky-500 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-500 dark:bg-slate-900 dark:text-slate-100 dark:disabled:bg-slate-950 dark:disabled:text-slate-500"
               placeholder="Defina tom, limites, contexto do negócio e regras de atendimento do Telegram."
             />
           </Panel>
@@ -223,14 +246,14 @@ export function Telegram() {
             title="Base de conhecimento"
             description="Arquivos usados como contexto do agente no Telegram."
             actions={
-              <Button variant="ghost" size="sm" onClick={() => void refreshFiles(cfg.agentWorkspaceId, true)} disabled={filesRefreshing || filesLoading}>
+              <Button variant="ghost" size="sm" onClick={() => cfg.agentWorkspaceId ? void refreshFiles(cfg.agentWorkspaceId, true) : undefined} disabled={filesRefreshing || filesLoading || !cfg.agentWorkspaceId}>
                 <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
                 Atualizar
               </Button>
             }
           >
             <Panel className={`p-4 transition-opacity duration-200 ${filesRefreshing ? "opacity-70" : ""}`}>
-              <label className="flex cursor-pointer flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center transition-colors duration-200 hover:border-sky-400 hover:bg-sky-50/50 focus-within:border-sky-500 dark:border-slate-700 dark:bg-slate-950/45 dark:hover:border-sky-700 dark:hover:bg-sky-950/20">
+              <label className={`flex flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center transition-colors duration-200 dark:border-slate-700 dark:bg-slate-950/45 ${cfg.canEdit ? "cursor-pointer hover:border-sky-400 hover:bg-sky-50/50 focus-within:border-sky-500 dark:hover:border-sky-700 dark:hover:bg-sky-950/20" : "cursor-not-allowed opacity-70"}`}>
                 <input
                   type="file"
                   accept={accept}
@@ -240,7 +263,7 @@ export function Telegram() {
                     if (file) void upload(file);
                     e.currentTarget.value = "";
                   }}
-                  disabled={uploading}
+                  disabled={uploading || !cfg.canEdit}
                 />
                 <span className="rounded-lg bg-white p-3 text-slate-600 shadow-sm dark:bg-slate-900 dark:text-slate-300">
                   <Upload className={`h-5 w-5 ${uploading ? "motion-safe:animate-pulse" : ""}`} aria-hidden="true" />
@@ -270,7 +293,7 @@ export function Telegram() {
                   <EmptyState
                     icon={<FileText size={22} aria-hidden="true" />}
                     title="Nenhum arquivo indexado"
-                    description="Envie documentos para ampliar o contexto do Telegram."
+                    description={cfg.canEdit ? "Envie documentos para ampliar o contexto do Telegram." : "Vincule um agente à instância Telegram para liberar a base de conhecimento do canal."}
                     className="py-8"
                   />
                 )}
@@ -286,7 +309,7 @@ export function Telegram() {
                         <p className="mt-0.5 text-xs text-slate-600 dark:text-slate-400">{fileKind(file)} · {formatDate(file.createdAt)}</p>
                       </div>
                     </div>
-                    <Button type="button" variant="ghost" size="sm" onClick={() => void remove(file.id)} aria-label={`Excluir ${file.filename}`}>
+                    <Button type="button" variant="ghost" size="sm" onClick={() => void remove(file.id)} disabled={!cfg.canEdit} aria-label={`Excluir ${file.filename}`}>
                       <Trash2 className="h-4 w-4 text-red-600 dark:text-red-400" aria-hidden="true" />
                     </Button>
                   </div>

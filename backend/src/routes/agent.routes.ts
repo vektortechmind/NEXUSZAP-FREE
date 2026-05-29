@@ -257,6 +257,54 @@ export async function agentRoutes(fastify: FastifyInstance) {
     return getOrCreatePrimaryInstance();
   }
 
+  async function getTelegramConfigState() {
+    const telegramInstance = await prisma.instance.findUnique({
+      where: { slot: 0 },
+      include: {
+        agent: {
+          select: {
+            id: true,
+            name: true,
+            telegramSystemPrompt: true,
+          },
+        },
+      },
+    });
+
+    if (!telegramInstance) {
+      return {
+        instanceId: null,
+        instanceName: null,
+        agentWorkspaceId: null,
+        agentWorkspaceName: null,
+        telegramSystemPrompt: null,
+        canEdit: false,
+        blockingReason: "Salve e configure a instância Telegram antes de editar prompt ou arquivos.",
+      };
+    }
+
+    if (!telegramInstance.agent) {
+      return {
+        instanceId: telegramInstance.id,
+        instanceName: telegramInstance.name,
+        agentWorkspaceId: null,
+        agentWorkspaceName: null,
+        telegramSystemPrompt: telegramInstance.telegramSystemPrompt ?? null,
+        canEdit: false,
+        blockingReason: "Vincule ou crie um agente para a instância Telegram antes de editar prompt ou arquivos.",
+      };
+    }
+
+    return {
+      instanceId: telegramInstance.id,
+      instanceName: telegramInstance.name,
+      agentWorkspaceId: telegramInstance.agent.id,
+      agentWorkspaceName: telegramInstance.agent.name,
+      telegramSystemPrompt: telegramInstance.agent.telegramSystemPrompt ?? telegramInstance.telegramSystemPrompt ?? null,
+      canEdit: true,
+      blockingReason: null,
+    };
+  }
   fastify.get("/instances", async (_request, reply) => {
     const instances = await listInstances();
     const instancesWithAgent = await prisma.instance.findMany({
@@ -523,7 +571,7 @@ export async function agentRoutes(fastify: FastifyInstance) {
     return reply.send({
       ...sanitizeAgentConfigForResponse(agent),
       systemPrompt: primaryAgent?.systemPrompt ?? agent.systemPrompt ?? null,
-      telegramSystemPrompt: primaryAgent?.telegramSystemPrompt ?? agent.telegramSystemPrompt ?? null,
+      telegramSystemPrompt: null,
       agentWorkspaceId: primaryAgent?.id ?? null,
     });
   });
@@ -636,18 +684,21 @@ export async function agentRoutes(fastify: FastifyInstance) {
     try {
       const { systemPrompt, telegramSystemPrompt, ...instanceConfig } = data;
 
+      if (telegramSystemPrompt !== undefined) {
+        return reply.status(409).send({ error: "Use /agent/telegram/config para editar o prompt isolado do Telegram." });
+      }
+
       const updatedInstance = await prisma.$transaction(async (tx) => {
         const nextInstance = await tx.instance.update({
           where: { id: agent.id },
           data: buildAgentConfigUpdateData(instanceConfig),
         });
 
-        if (primaryAgent && (systemPrompt !== undefined || telegramSystemPrompt !== undefined)) {
+        if (primaryAgent && systemPrompt !== undefined) {
           await tx.agent.update({
             where: { id: primaryAgent.id },
             data: {
               ...(systemPrompt !== undefined ? { systemPrompt } : {}),
-              ...(telegramSystemPrompt !== undefined ? { telegramSystemPrompt } : {}),
             },
           });
         }
@@ -659,10 +710,7 @@ export async function agentRoutes(fastify: FastifyInstance) {
         ...sanitizeAgentConfigForResponse(updatedInstance),
         systemPrompt:
           systemPrompt !== undefined ? systemPrompt : (primaryAgent?.systemPrompt ?? updatedInstance.systemPrompt ?? null),
-        telegramSystemPrompt:
-          telegramSystemPrompt !== undefined
-            ? telegramSystemPrompt
-            : (primaryAgent?.telegramSystemPrompt ?? updatedInstance.telegramSystemPrompt ?? null),
+        telegramSystemPrompt: null,
         agentWorkspaceId: primaryAgent?.id ?? null,
       });
     } catch (e: any) {
@@ -796,6 +844,32 @@ export async function agentRoutes(fastify: FastifyInstance) {
     });
   });
 
+  fastify.get("/telegram/config", async (_request, reply) => {
+    return reply.send(await getTelegramConfigState());
+  });
+
+  fastify.put("/telegram/config", {
+    config: { rateLimit: { max: 30, timeWindow: "1 minute" } },
+  }, async (request, reply) => {
+    const body = z.object({ telegramSystemPrompt: z.preprocess(emptyToNull, z.string().nullable().optional()) }).parse(request.body);
+    const configState = await getTelegramConfigState();
+
+    if (!configState.instanceId) {
+      return reply.status(404).send({ error: "Instância Telegram não encontrada." });
+    }
+
+    if (!configState.canEdit || !configState.agentWorkspaceId) {
+      return reply.status(409).send({ error: configState.blockingReason || "Vincule um agente ao Telegram antes de editar o prompt." });
+    }
+
+    await prisma.agent.update({
+      where: { id: configState.agentWorkspaceId },
+      data: { telegramSystemPrompt: body.telegramSystemPrompt ?? null },
+    });
+
+    return reply.send(await getTelegramConfigState());
+  });
+
   fastify.post("/telegram/validate-token", {
     config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
   }, async (request, reply) => {
@@ -803,3 +877,7 @@ export async function agentRoutes(fastify: FastifyInstance) {
     return reply.send(await TelegramBotManager.validateToken(body.token));
   });
 }
+
+
+
+
