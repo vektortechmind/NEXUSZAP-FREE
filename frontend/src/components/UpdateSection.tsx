@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { isAxiosError } from "axios";
 import { api } from "../lib/axios";
-import { AlertCircle, Check, ExternalLink, GitFork, RefreshCw, Shield, TerminalSquare } from "lucide-react";
+import { AlertCircle, Check, ExternalLink, RefreshCw, Shield, TerminalSquare } from "lucide-react";
 import { Button } from "./ui/Button";
-import { EmptyState } from "./ui/EmptyState";
 import { InlineAlert } from "./ui/InlineAlert";
 import { Panel } from "./ui/Panel";
 import { Section } from "./ui/Section";
@@ -103,7 +102,7 @@ export function UpdateSection() {
   return (
     <Section
       title="Update Center"
-      description="Consulta e execução controlada de atualização para o cenário oficial de VPS/Linux."
+      description="Status e execução do update remoto."
       actions={
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" size="sm" onClick={() => void checkUpdate()} disabled={loading} loading={loading}>
@@ -113,83 +112,73 @@ export function UpdateSection() {
           {status?.hasUpdate && (
             <Button size="sm" onClick={() => void applyUpdate()} disabled={loading || running || Boolean(job?.active)} loading={running && Boolean(job?.active)}>
               <TerminalSquare className="mr-2 h-4 w-4" aria-hidden="true" />
-              Executar atualização
+              Atualizar
             </Button>
           )}
         </div>
       }
     >
-      <Panel className="p-4">
+      <Panel className="p-3">
         {error && (
-          <InlineAlert tone="danger" className="mb-4" icon={<AlertCircle size={16} aria-hidden="true" />}>
+          <InlineAlert tone="danger" className="mb-3" icon={<AlertCircle size={16} aria-hidden="true" />}>
             {error}
           </InlineAlert>
         )}
 
         {!status ? (
-          <EmptyState
-            icon={<GitFork size={22} aria-hidden="true" />}
-            title="Atualizações ainda não verificadas"
-            description="Consulte o repositório configurado para comparar a versão instalada com a versão publicada no GitHub."
-            action={
-              <Button variant="secondary" size="sm" onClick={() => void checkUpdate()} disabled={loading} loading={loading}>
-                <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
-                Verificar agora
-              </Button>
-            }
-          />
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-slate-950 dark:text-slate-50">Atualizações ainda não verificadas</p>
+              <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Compare a versão instalada com a release publicada.</p>
+            </div>
+            <Button variant="secondary" size="sm" onClick={() => void checkUpdate()} disabled={loading} loading={loading}>
+              <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+              Verificar agora
+            </Button>
+          </div>
         ) : (
-          <div className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/45">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Versão atual</p>
-                <p className="mt-2 text-lg font-semibold text-slate-950 dark:text-slate-50">{status.currentVersion}</p>
+          <div className="space-y-3">
+            <div className="grid gap-2 md:grid-cols-[repeat(3,minmax(0,1fr))_auto]">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/45">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Atual</p>
+                <p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{status.currentVersion}</p>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/45">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Última versão</p>
-                <p className="mt-2 text-lg font-semibold text-slate-950 dark:text-slate-50">{status.latestVersion}</p>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/45">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Última</p>
+                <p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{status.latestVersion}</p>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/45">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Estado</p>
-                <p className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-slate-950 dark:text-slate-50">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/45">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Estado</p>
+                <p className="mt-1 inline-flex items-center gap-2 text-sm font-semibold text-slate-950 dark:text-slate-50">
                   <StatusDot tone={status.hasUpdate ? "warning" : "success"} pulse={status.hasUpdate} />
                   {status.hasUpdate ? "Update disponível" : "Atualizado"}
                 </p>
               </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/45">
-                <p className="text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Token GitHub</p>
-                <p className="mt-2 inline-flex items-center gap-2 text-sm font-semibold text-slate-950 dark:text-slate-50">
-                  <StatusDot tone="neutral" />
-                  Não exposto no frontend
-                </p>
-              </div>
+              <Button variant="ghost" size="sm" onClick={() => window.open(status.releaseUrl, "_blank", "noopener,noreferrer")} className="w-full md:w-auto">
+                <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
+                Release
+              </Button>
             </div>
 
             {status.hasUpdate ? (
-              <InlineAlert tone="warning" icon={<Shield size={17} aria-hidden="true" />} title="Update disponível">
-                <div className="space-y-3">
-                  <p>Você pode disparar o fluxo oficial de update da VPS pelo painel. O backend executa apenas o script controlado e mantém status/log do job.</p>
-                  {status.changelog && (
-                    <pre className="max-h-36 overflow-y-auto rounded-lg bg-white/70 p-3 text-xs text-slate-700 dark:bg-slate-900/65 dark:text-slate-300">{status.changelog}</pre>
-                  )}
-                  <Button variant="secondary" size="sm" onClick={() => window.open(status.releaseUrl, "_blank", "noopener,noreferrer")}>
-                    <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
-                    Ver release no GitHub
-                  </Button>
+              <InlineAlert tone="warning" icon={<Shield size={16} aria-hidden="true" />} title="Update disponível">
+                <div className="space-y-2">
+                  <p className="text-sm">O backend executa o script controlado e mantém status do job.</p>
+                  {status.changelog && <pre className="max-h-28 overflow-y-auto rounded-lg bg-white/70 p-2 text-[11px] text-slate-700 dark:bg-slate-900/65 dark:text-slate-300">{status.changelog}</pre>}
                 </div>
               </InlineAlert>
             ) : (
-              <InlineAlert tone="success" icon={<Check size={17} aria-hidden="true" />}>
-                A instalação está na versão mais recente disponível para `{status.githubRepo}`.
+              <InlineAlert tone="success" icon={<Check size={16} aria-hidden="true" />}>
+                {status.githubRepo} já está na versão mais recente.
               </InlineAlert>
             )}
 
             {job && (
-              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/45">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-950/45">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
                     <p className="text-sm font-semibold text-slate-950 dark:text-slate-50">Execução remota</p>
-                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Job {job.id} · alvo {job.targetVersion}</p>
+                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Job {job.id} · alvo {job.targetVersion} · PID {job.pid ?? "n/d"}</p>
                   </div>
                   <p className="inline-flex items-center gap-2 text-sm font-semibold text-slate-950 dark:text-slate-50">
                     <StatusDot tone={jobTone} pulse={job.active} />
@@ -197,36 +186,32 @@ export function UpdateSection() {
                   </p>
                 </div>
 
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs dark:border-slate-800 dark:bg-slate-900">
-                    <p className="font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Criado em</p>
-                    <p className="mt-2 text-sm text-slate-950 dark:text-slate-50">{new Date(job.createdAt).toLocaleString("pt-BR")}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs dark:border-slate-800 dark:bg-slate-900">
-                    <p className="font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Iniciado em</p>
-                    <p className="mt-2 text-sm text-slate-950 dark:text-slate-50">{job.startedAt ? new Date(job.startedAt).toLocaleString("pt-BR") : "Aguardando"}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs dark:border-slate-800 dark:bg-slate-900">
-                    <p className="font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Finalizado em</p>
-                    <p className="mt-2 text-sm text-slate-950 dark:text-slate-50">{job.finishedAt ? new Date(job.finishedAt).toLocaleString("pt-BR") : "Em andamento"}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 bg-white p-3 text-xs dark:border-slate-800 dark:bg-slate-900">
-                    <p className="font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Worker PID</p>
-                    <p className="mt-2 text-sm text-slate-950 dark:text-slate-50">{job.pid ?? "n/d"}</p>
-                  </div>
-                </div>
-
                 {(job.summary || job.error) && (
-                  <div className="mt-4 space-y-2 text-sm">
+                  <div className="mt-3 space-y-1 text-xs">
                     {job.summary && <p className="text-slate-700 dark:text-slate-300"><strong>Resumo:</strong> {job.summary}</p>}
                     {job.error && <p className="text-red-700 dark:text-red-300"><strong>Erro:</strong> {job.error}</p>}
                   </div>
                 )}
 
-                <div className="mt-4">
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Logs recentes</p>
-                  <pre className="max-h-48 overflow-y-auto rounded-lg bg-white p-3 text-xs text-slate-700 dark:bg-slate-900 dark:text-slate-300">{job.logTail.length > 0 ? job.logTail.join("\n") : "Sem logs disponíveis ainda."}</pre>
+                <div className="mt-3 grid gap-2 md:grid-cols-3">
+                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-800 dark:bg-slate-900">
+                    <p className="font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Criado</p>
+                    <p className="mt-1 text-slate-950 dark:text-slate-50">{new Date(job.createdAt).toLocaleString("pt-BR")}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-800 dark:bg-slate-900">
+                    <p className="font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Iniciado</p>
+                    <p className="mt-1 text-slate-950 dark:text-slate-50">{job.startedAt ? new Date(job.startedAt).toLocaleString("pt-BR") : "Aguardando"}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs dark:border-slate-800 dark:bg-slate-900">
+                    <p className="font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Finalizado</p>
+                    <p className="mt-1 text-slate-950 dark:text-slate-50">{job.finishedAt ? new Date(job.finishedAt).toLocaleString("pt-BR") : "Em andamento"}</p>
+                  </div>
                 </div>
+
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Logs recentes</summary>
+                  <pre className="mt-2 max-h-36 overflow-y-auto rounded-lg bg-white p-3 text-[11px] text-slate-700 dark:bg-slate-900 dark:text-slate-300">{job.logTail.length > 0 ? job.logTail.join("\n") : "Sem logs disponíveis ainda."}</pre>
+                </details>
               </div>
             )}
           </div>

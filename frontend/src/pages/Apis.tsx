@@ -108,6 +108,7 @@ export function Apis() {
   const selectedHealth = health?.results?.find((result) => result.provider === selectedProvider) ?? null;
   const configuredCount = providers.filter((provider) => configuredLabel(cfg ?? ({} as AgentConfig), provider.field)).length;
   const onlineCount = health?.results?.filter((result) => result.configured && result.ok).length ?? 0;
+  const hasOpenRouterKey = Boolean((cfg?.openrouterKey?.trim().length ?? 0) >= 12 || cfg?.openrouterKeyConfigured);
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -269,7 +270,7 @@ export function Apis() {
         </aside>
       </div>
 
-      <Section title="OpenRouter Models" description="Selecione o modelo principal e navegue pela lista retornada pela API.">
+      {hasOpenRouterKey ? <Section title="OpenRouter Models" description="Selecione o modelo principal e navegue pela lista retornada pela API.">
         <Panel className="space-y-4 p-4">
           <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
@@ -336,7 +337,7 @@ export function Apis() {
             </div>
           )}
         </Panel>
-      </Section>
+      </Section> : null}
 
       <UpdateSection />
     </form>
