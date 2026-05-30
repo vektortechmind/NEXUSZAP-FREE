@@ -37,6 +37,71 @@ docker_compose() {
   docker-compose "$@"
 }
 
+print_migration_summary() {
+  local deploy_output="$1"
+  if printf '%s\n' "$deploy_output" | grep -qi "No pending migrations to apply"; then
+    echo "Migrations Prisma verificadas: sem pendencias."
+    return 0
+  fi
+
+  if printf '%s\n' "$deploy_output" | grep -Eqi "Applying migration|migrations found|The following migration"; then
+    echo "Migrations Prisma verificadas e aplicadas com sucesso."
+    return 0
+  fi
+
+  echo "Migrations Prisma verificadas com sucesso."
+}
+
+run_backend_migrations_local() {
+  local status_output=""
+  local deploy_output=""
+
+  echo "Verificando status das migrations Prisma..."
+  pushd backend >/dev/null
+  if ! status_output="$(npx prisma migrate status --schema prisma/schema.prisma 2>&1)"; then
+    printf '%s\n' "$status_output"
+    popd >/dev/null
+    echo "ERRO: falha ao verificar status das migrations Prisma." >&2
+    exit 1
+  fi
+  printf '%s\n' "$status_output"
+
+  echo "Aplicando migrations Prisma..."
+  if ! deploy_output="$(npm run db:migrate:deploy 2>&1)"; then
+    printf '%s\n' "$deploy_output"
+    popd >/dev/null
+    echo "ERRO: falha ao aplicar migrations Prisma." >&2
+    exit 1
+  fi
+  printf '%s\n' "$deploy_output"
+  popd >/dev/null
+
+  print_migration_summary "$deploy_output"
+}
+
+run_backend_migrations_docker() {
+  local status_output=""
+  local deploy_output=""
+
+  echo "Verificando status das migrations Prisma via Docker..."
+  if ! status_output="$(docker_compose run --rm backend npx prisma migrate status --schema prisma/schema.prisma 2>&1)"; then
+    printf '%s\n' "$status_output"
+    echo "ERRO: falha ao verificar status das migrations Prisma no ambiente Docker." >&2
+    exit 1
+  fi
+  printf '%s\n' "$status_output"
+
+  echo "Aplicando migrations Prisma via Docker..."
+  if ! deploy_output="$(docker_compose run --rm backend npm run db:migrate:deploy 2>&1)"; then
+    printf '%s\n' "$deploy_output"
+    echo "ERRO: falha ao aplicar migrations Prisma no ambiente Docker." >&2
+    exit 1
+  fi
+  printf '%s\n' "$deploy_output"
+
+  print_migration_summary "$deploy_output"
+}
+
 random_key() {
   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 }
@@ -274,15 +339,19 @@ if docker_compose_available; then
     fi
   fi
 
+  run_backend_migrations_docker
+
   if [[ "$update_backend" == "true" || "$update_stack" == "true" ]]; then
     docker_compose ps backend
   fi
   echo "Stack Docker atualizada."
 else
-  echo "Docker Compose nao encontrado. Update local concluido. Reinicie seu process manager manualmente."
+  run_backend_migrations_local
+  echo "Update local concluido. Reinicie seu process manager manualmente."
 fi
 
 remove_ps1
 
 echo ""
 echo "Update concluido."
+

@@ -43,6 +43,71 @@ docker_compose() {
   docker-compose "$@"
 }
 
+print_migration_summary() {
+  local deploy_output="$1"
+  if printf '%s\n' "$deploy_output" | grep -qi "No pending migrations to apply"; then
+    echo "Migrations Prisma verificadas: sem pendencias."
+    return 0
+  fi
+
+  if printf '%s\n' "$deploy_output" | grep -Eqi "Applying migration|migrations found|The following migration"; then
+    echo "Migrations Prisma verificadas e aplicadas com sucesso."
+    return 0
+  fi
+
+  echo "Migrations Prisma verificadas com sucesso."
+}
+
+run_backend_migrations_local() {
+  local status_output=""
+  local deploy_output=""
+
+  echo "Verificando status das migrations Prisma..."
+  pushd backend >/dev/null
+  if ! status_output="$(npx prisma migrate status --schema prisma/schema.prisma 2>&1)"; then
+    printf '%s\n' "$status_output"
+    popd >/dev/null
+    echo "ERRO: falha ao verificar status das migrations Prisma." >&2
+    exit 1
+  fi
+  printf '%s\n' "$status_output"
+
+  echo "Aplicando migrations Prisma..."
+  if ! deploy_output="$(npm run db:migrate:deploy 2>&1)"; then
+    printf '%s\n' "$deploy_output"
+    popd >/dev/null
+    echo "ERRO: falha ao aplicar migrations Prisma." >&2
+    exit 1
+  fi
+  printf '%s\n' "$deploy_output"
+  popd >/dev/null
+
+  print_migration_summary "$deploy_output"
+}
+
+run_backend_migrations_docker() {
+  local status_output=""
+  local deploy_output=""
+
+  echo "Verificando status das migrations Prisma via Docker..."
+  if ! status_output="$(docker_compose run --rm backend npx prisma migrate status --schema prisma/schema.prisma 2>&1)"; then
+    printf '%s\n' "$status_output"
+    echo "ERRO: falha ao verificar status das migrations Prisma no ambiente Docker." >&2
+    exit 1
+  fi
+  printf '%s\n' "$status_output"
+
+  echo "Aplicando migrations Prisma via Docker..."
+  if ! deploy_output="$(docker_compose run --rm backend npm run db:migrate:deploy 2>&1)"; then
+    printf '%s\n' "$deploy_output"
+    echo "ERRO: falha ao aplicar migrations Prisma no ambiente Docker." >&2
+    exit 1
+  fi
+  printf '%s\n' "$deploy_output"
+
+  print_migration_summary "$deploy_output"
+}
+
 ensure_repo_checkout() {
   if [[ -f "package.json" && -d "backend" && -d "frontend" ]]; then
     return 0
@@ -329,6 +394,7 @@ if docker_compose_available; then
   load_env
   ensure_frontend_port
   docker_compose up -d --build
+  run_backend_migrations_docker
   PUBLIC_BASE_URL="$(public_base_url "$(public_ip)")"
   SETUP_URL="${PUBLIC_BASE_URL}/docker-setup?token=${SETUP_TOKEN:-}"
   ADMIN_URL="${PUBLIC_BASE_URL}/criar-admin?token=${SETUP_TOKEN:-}"
@@ -347,3 +413,4 @@ remove_ps1
 
 echo ""
 echo "Instalacao concluida."
+
