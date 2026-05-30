@@ -1,21 +1,35 @@
 # NexusZAP - Chatbot com IA v1.0.3
 
-Chatbot para WhatsApp e Telegram com IA, suporte a audio, base de conhecimento e painel administrativo.
+NexusZAP e uma plataforma de automacao para WhatsApp e Telegram com IA, base de conhecimento, painel administrativo e endpoint publico de integracoes para sistemas externos.
 
-## Recursos
+## Visao geral
 
-- Respostas com LLMs: Gemini, Groq e OpenRouter.
-- Processamento de audio e documentos: PDF, DOCX e TXT.
-- Painel administrativo para instancias, agente IA, Telegram e configuracoes.
-- Autenticacao JWT, criptografia de chaves sensiveis e rate limiting.
-- Banco de dados oficial: PostgreSQL.
+O produto esta organizado em cinco frentes operacionais dentro do painel:
+
+- `Dashboard`: visao consolidada de volume por canal, uso de IA e base ativa.
+- `Instancias`: gestao de conexoes WhatsApp e Telegram, QR Code, status e acoes operacionais.
+- `Integracoes`: credenciais, auditoria global e documentacao publica do endpoint `/api/integrations/events`.
+- `Agente IA`: configuracao de runtime, prompt principal, arquivos de conhecimento e workspace por agente.
+- `Configuracoes`: chaves, providers e recursos de sistema, incluindo OpenRouter quando houver chave configurada.
+
+## Recursos principais
+
+- Automacao para `WhatsApp` e `Telegram` com painel unico.
+- Runtime de IA com `Gemini`, `Groq` e `OpenRouter`.
+- Base de conhecimento com upload de `PDF`, `DOCX`, `TXT`, `JSON` e imagens.
+- Gestao de agentes com prompt principal, configuracoes de runtime e arquivos por workspace.
+- Endpoint publico de integracoes com autenticacao por `Bearer token`, `instanceId`, `timestamp` e `dedupKey`.
+- Templates operacionais por evento para cobranca, acesso, assinatura, Pix, boleto e recuperacao.
+- Auditoria global de ingressos e dispatches das integracoes.
+- Autenticacao JWT, criptografia de segredos e rate limiting.
+- PostgreSQL como banco oficial.
 
 ## Pre-requisitos
 
 | Ferramenta | Versao | Download |
 |------------|--------|----------|
 | Node.js | 18+ | https://nodejs.org/ |
-| Git | Latest | https://git-scm.com/ |
+| Git | Atual | https://git-scm.com/ |
 | Docker | Instalado automaticamente pelo `install.sh` em Debian/Ubuntu | https://www.docker.com/ |
 
 Verificacao rapida:
@@ -28,15 +42,15 @@ git --version
 
 ## Instalacao com um comando
 
-Na VPS/Linux, rode a instalacao completa com um unico comando:
+Em uma VPS Linux, rode a instalacao completa com um unico comando:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/vektortechmind/NEXUSZAP-FREE/main/install.sh)"
 ```
 
-Esse comando pode ser executado em uma VPS limpa: se a pasta do projeto ainda nao existir, o instalador clona `NEXUSZAP-FREE` automaticamente e continua a instalacao dentro dela.
+Esse comando pode ser executado em uma VPS limpa. Se a pasta do projeto ainda nao existir, o instalador clona `NEXUSZAP-FREE` automaticamente e continua a instalacao dentro dela.
 
-Se preferir auditar o script antes de executar, baixe e rode manualmente na VPS:
+Se preferir auditar o script antes de executar:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/vektortechmind/NEXUSZAP-FREE/main/install.sh -o install.sh
@@ -44,31 +58,34 @@ chmod +x install.sh
 sudo ./install.sh
 ```
 
-Em um clone Git existente na VPS/Linux, use `install.sh`:
+Em um clone Git ja existente na VPS:
 
 ```bash
 chmod +x install.sh update.sh
 sudo ./install.sh
 ```
 
-O instalador faz o fluxo completo:
+## O que o instalador faz
 
-- cria `backend/.env` automaticamente se ainda nao existir;
-- gera `JWT_SECRET` e `ENCRYPTION_KEY` automaticamente;
-- gera `SETUP_TOKEN`, uma senha temporaria e mostra no terminal as URLs iniciais;
-- na VPS Debian/Ubuntu, instala Docker Engine e Docker Compose plugin se estiverem ausentes;
+O `install.sh` executa o fluxo completo:
+
+- cria `backend/.env` automaticamente se ele ainda nao existir;
+- gera `JWT_SECRET`, `ENCRYPTION_KEY`, `SETUP_TOKEN` e senha temporaria de bootstrap;
+- instala Docker Engine e Docker Compose plugin em Debian/Ubuntu quando necessario;
 - instala dependencias da raiz, backend e frontend;
 - executa `prisma generate`;
 - builda backend e frontend;
-- se Docker estiver disponivel, sobe `postgres`, `backend` e `frontend` com `docker compose up -d --build`.
+- sobe `postgres`, `backend` e `frontend` com `docker compose up -d --build` quando Docker estiver disponivel.
 
-Ao final da instalacao na VPS, abra a URL exibida no terminal:
+## Primeiro acesso
+
+Ao final da instalacao na VPS, abra a URL mostrada no terminal:
 
 ```text
 http://SEU_IP/docker-setup?token=SEU_TOKEN
 ```
 
-Informe o dominio publico, por exemplo `seudominio.com`. Isso ajusta `APP_URL`, `CORS_ORIGINS` e prepara a configuracao final.
+Informe o dominio publico, por exemplo `seudominio.com`. Essa etapa ajusta `APP_URL`, `CORS_ORIGINS` e prepara a configuracao final.
 
 Depois crie o primeiro administrador:
 
@@ -84,30 +101,38 @@ URLs padrao na VPS com Docker:
 - API: `http://SEU_IP/api` ou `https://SEU_DOMINIO/api`
 - PostgreSQL: container interno `postgres:5432`
 
-## Update
+## Update na VPS
 
-Na VPS/Linux, dentro da pasta do projeto:
+Dentro da pasta do projeto na VPS/Linux:
 
 ```bash
 ./update.sh
 ```
 
-O script de update:
+O `update.sh`:
 
 - garante o remote oficial `https://github.com/vektortechmind/NEXUSZAP-FREE.git`;
 - executa `git fetch` e `git pull --ff-only`;
-- reinstala dependencias usando `npm ci` quando houver lockfile;
-- executa `prisma generate` e `prisma migrate deploy`;
+- reinstala dependencias com `npm ci` quando houver lockfile;
+- executa `prisma generate`;
 - builda o projeto;
-- se Docker estiver disponivel, recria a stack com `docker compose up -d --build`.
+- recria `backend` e `frontend` com Docker quando houver mudancas que afetem os containers.
 
-Se o projeto foi baixado como ZIP, o update automatico nao deve ser usado nessa pasta. Clone pelo Git para manter updates seguros.
+Se a pasta atual foi baixada como ZIP, nao use update automatico nela. Clone pelo Git para manter updates seguros.
 
 ## Variaveis de ambiente
 
-Arquivo: `backend/.env`
+Arquivo principal:
 
-Modelo: `backend/.env.example`
+```text
+backend/.env
+```
+
+Modelo:
+
+```text
+backend/.env.example
+```
 
 Minimo esperado:
 
@@ -127,45 +152,9 @@ SETUP_COMPLETED="false"
 GITHUB_REPO="vektortechmind/NEXUSZAP-FREE"
 ```
 
-Em producao, ajuste `ADMIN_EMAIL`, `ADMIN_PASSWORD` e `CORS_ORIGINS` para o dominio real do painel.
+Em producao, ajuste `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `APP_URL` e `CORS_ORIGINS` para o dominio real do painel.
 
-## Versao da aplicacao
-
-A versao atual fica em `backend/VERSION`. Esse arquivo e versionado no Git e e atualizado pelo `update.sh` junto com o codigo.
-
-Nao use `APP_VERSION` no `.env` como fonte principal de versao: o `.env` e preservado no update para nao sobrescrever secrets e configuracoes da VPS.
-
-## Docker
-
-Subir stack manualmente:
-
-```bash
-docker compose up -d --build
-```
-
-Ver logs:
-
-```bash
-docker compose logs -f
-```
-
-Parar:
-
-```bash
-docker compose down
-```
-
-## Scripts disponiveis
-
-| Script | Descricao |
-|--------|-----------|
-| `install.sh` | Instalacao completa em VPS/Linux |
-| `update.sh` | Atualizacao em VPS/Linux pelo repositorio oficial |
-| `npm run build` | Build de backend e frontend |
-| `npm run test:smoke` | Smoke test da API |
-| `npm test --prefix backend` | Validacoes de seguranca e smoke do backend |
-
-## Estrutura
+## Estrutura do projeto
 
 ```text
 NEXUSZAP-FREE/
@@ -184,21 +173,178 @@ NEXUSZAP-FREE/
 └── ecosystem.config.cjs
 ```
 
-## Endpoints principais
+## Desenvolvimento local
 
-| Metodo | Endpoint | Descricao |
-|--------|----------|-----------|
-| POST | `/api/auth/login` | Login |
-| POST | `/api/auth/logout` | Logout |
-| GET | `/api/auth/me` | Usuario autenticado |
-| GET | `/api/agent/status` | Status da instancia |
-| POST | `/api/agent/start` | Iniciar WhatsApp |
-| POST | `/api/agent/stop` | Parar WhatsApp |
-| GET | `/api/config` | Configuracoes |
-| PUT | `/api/config` | Atualizar configuracoes |
-| GET | `/api/knowledge` | Listar base de conhecimento |
-| POST | `/api/knowledge/upload` | Upload de documento |
+Subir frontend e backend em modo desenvolvimento:
+
+```bash
+npm install
+npm run dev
+```
+
+Outros comandos uteis:
+
+```bash
+npm run dev:api
+npm run dev:web
+npm run build
+npm run lint
+npm run typecheck
+npm test
+```
+
+## Docker
+
+Subir stack manualmente:
+
+```bash
+docker compose up -d --build
+```
+
+Ver logs:
+
+```bash
+docker compose logs -f
+```
+
+Parar containers:
+
+```bash
+docker compose down
+```
+
+## Painel administrativo
+
+### Dashboard
+
+Mostra:
+
+- volume por periodo;
+- volume por canal;
+- uso de IA;
+- quantidade de arquivos da base;
+- tendencia diaria;
+- atividade em destaque.
+
+### Instancias
+
+Permite:
+
+- criar instancias WhatsApp;
+- gerar QR Code e conectar;
+- configurar o singleton do Telegram;
+- abrir detalhes operacionais de cada canal;
+- desconectar ou remover quando aplicavel.
+
+### Agente IA
+
+Permite:
+
+- criar agentes para WhatsApp e Telegram;
+- definir nome e prompt principal;
+- ajustar provider e memoria do runtime;
+- configurar modelo OpenRouter quando selecionado;
+- enviar arquivos de conhecimento;
+- manter workspace separado por agente.
+
+### Integracoes
+
+A area de integracoes separa credenciais, operacao e documentacao tecnica.
+
+Fluxo operacional:
+
+1. selecione a instancia correta;
+2. abra `Credenciais`;
+3. obtenha `instanceId`, `endpointUrl` e `secretToken`;
+4. configure o sistema externo para enviar eventos para o endpoint publico.
+
+A operacao tambem oferece auditoria global de ingressos e dispatches para todos os eventos.
+
+## Endpoint publico de integracoes
+
+Endpoint principal:
+
+```text
+POST /api/integrations/events
+```
+
+Headers obrigatorios:
+
+```text
+Authorization: Bearer <secretToken>
+Content-Type: application/json
+```
+
+Campos principais do body:
+
+- `event`: slug do evento suportado;
+- `instanceId`: precisa pertencer a mesma credencial autenticada;
+- `timestamp`: entra na replay window operacional;
+- `dedupKey`: chave idempotente obrigatoria por credencial;
+- `payload`: contexto operacional usado para normalizacao e renderizacao.
+
+Eventos suportados atualmente:
+
+- `pedido_pendente`
+- `pedido_pago`
+- `envio_acesso`
+- `pagamento_recusado`
+- `pedido_cancelado`
+- `reembolso`
+- `pix_gerado`
+- `boleto_gerado`
+- `carrinho_abandonado`
+- `assinatura_criada`
+- `assinatura_renovada`
+- `assinatura_cancelada`
+- `assinatura_em_atraso`
+
+Tipos de mensagem usados pelo runtime:
+
+- `text`
+- `link`
+- `image`
+- `document`
+
+A documentacao publica completa desse endpoint fica dentro do proprio painel, em `Integracoes -> Documentacao`.
+
+## Credenciais de integracao
+
+Cada credencial e vinculada a uma instancia operacional.
+
+Campos operacionais:
+
+- `endpointUrl`: URL final completa da integracao;
+- `instanceId`: identificador autorizado para a chamada;
+- `secretToken`: token Bearer ativo emitido ou rotacionado no painel.
+
+Regras principais:
+
+- o `instanceId` do body precisa pertencer a credencial autenticada;
+- `timestamp` fora da janela permitida gera bloqueio;
+- `dedupKey` repetida dentro da janela da credencial e recusada;
+- a resposta `202 accepted` indica aceite do evento e inicio do dispatch, nao confirmacao sincrona de entrega no WhatsApp.
+
+## Scripts disponiveis
+
+| Script | Descricao |
+|--------|-----------|
+| `install.sh` | Instalacao completa em VPS/Linux |
+| `update.sh` | Atualizacao em VPS/Linux pelo repositorio oficial |
+| `npm run dev` | Frontend e backend em desenvolvimento |
+| `npm run build` | Build de backend e frontend |
+| `npm run lint` | Lint do frontend |
+| `npm run typecheck` | Typecheck de backend e frontend |
+| `npm test` | Suite atual do backend |
+| `npm run test:smoke` | Smoke test do backend/API |
 
 ## Seguranca operacional
 
-Nunca commite `backend/.env`, `node_modules` ou `dist`. Esses caminhos devem permanecer locais e ja ficam fora do controle de versao pelo `.gitignore`.
+Nunca commite:
+
+- `backend/.env`
+- `node_modules`
+- `dist`
+- secrets, tokens ou credenciais exportadas do painel
+
+Esses caminhos devem permanecer locais e ja ficam protegidos pelo `.gitignore` quando aplicavel.
