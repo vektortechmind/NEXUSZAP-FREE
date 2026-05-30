@@ -2,26 +2,18 @@ import type { IntegrationDashboardResponse } from "../dashboard/integrationDashb
 import { INTEGRATION_DOCUMENTATION_ROUTE } from "./integrationDocumentationContent";
 
 export type IntegrationWorkspaceSection = {
-  id: "credenciais" | "operacao" | "documentacao";
+  id: "credenciais" | "operacao";
   label: string;
-  description: string;
 };
 
 export const INTEGRATION_WORKSPACE_SECTIONS: IntegrationWorkspaceSection[] = [
   {
     id: "credenciais",
     label: "Credenciais",
-    description: "Seleção da instância, leitura de instanceId e emissão do secretToken ficarão centralizadas aqui.",
   },
   {
     id: "operacao",
     label: "Operação",
-    description: "Visão operacional de credenciais, últimos ingressos, últimos dispatches e falhas recentes.",
-  },
-  {
-    id: "documentacao",
-    label: "Documentação",
-    description: "Fluxo dedicado para abrir a documentação técnica sem depender de caminho local do repositório.",
   },
 ];
 

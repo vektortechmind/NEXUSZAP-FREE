@@ -1,4 +1,5 @@
-import { Activity, AlertTriangle, Clock3, Webhook } from "lucide-react";
+import { Activity, AlertTriangle, Clock3, RefreshCw, Webhook } from "lucide-react";
+import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Metric } from "../../components/ui/Metric";
 import { Panel } from "../../components/ui/Panel";
@@ -43,14 +44,23 @@ function formatRecentIngress(item: IntegrationDashboardItem): string {
 
 type IntegrationOperationsOverviewProps = {
   overview: IntegrationDashboardResponse;
+  refreshing: boolean;
+  onRefresh: () => void;
 };
 
-export function IntegrationOperationsOverview({ overview }: IntegrationOperationsOverviewProps) {
+export function IntegrationOperationsOverview({ overview, refreshing, onRefresh }: IntegrationOperationsOverviewProps) {
   const integrations = overview.integrations;
   const integrationSummary = summarizeIntegrationCards(integrations);
 
   return (
     <div className="space-y-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-end">
+        <Button onClick={onRefresh} disabled={refreshing} loading={refreshing} className="w-full sm:w-auto">
+          <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+          Atualizar operação
+        </Button>
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Metric label="Conexões ativas" value={integrationSummary.activeConnections} description="Credenciais ativas" icon={<Webhook size={20} aria-hidden="true" />} tone="success" />
         <Metric label="Atividade recente" value={integrationSummary.recentActivity} description="Integrações com uso recente" icon={<Activity size={20} aria-hidden="true" />} tone="success" />
