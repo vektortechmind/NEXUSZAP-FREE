@@ -1,13 +1,14 @@
 import { useState } from "react";
 import { isAxiosError } from "axios";
 import { useAuth } from "../contexts/AuthContext";
-import { AlertCircle, Lock, Mail, ShieldCheck } from "lucide-react";
+import { AlertCircle, Lock, Mail } from "lucide-react";
 import { Navigate } from "react-router-dom";
 import { APP_VERSION } from "../version";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { InlineAlert } from "../components/ui/InlineAlert";
 import { ThemeToggle } from "../components/ThemeToggle";
+import nexusLogo from "../assets/branding/nexus.png";
 
 function loginErrorMessage(err: unknown): string {
   if (!isAxiosError(err)) {
@@ -70,9 +71,7 @@ export function Login() {
         <section className="flex w-full items-center justify-center" aria-labelledby="login-title">
           <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-8">
             <div className="mb-8">
-              <div className="mb-5 inline-flex h-12 w-12 items-center justify-center rounded-lg bg-emerald-600 text-white dark:bg-emerald-500 dark:text-slate-950">
-                <ShieldCheck size={24} aria-hidden="true" />
-              </div>
+              <img src={nexusLogo} alt="NexusZAP" className="mb-5 h-14 w-auto max-w-[220px] object-contain" />
               <h2 id="login-title" className="text-2xl font-semibold tracking-normal text-slate-950 dark:text-slate-50">
                 Entrar no painel
               </h2>
