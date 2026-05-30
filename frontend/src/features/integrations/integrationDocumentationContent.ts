@@ -160,7 +160,7 @@ export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
     messageType: "image",
     requiredFields: ["customer.phone", "customer.name ou order.user.name", "order.product.name ou equivalente"],
     optionalFields: ["pix.copy_paste ou pix.copyPaste", "order.total ou amount equivalente", "checkout_link ou checkoutLink", "order.product.image ou cover"],
-    generatedMessage: "Primeira mensagem com instrução de pagamento Pix, valor e aviso de que o copia e cola será enviado em seguida; quando houver pix.copy_paste, o runtime envia uma segunda mensagem textual contendo apenas o código bruto.",
+    generatedMessage: "Primeira mensagem com instrução de pagamento Pix, valor e a chamada 'Codigo Pix copia e cola' no fechamento; quando houver pix.copy_paste, o runtime envia uma segunda mensagem textual contendo apenas o código bruto.",
     fallback: "Sem imagem válida, a primeira mensagem degrada para texto. Sem Pix copia e cola, o segundo envio é pulado e a primeira mensagem segue normalmente.",
   },
   {
@@ -225,7 +225,7 @@ export const INTEGRATION_RENDER_RULES = [
   "O backend define a mensagem a partir do event e do payload normalizado; a ferramenta externa não escolhe corpo, caption nem tipo final manualmente.",
   "Eventos mapeados como image fazem download da imagem no runtime quando imageUrl for HTTP/HTTPS válida e acessível pelo backend.",
   "Quando a imagem estiver ausente, inválida ou falhar no download, o runtime troca o envio para texto sem interromper o dispatch e registra deliveryPath text_fallback_image.",
-  "No evento pix_gerado, a primeira mensagem avisa que o código Pix copia e cola virá em seguida; quando pix.copy_paste ou pix.copyPaste estiver disponível, o runtime envia uma segunda mensagem textual contendo apenas o código bruto.",
+  "No evento pix_gerado, a primeira mensagem fecha com a chamada 'Codigo Pix copia e cola' e, quando pix.copy_paste ou pix.copyPaste estiver disponível, o runtime envia uma segunda mensagem textual contendo apenas o código bruto.",
   "pedido_pago usa CTA real por templateMessage.hydratedTemplate com urlButton quando checkoutLink e relayMessage estiverem disponíveis.",
   "Quando o CTA real não puder ser usado, o runtime envia texto com URL visível no corpo e registra deliveryPath text_fallback_button.",
   "A telemetria do dispatch registra secondaryDispatchStatus para indicar se a segunda mensagem do Pix foi enviada, pulada por ausência do código ou falhou isoladamente.",

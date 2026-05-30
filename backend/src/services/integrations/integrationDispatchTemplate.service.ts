@@ -307,7 +307,7 @@ export function renderIntegrationDispatchTemplateFromContext(
           `💳 *${customer}*, o PIX do *${product}* foi gerado!`,
           context.total ? `📋 *Valor:* R$ ${context.total}` : null,
           "⚠️ *Pague até o vencimento para garantir sua vaga!*",
-          context.pixCopyPaste ? "📌 O codigo Pix copia e cola sera enviado na próxima mensagem." : null,
+          context.pixCopyPaste ? "📌 *Codigo Pix copia e cola:* logo abaixo." : null,
         ],
         createExternalAdReply("Visualizar pedido", product, context.checkoutLink),
         createPixCopyPasteFollowup(context),
