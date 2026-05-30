@@ -120,6 +120,7 @@ async function withCtaFormat(format, run) {
     assert.equal(relayedPayloads[0].message.templateMessage.hydratedTemplate.hydratedContentText, result.template.body);
     assert.equal(relayedPayloads[0].message.templateMessage.hydratedTemplate.hydratedButtons[0].urlButton.displayText, "Acessar agora");
     assert.equal(relayedPayloads[0].message.templateMessage.hydratedTemplate.hydratedButtons[0].urlButton.url, "https://checkout.example.com/c/123");
+    assert.equal(relayedPayloads[0].message.messageContextInfo.messageSecret.length, 32);
     assert.equal(result.dispatchLog.dispatchStatus, INTEGRATION_DISPATCH_STATUS.SENT);
     assert.equal(result.dispatchLog.messageType, "template");
     assert.equal(result.dispatchLog.providerMessageId, relayedPayloads[0].options.messageId);
@@ -128,6 +129,8 @@ async function withCtaFormat(format, run) {
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"template_cta"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"ctaButtonFormat":"template_hydrated"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"ctaTransport":"relay_message"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"messageSecretByteLength":32'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"reportingTokenFieldCovered":true'), true);
   }
 
   await withCtaFormat("buttons_message", async () => {
@@ -142,8 +145,10 @@ async function withCtaFormat(format, run) {
     assert.equal(relayedPayloads[0].message.buttonsMessage.contentText, result.template.body);
     assert.equal(relayedPayloads[0].message.buttonsMessage.buttons[0].type, 2);
     assert.equal(relayedPayloads[0].message.buttonsMessage.buttons[0].nativeFlowInfo.name, "cta_url");
+    assert.equal(relayedPayloads[0].message.messageContextInfo.messageSecret.length, 32);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"buttons_cta"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"ctaButtonFormat":"buttons_message"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"reportingTokenFieldCovered":false'), true);
   });
 
   await withCtaFormat("interactive_native_flow", async () => {
@@ -157,8 +162,10 @@ async function withCtaFormat(format, run) {
     assert.equal(service.ctaButtonFormat, "interactive_native_flow");
     assert.equal(relayedPayloads[0].message.interactiveMessage.body.text.includes("Parabéns"), true);
     assert.equal(relayedPayloads[0].message.interactiveMessage.nativeFlowMessage.buttons[0].name, "cta_url");
+    assert.equal(relayedPayloads[0].message.messageContextInfo.messageSecret.length, 32);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"interactive_cta"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"ctaButtonFormat":"interactive_native_flow"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"reportingTokenFieldCovered":false'), true);
   });
 
   {
@@ -479,8 +486,11 @@ async function withCtaFormat(format, run) {
     const buttonsPayload = buildRealCtaMessage(template, "buttons_message");
     const interactivePayload = buildRealCtaMessage(template, "interactive_native_flow");
     assert.equal(templatePayload.templateMessage.hydratedTemplate.hydratedButtons[0].urlButton.url, "https://checkout.example.com/c/123");
+    assert.equal(templatePayload.messageContextInfo.messageSecret.length, 32);
     assert.equal(buttonsPayload.buttonsMessage.buttons[0].nativeFlowInfo.paramsJson.includes('display_text'), true);
+    assert.equal(buttonsPayload.messageContextInfo.messageSecret.length, 32);
     assert.equal(interactivePayload.interactiveMessage.nativeFlowMessage.buttons[0].buttonParamsJson.includes('https://checkout.example.com/c/123'), true);
+    assert.equal(interactivePayload.messageContextInfo.messageSecret.length, 32);
     assert.equal(INTEGRATION_CTA_FORMAT_MATRIX.length, 3);
     assert.equal(resolveIntegrationCtaButtonFormat("invalid-value"), "template_hydrated");
   }
