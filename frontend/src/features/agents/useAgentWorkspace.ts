@@ -198,15 +198,18 @@ export function useAgentWorkspace(addToast: (message: string, tone?: "success" |
     return () => window.clearTimeout(timer);
   }, [loadSelectedWorkspace, loading]);
 
-  const tabs = useMemo(
-    () => ([
+  const tabs = useMemo(() => {
+    const baseTabs = [
       { value: "agent", label: "Agente" },
       { value: "ai", label: "IA" },
       { value: "files", label: "Arquivos" },
-      { value: "integrations", label: "Integrações" },
-    ]),
-    [],
-  );
+    ];
+
+    return selectedIsTelegramWorkspace
+      ? [...baseTabs, { value: "integrations", label: "Integrações" }]
+      : baseTabs;
+  }, [selectedIsTelegramWorkspace]);
+  const resolvedActiveTab = activeTab === "integrations" && !selectedIsTelegramWorkspace ? "agent" : activeTab;
 
   const openCreateModal = useCallback(() => {
     setCreateModal({ ...initialCreateModalState, open: true, channel: eligibleInstances.length > 0 ? "WHATSAPP" : "TELEGRAM" });
@@ -387,7 +390,7 @@ export function useAgentWorkspace(addToast: (message: string, tone?: "success" |
     workspaceError,
     saving,
     deleting,
-    activeTab,
+    activeTab: resolvedActiveTab,
     createModal,
     files,
     filesLoading,

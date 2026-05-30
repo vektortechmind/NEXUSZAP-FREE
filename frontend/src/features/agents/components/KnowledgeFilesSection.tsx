@@ -35,6 +35,7 @@ export function KnowledgeFilesSection({
   disabled,
   onUpload,
   onRefresh,
+  showRefreshAction = true,
   onRemove,
 }: {
   title: string;
@@ -52,7 +53,8 @@ export function KnowledgeFilesSection({
   uploadHint: string;
   disabled?: boolean;
   onUpload: (file: File) => void | Promise<void>;
-  onRefresh: () => void | Promise<void>;
+  onRefresh?: () => void | Promise<void>;
+  showRefreshAction?: boolean;
   onRemove: (fileId: string) => void | Promise<void>;
 }) {
   const isSky = accent === "sky";
@@ -67,12 +69,12 @@ export function KnowledgeFilesSection({
     <Section
       title={title}
       description={description}
-      actions={
+      actions={showRefreshAction && onRefresh ? (
         <Button variant="ghost" size="sm" onClick={() => void onRefresh()} disabled={refreshing || loading || disabled}>
           <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
           Atualizar
         </Button>
-      }
+      ) : undefined}
     >
       <Panel className={`p-4 transition-opacity duration-200 ${refreshing ? "opacity-70" : ""}`}>
         <label className={`flex flex-col items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-50 px-4 py-6 text-center transition dark:border-slate-700 dark:bg-slate-950/45 ${labelClass}`}>
