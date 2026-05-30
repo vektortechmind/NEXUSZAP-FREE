@@ -36,16 +36,20 @@ const { buildServer } = require("../src/server");
   const app = await buildServer();
   await app.ready();
 
-  const forbidden = await app.inject({ method: "POST", url: "/api/setup/docker", payload: { domain: "example.com" } });
+  const forbidden = await app.inject({ method: "POST", url: "/api/setup/docker", payload: { apiDomain: "api.example.com" } });
   assert.equal(forbidden.statusCode, 403);
 
   const docker = await app.inject({
     method: "POST",
     url: "/api/setup/docker",
-    payload: { domain: "example.com", token: "test-setup-token-with-enough-length" }
+    payload: { apiDomain: "api.example.com", panelDomain: "app.example.com", token: "test-setup-token-with-enough-length" }
   });
   assert.equal(docker.statusCode, 200, docker.body);
-  assert.ok(fs.readFileSync(envPath, "utf8").includes('APP_URL="https://example.com"'));
+  const envContent = fs.readFileSync(envPath, "utf8");
+  assert.ok(envContent.includes('APP_URL="https://api.example.com"'));
+  assert.ok(envContent.includes('OPENROUTER_REFERER="https://app.example.com"'));
+  assert.ok(envContent.includes('CORS_ORIGINS="http://localhost,https://app.example.com"'));
+  assert.equal(JSON.parse(docker.body).nextUrl, "https://app.example.com/criar-admin?token=test-setup-token-with-enough-length");
 
   const admin = await app.inject({
     method: "POST",

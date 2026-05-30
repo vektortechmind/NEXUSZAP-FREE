@@ -9,7 +9,7 @@ import { ThemeToggle } from "../components/ThemeToggle";
 
 function apiError(err: unknown, fallback: string): string {
   if (!isAxiosError(err)) return fallback;
-  if (!err.response) return "A API nao respondeu. Confira se o dominio aponta para o container NexusZAP e se /api esta roteando para o backend.";
+  if (!err.response) return "A API nao respondeu. Confira se o dominio do painel aponta para o frontend e se /api esta roteando para o backend.";
   return (err.response?.data as { error?: string } | undefined)?.error ?? fallback;
 }
 
@@ -20,7 +20,8 @@ function normalizeDomainInput(value: string): string {
 export function DockerSetup() {
   const params = useMemo(() => new URLSearchParams(window.location.search), []);
   const token = params.get("token") ?? "";
-  const [domain, setDomain] = useState("");
+  const [apiDomain, setApiDomain] = useState("");
+  const [panelDomain, setPanelDomain] = useState("");
   const [nextUrl, setNextUrl] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -31,7 +32,11 @@ export function DockerSetup() {
     setError("");
     setNextUrl("");
     try {
-      const res = await api.post<{ nextUrl: string }>("/setup/docker", { domain: normalizeDomainInput(domain), token });
+      const res = await api.post<{ nextUrl: string }>("/setup/docker", {
+        apiDomain: normalizeDomainInput(apiDomain),
+        panelDomain: normalizeDomainInput(panelDomain),
+        token
+      });
       setNextUrl(res.data.nextUrl);
     } catch (err) {
       setError(apiError(err, "Não foi possível salvar a configuração."));
@@ -50,13 +55,13 @@ export function DockerSetup() {
           </div>
           <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Configuração inicial</p>
           <h1 className="mt-3 max-w-2xl text-4xl font-semibold leading-tight text-slate-950 dark:text-slate-50 sm:text-5xl">
-            Conecte o Docker ao domínio público.
+            Defina as URLs públicas do NexusZAP.
           </h1>
           <p className="mt-5 max-w-xl text-base text-slate-600 dark:text-slate-400">
-            Informe o domínio que vai abrir o painel. O instalador ajusta APP_URL, origens permitidas e prepara o próximo passo do administrador.
+            Informe a URL pública da API. Se o painel usar outro domínio, informe também o domínio do painel para ajustar CORS, OpenRouter e o link do próximo passo.
           </p>
           <div className="mt-10 grid gap-3 sm:grid-cols-3">
-            {["APP_URL", "CORS", "Admin"].map((item) => (
+            {["API", "CORS", "Admin"].map((item) => (
               <div key={item} className="border-t border-slate-200 pt-4 dark:border-slate-800">
                 <p className="text-sm font-semibold text-slate-950 dark:text-slate-50">{item}</p>
                 <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Preparado para produção</p>
@@ -69,7 +74,7 @@ export function DockerSetup() {
           <div className="w-full rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-8">
             <div className="mb-6">
               <h2 id="docker-setup-title" className="text-2xl font-semibold text-slate-950 dark:text-slate-50">Docker setup</h2>
-              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">Informe somente o domínio, sem http:// ou https://.</p>
+              <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">Use domínios públicos reais. Você pode informar com ou sem https://.</p>
             </div>
 
             {!token && (
@@ -80,22 +85,40 @@ export function DockerSetup() {
 
             {error && <InlineAlert className="mt-4" tone="danger" title="Falha ao salvar">{error}</InlineAlert>}
             {nextUrl && (
-              <InlineAlert className="mt-4" tone="success" icon={<CheckCircle2 size={18} />} title="Domínio salvo">
+              <InlineAlert className="mt-4" tone="success" icon={<CheckCircle2 size={18} />} title="Configuração salva">
                 <a className="font-semibold underline underline-offset-4" href={nextUrl}>Continuar para criar administrador</a>
               </InlineAlert>
             )}
 
             <form onSubmit={submit} className="mt-6 space-y-5">
-              <Input
-                label="Domínio público"
-                placeholder="free.nexuszappro.site"
-                icon={<Globe2 size={18} />}
-                value={domain}
-                onChange={(event) => setDomain(normalizeDomainInput(event.target.value))}
-                disabled={loading}
-                required
-              />
-              <Button type="submit" size="lg" className="w-full" loading={loading} disabled={!token}>
+              <div className="space-y-2">
+                <Input
+                  label="Domínio público da API"
+                  placeholder="sua-api.com"
+                  icon={<Globe2 size={18} />}
+                  value={apiDomain}
+                  onChange={(event) => setApiDomain(normalizeDomainInput(event.target.value))}
+                  disabled={loading}
+                  required
+                />
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  URL pública que responde os endpoints do backend, incluindo <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono dark:bg-slate-800">/api</code>.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Input
+                  label="Domínio do painel (opcional)"
+                  placeholder="seu-painel.com"
+                  icon={<Globe2 size={18} />}
+                  value={panelDomain}
+                  onChange={(event) => setPanelDomain(normalizeDomainInput(event.target.value))}
+                  disabled={loading}
+                />
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  Preencha apenas se o painel abrir em outro domínio. Se ficar vazio, o sistema usa o domínio da API também no próximo passo.
+                </p>
+              </div>
+              <Button type="submit" size="lg" className="w-full" loading={loading} disabled={!token || !apiDomain.trim()}>
                 Salvar e continuar <ArrowRight className="ml-2" size={18} aria-hidden="true" />
               </Button>
             </form>

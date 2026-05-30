@@ -12,8 +12,14 @@ import {
 
 const tokenSchema = z.string().min(16).max(256).optional();
 
+const optionalDomainSchema = z.preprocess(
+  (value) => (typeof value === "string" && value.trim().length === 0 ? undefined : value),
+  z.string().trim().min(3).max(253).optional()
+);
+
 const dockerSetupSchema = z.object({
-  domain: z.string().trim().min(3).max(253),
+  apiDomain: z.string().trim().min(3).max(253),
+  panelDomain: optionalDomainSchema,
   token: tokenSchema
 });
 
@@ -59,15 +65,19 @@ export async function setupRoutes(fastify: FastifyInstance) {
       const body = dockerSetupSchema.parse(request.body);
       requireSetupToken(body.token);
 
-      const appUrl = normalizePublicUrl(body.domain);
-      const corsOrigins = mergeCorsOrigins(readEnvValue("CORS_ORIGINS") ?? process.env.CORS_ORIGINS, appUrl);
-      updateEnvFile({
+      const appUrl = normalizePublicUrl(body.apiDomain);
+      const panelUrl = body.panelDomain ? normalizePublicUrl(body.panelDomain) : null;
+      const corsOrigin = panelUrl ?? appUrl;
+      const corsOrigins = mergeCorsOrigins(readEnvValue("CORS_ORIGINS") ?? process.env.CORS_ORIGINS, corsOrigin);
+      const envUpdates: Record<string, string> = {
         APP_URL: appUrl,
         CORS_ORIGINS: corsOrigins,
-        OPENROUTER_REFERER: appUrl
-      });
+        OPENROUTER_REFERER: panelUrl ?? appUrl
+      };
+      updateEnvFile(envUpdates);
 
-      return reply.send({ success: true, appUrl, nextUrl: `${appUrl}/criar-admin?token=${body.token}` });
+      const nextBaseUrl = panelUrl ?? appUrl;
+      return reply.send({ success: true, appUrl, panelUrl, nextUrl: `${nextBaseUrl}/criar-admin?token=${body.token}` });
     } catch (error) {
       if (error instanceof Error && error.name === "SETUP_TOKEN_INVALID") {
         return reply.status(403).send({ error: error.message });
