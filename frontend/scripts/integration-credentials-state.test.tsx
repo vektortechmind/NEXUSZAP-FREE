@@ -194,3 +194,31 @@ test("credentials section exposes empty state when there are no eligible instanc
 
   assert.match(html, /Nenhuma instância elegível/);
 });
+test("credentials section does not fabricate a relative endpoint URL when APP_URL is missing", () => {
+  const html = renderToStaticMarkup(
+    <IntegrationCredentialsSection
+      workspace={{
+        endpointUrl: null,
+        instances: [workspace.instances[0]],
+      }}
+      expandedInstanceId="instance-a"
+      detail={{ ...activeDetail, endpointUrl: null }}
+      issueModalOpen={false}
+      issueModalInstanceId={null}
+      loadingWorkspace={false}
+      loadingDetail={false}
+      actionLoading={null}
+      onToggleInstance={() => undefined}
+      onOpenIssueModal={() => undefined}
+      onCloseIssueModal={() => undefined}
+      onSelectIssueInstance={() => undefined}
+      onIssueCredential={() => undefined}
+      onRotateCredential={() => undefined}
+      onCopyField={() => undefined}
+    />,
+  );
+
+  assert.match(html, /Configure APP_URL no backend para gerar a URL pública do endpoint\./);
+  assert.doesNotMatch(html, /\/api\/integrations\/events/);
+});
+

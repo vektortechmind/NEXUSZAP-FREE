@@ -21,16 +21,21 @@ const dashboardStatsServiceBridge = {
   getDashboardStats,
 };
 
-function resolveEndpointUrl(requestProtocol: string, requestHost: string | undefined): string | null {
-  if (env.APP_URL) {
-    return new URL("/api/integrations/events", env.APP_URL).toString();
-  }
-
-  const host = requestHost?.trim();
-  if (!host) return null;
-  return `${requestProtocol}://${host}/api/integrations/events`;
+function isLocalEndpointHost(host: string): boolean {
+  const hostname = host.split(":")[0]?.trim().toLowerCase();
+  return hostname === "localhost" || hostname === "127.0.0.1";
 }
 
+export function resolvePublicEndpointUrl(input: { appUrl?: string | null; requestProtocol: string; requestHost?: string }): string | null {
+  const appUrl = input.appUrl?.trim();
+  if (appUrl) {
+    return new URL("/api/integrations/events", appUrl).toString();
+  }
+
+  const host = input.requestHost?.trim();
+  if (!host || !isLocalEndpointHost(host)) return null;
+  return `${input.requestProtocol}://${host}/api/integrations/events`;
+}
 export function createDashboardRoutes(deps: DashboardRouteDeps = {}) {
   const statsService = deps.statsService ?? dashboardStatsServiceBridge;
   const overviewService = deps.integrationOverviewService ?? integrationDashboardService;
@@ -60,7 +65,7 @@ export function createDashboardRoutes(deps: DashboardRouteDeps = {}) {
     });
 
     fastify.get("/integrations", async (request, reply) => {
-      const endpointUrl = resolveEndpointUrl(request.protocol, request.headers.host);
+      const endpointUrl = resolvePublicEndpointUrl({ appUrl: env.APP_URL ?? null, requestProtocol: request.protocol, requestHost: request.headers.host });
       const overview = await overviewService.getOverview({ endpointUrl });
       return reply.send(overview);
     });
@@ -70,7 +75,7 @@ export function createDashboardRoutes(deps: DashboardRouteDeps = {}) {
     });
 
     fastify.get("/integrations/credentials", async (request, reply) => {
-      const endpointUrl = resolveEndpointUrl(request.protocol, request.headers.host);
+      const endpointUrl = resolvePublicEndpointUrl({ appUrl: env.APP_URL ?? null, requestProtocol: request.protocol, requestHost: request.headers.host });
       const workspace = await credentialsService.getWorkspace({ endpointUrl });
       return reply.send(workspace);
     });
@@ -78,7 +83,7 @@ export function createDashboardRoutes(deps: DashboardRouteDeps = {}) {
     fastify.get("/integrations/credentials/:instanceId", async (request, reply) => {
       try {
         const { instanceId } = instanceParamsSchema.parse(request.params);
-        const endpointUrl = resolveEndpointUrl(request.protocol, request.headers.host);
+        const endpointUrl = resolvePublicEndpointUrl({ appUrl: env.APP_URL ?? null, requestProtocol: request.protocol, requestHost: request.headers.host });
         const detail = await credentialsService.getInstanceDetail({ instanceId, endpointUrl });
         return reply.send(detail);
       } catch (err) {
@@ -95,7 +100,7 @@ export function createDashboardRoutes(deps: DashboardRouteDeps = {}) {
     fastify.post("/integrations/credentials/:instanceId/issue", async (request, reply) => {
       try {
         const { instanceId } = instanceParamsSchema.parse(request.params);
-        const endpointUrl = resolveEndpointUrl(request.protocol, request.headers.host);
+        const endpointUrl = resolvePublicEndpointUrl({ appUrl: env.APP_URL ?? null, requestProtocol: request.protocol, requestHost: request.headers.host });
         const detail = await credentialsService.issueInstanceCredential({ instanceId, endpointUrl });
         return reply.status(201).send(detail);
       } catch (err) {
@@ -115,7 +120,7 @@ export function createDashboardRoutes(deps: DashboardRouteDeps = {}) {
     fastify.post("/integrations/credentials/:instanceId/rotate", async (request, reply) => {
       try {
         const { instanceId } = instanceParamsSchema.parse(request.params);
-        const endpointUrl = resolveEndpointUrl(request.protocol, request.headers.host);
+        const endpointUrl = resolvePublicEndpointUrl({ appUrl: env.APP_URL ?? null, requestProtocol: request.protocol, requestHost: request.headers.host });
         const detail = await credentialsService.rotateInstanceCredential({ instanceId, endpointUrl });
         return reply.send(detail);
       } catch (err) {
@@ -132,3 +137,5 @@ export function createDashboardRoutes(deps: DashboardRouteDeps = {}) {
 }
 
 export const dashboardRoutes = createDashboardRoutes();
+
+

@@ -58,6 +58,14 @@ const envSchema = z.object({
     });
   }
 
+  if (!value.APP_URL) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["APP_URL"],
+      message: "APP_URL de producao deve apontar para a URL publica real que expoe o backend/API."
+    });
+  }
+
   if (!value.GITHUB_REPO || value.GITHUB_REPO === "owner/repo" || !/^.+\/.+$/.test(value.GITHUB_REPO)) {
     ctx.addIssue({
       code: "custom",
@@ -77,3 +85,4 @@ const envSchema = z.object({
 });
 
 export const env = envSchema.parse(process.env);
+

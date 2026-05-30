@@ -175,8 +175,26 @@ function createCredentialsService() {
     await app.close();
   }
 
+
+  {
+    assert.equal(
+      resolvePublicEndpointUrl({ appUrl: "https://painel.exemplo.com", requestProtocol: "https", requestHost: "painel.exemplo.com" }),
+      "https://painel.exemplo.com/api/integrations/events",
+    );
+    assert.equal(
+      resolvePublicEndpointUrl({ appUrl: null, requestProtocol: "http", requestHost: "localhost:3000" }),
+      "http://localhost:3000/api/integrations/events",
+    );
+    assert.equal(
+      resolvePublicEndpointUrl({ appUrl: null, requestProtocol: "https", requestHost: "painel.exemplo.com" }),
+      null,
+    );
+  }
   console.log("integration-credentials-api: OK");
 })().catch((error) => {
   console.error("integration-credentials-api:", error);
   process.exit(1);
 });
+
+
+

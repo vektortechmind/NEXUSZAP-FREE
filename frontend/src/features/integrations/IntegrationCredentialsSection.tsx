@@ -201,6 +201,8 @@ export function IntegrationCredentialsSection({
   }
 
   const issuableInstances = getIssuableCredentialInstances(workspace);
+  const workspaceEndpointUrl = workspace.endpointUrl;
+  const missingEndpointUrlLabel = "Configure APP_URL no backend para gerar a URL pública do endpoint.";
 
   return (
     <>
@@ -294,12 +296,12 @@ export function IntegrationCredentialsSection({
                           />
                           <CompactField
                             label="URL do endpoint"
-                            value={currentDetail.endpointUrl ?? workspace.endpointUrl ?? "/api/integrations/events"}
+                            value={currentDetail.endpointUrl ?? workspaceEndpointUrl ?? missingEndpointUrlLabel}
                             icon={<Link2 size={16} aria-hidden="true" />}
                             copyLabel="endpointUrl"
-                            copyValue={currentDetail.endpointUrl ?? workspace.endpointUrl ?? "/api/integrations/events"}
+                            copyValue={currentDetail.endpointUrl ?? workspaceEndpointUrl ?? null}
                             onCopy={onCopyField}
-                            muted={!currentDetail.endpointUrl}
+                            muted={!currentDetail.endpointUrl && !workspaceEndpointUrl}
                           />
                           <CompactField
                             label="Token"
@@ -364,3 +366,4 @@ export function IntegrationCredentialsSection({
     </>
   );
 }
+
