@@ -160,8 +160,8 @@ export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
     messageType: "image",
     requiredFields: ["customer.phone", "customer.name ou order.user.name", "order.product.name ou equivalente"],
     optionalFields: ["pix.copy_paste ou pix.copyPaste", "order.total ou amount equivalente", "checkout_link ou checkoutLink", "order.product.image ou cover"],
-    generatedMessage: "Instrução de pagamento Pix com valor e código copia e cola quando presentes.",
-    fallback: "Sem imagem válida, o runtime envia texto. Sem Pix copia e cola, a mensagem sai sem esse bloco.",
+    generatedMessage: "Primeira mensagem com instrução de pagamento Pix e valor; quando houver pix.copy_paste, o runtime envia uma segunda mensagem textual dedicada ao copia e cola.",
+    fallback: "Sem imagem válida, a primeira mensagem degrada para texto. Sem Pix copia e cola, o segundo envio é pulado e a primeira mensagem segue normalmente.",
   },
   {
     event: "boleto_gerado",
@@ -225,8 +225,10 @@ export const INTEGRATION_RENDER_RULES = [
   "O backend define a mensagem a partir do event e do payload normalizado; a ferramenta externa não escolhe corpo, caption nem tipo final manualmente.",
   "Eventos mapeados como image fazem download da imagem no runtime quando imageUrl for HTTP/HTTPS válida e acessível pelo backend.",
   "Quando a imagem estiver ausente, inválida ou falhar no download, o runtime troca o envio para texto sem interromper o dispatch e registra deliveryPath text_fallback_image.",
+  "No evento pix_gerado, o runtime separa o código Pix em uma segunda mensagem textual dedicada quando pix.copy_paste ou pix.copyPaste estiver disponível.",
   "pedido_pago usa CTA real por templateMessage.hydratedTemplate com urlButton quando checkoutLink e relayMessage estiverem disponíveis.",
   "Quando o CTA real não puder ser usado, o runtime envia texto com URL visível no corpo e registra deliveryPath text_fallback_button.",
+  "A telemetria do dispatch registra secondaryDispatchStatus para indicar se a segunda mensagem do Pix foi enviada, pulada por ausência do código ou falhou isoladamente.",
   "externalAdReply continua restrito aos fluxos text, document e aos fallbacks textuais dos eventos ricos; ele não é usado no caminho de imagem limpa nem substitui botão real.",
   "Boleto é o caso oficial de document e exige URL válida em boleto.pdf_url ou boleto.pdfUrl.",
 ] as const;
@@ -305,6 +307,13 @@ export const INTEGRATION_TROUBLESHOOTING = [
     steps: [
       "Confirme se a imagem do produto resolve para URL HTTP/HTTPS acessível pelo backend.",
       "Se a mídia falhar, o endpoint ainda pode concluir o dispatch em formato textual para eventos do tipo image e registrar deliveryPath text_fallback_image.",
+    ],
+  },
+  {
+    title: "Segunda mensagem do Pix não saiu",
+    steps: [
+      "Confirme se payload.pix.copy_paste ou payload.pix.copyPaste foi enviado com valor textual válido.",
+      "Revise a auditoria do dispatch para secondaryDispatchStatus: sent, skipped_missing_pix_code ou failed_send.",
     ],
   },
   {
@@ -400,7 +409,7 @@ export const INTEGRATION_CURL_EVENT_EXAMPLES = [
   },
   {
     title: "pix_gerado",
-    description: "Pagamento Pix com código copia e cola e imagem opcional do produto.",
+    description: "Pagamento Pix com primeira mensagem principal e segunda mensagem dedicada ao código copia e cola quando disponível.",
     code: `curl -X POST "$ENDPOINT_URL" \\
   -H "Authorization: Bearer $SECRET_TOKEN" \\
   -H "Content-Type: application/json" \\

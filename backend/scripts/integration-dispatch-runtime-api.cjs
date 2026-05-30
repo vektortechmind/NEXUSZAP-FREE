@@ -57,11 +57,13 @@ function createDispatchService(options = {}) {
   const logService = createIntegrationDispatchLogService(store);
   const sentPayloads = [];
   const relayedPayloads = [];
+  let sendCounter = 0;
   const sock = options.sock ?? {
     user: { id: "5511911111111@s.whatsapp.net" },
     async sendMessage(jid, content) {
       sentPayloads.push({ jid, content });
-      return { key: { id: "wamid.123" } };
+      sendCounter += 1;
+      return { key: { id: `wamid.${sendCounter}` } };
     },
     async relayMessage(jid, message, options) {
       relayedPayloads.push({ jid, message, options });
@@ -147,9 +149,13 @@ function createDispatchService(options = {}) {
     assert.deepEqual(sentPayloads[0].content.image, Buffer.from("image-data"));
     assert.equal(sentPayloads[0].content.caption, result.template.body);
     assert.equal(sentPayloads[0].content.contextInfo, undefined);
+    assert.equal(sentPayloads[0].content.caption.includes("Código Pix"), false);
+    assert.equal(sentPayloads[1].content.text, "📌 *Codigo Pix (copia e cola):*\n\n```000201PIX-COPIA-COLA```");
     assert.equal(result.dispatchLog.messageType, "image");
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"image_clean"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":null'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"secondaryDispatchStatus":"sent"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"secondaryDispatchKind":"pix_copy_paste_text"'), true);
   }
 
   {
@@ -255,10 +261,59 @@ function createDispatchService(options = {}) {
       payload,
     });
     assert.equal(sentPayloads[0].content.text.includes("PIX"), true);
+    assert.equal(sentPayloads[0].content.text.includes("Codigo Pix"), false);
     assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
     assert.equal(sentPayloads[0].content.contextInfo.externalAdReply.title, "Visualizar pedido");
+    assert.equal(sentPayloads[1].content.text, "📌 *Codigo Pix (copia e cola):*\n\n```000201PIX-COPIA-COLA```");
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":"missing_image_url"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text_fallback_image"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"secondaryDispatchStatus":"sent"'), true);
+  }
+
+  {
+    const payload = createBasePayload();
+    delete payload.pix;
+    const { service, sentPayloads, store } = createDispatchService();
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pix_gerado",
+      dedupKey: "evt-no-pix-code",
+      payload,
+    });
+    assert.equal(sentPayloads.length, 1);
+    assert.equal(sentPayloads[0].content.caption.includes("Codigo Pix"), false);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"secondaryDispatchStatus":"skipped_missing_pix_code"'), true);
+  }
+
+  {
+    const sentPayloads = [];
+    let sendCount = 0;
+    const { service, store } = createDispatchService({
+      sock: {
+        user: { id: "5511911111111@s.whatsapp.net" },
+        async sendMessage(jid, content) {
+          sentPayloads.push({ jid, content });
+          sendCount += 1;
+          if (sendCount === 2) {
+            throw new Error("followup failed");
+          }
+          return { key: { id: `wamid.${sendCount}` } };
+        },
+        async relayMessage(jid, message, options) {
+          return options?.messageId || "relay.wamid.123";
+        },
+      },
+    });
+    const result = await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pix_gerado",
+      dedupKey: "evt-followup-failed",
+      payload: createBasePayload(),
+    });
+    assert.equal(result.dispatchLog.dispatchStatus, INTEGRATION_DISPATCH_STATUS.SENT);
+    assert.equal(sentPayloads.length, 2);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"secondaryDispatchStatus":"failed_send"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"secondaryDispatchFailureCode":"send_failed"'), true);
   }
 
   {
