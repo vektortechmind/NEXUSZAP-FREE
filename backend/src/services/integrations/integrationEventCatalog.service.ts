@@ -17,6 +17,7 @@ export const SUPPORTED_INTEGRATION_EVENT_SLUGS = [
 export type SupportedIntegrationEventSlug = typeof SUPPORTED_INTEGRATION_EVENT_SLUGS[number];
 
 type IntegrationPayload = Record<string, unknown>;
+type IntegrationProductSource = Record<string, unknown> | null;
 
 export type IntegrationNormalizedCustomer = {
   name: string | null;
@@ -46,14 +47,29 @@ export type IntegrationNormalizedBoleto = {
 
 export type IntegrationNormalizedAccess = Record<string, unknown> | null;
 
-export type IntegrationNormalizedEventContext = {
+export type IntegrationExtractedContext = {
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  productName: string | null;
+  productImage: string | null;
+  total: string | null;
+  checkoutLink: string | null;
+  pixQrCode: string | null;
+  pixCopyPaste: string | null;
+  pixTxId: string | null;
+  boletoAmount: string | null;
+  boletoExpire: string | null;
+  boletoBarcode: string | null;
+  boletoUrl: string | null;
+};
+
+export type IntegrationNormalizedEventContext = IntegrationExtractedContext & {
   eventSlug: SupportedIntegrationEventSlug;
   customer: IntegrationNormalizedCustomer;
-  phone: string | null;
   phoneDigits: string | null;
   recipientJid: string | null;
   product: IntegrationNormalizedProduct;
-  checkoutLink: string | null;
   pix: IntegrationNormalizedPix;
   boleto: IntegrationNormalizedBoleto;
   access: IntegrationNormalizedAccess;
@@ -125,11 +141,75 @@ function normalizePhoneDigits(value: string | null): string | null {
   return null;
 }
 
+function normalizeStorageBaseUrl(baseUrl: string | null): string | null {
+  const normalized = normalizeUrl(baseUrl);
+  if (!normalized) return null;
+  try {
+    const parsed = new URL(normalized);
+    return parsed.origin.replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+}
+
+function inferStorageBaseUrl(payload: IntegrationPayload, explicitBaseUrl?: string | null): string | null {
+  const explicit = normalizeStorageBaseUrl(explicitBaseUrl ?? null);
+  if (explicit) return explicit;
+
+  const absoluteCandidates = [
+    "order.product.thumbnail_url",
+    "order.product.thumbnailUrl",
+    "order.product.image",
+    "order.product.cover",
+    "checkout_session.product.thumbnail_url",
+    "checkout_session.product.thumbnailUrl",
+    "checkout_session.product.image",
+    "checkout_session.product.cover",
+    "subscription.product.thumbnail_url",
+    "subscription.product.thumbnailUrl",
+    "subscription.product.image",
+    "subscription.product.cover",
+    "checkout_link",
+    "checkoutLink",
+    "boleto.pdf_url",
+    "boleto.pdfUrl",
+    "access.url",
+  ];
+
+  for (const path of absoluteCandidates) {
+    const candidate = normalizeUrl(getByPath(payload, path));
+    const normalized = normalizeStorageBaseUrl(candidate);
+    if (normalized) return normalized;
+  }
+
+  return null;
+}
+
+function buildStorageAssetUrl(path: string, payload: IntegrationPayload, baseUrl?: string | null): string | null {
+  const storageUrl = inferStorageBaseUrl(payload, baseUrl);
+  if (!storageUrl) return null;
+
+  const normalizedPath = path.replace(/^\/+/, "");
+  if (/^(storage|assets)\//i.test(normalizedPath)) {
+    return `${storageUrl}/${normalizedPath}`;
+  }
+
+  return `${storageUrl}/storage/${normalizedPath}`;
+}
+
+function resolveProductSource(payload: IntegrationPayload): IntegrationProductSource {
+  return (
+    asRecord(getByPath(payload, "order.product"))
+    ?? asRecord(getByPath(payload, "checkout_session.product"))
+    ?? asRecord(getByPath(payload, "subscription.product"))
+  );
+}
+
 function normalizeCustomer(payload: IntegrationPayload): IntegrationNormalizedCustomer {
   return {
-    name: normalizeString(firstDefined(payload, ["customer.name"])),
-    email: normalizeString(firstDefined(payload, ["customer.email", "order.email", "subscription.user.email"])),
-    phone: normalizeString(firstDefined(payload, ["customer.phone"])),
+    name: normalizeString(firstDefined(payload, ["customer.name", "order.user.name", "subscription.user.name", "checkout_session.name"])),
+    email: normalizeString(firstDefined(payload, ["customer.email", "order.email", "subscription.user.email", "checkout_session.email"])),
+    phone: normalizeString(firstDefined(payload, ["customer.phone", "order.phone", "order.user.phone", "subscription.user.phone", "checkout_session.phone"])),
     cpf: normalizeString(firstDefined(payload, ["customer.cpf", "order.cpf"])),
   };
 }
@@ -140,6 +220,7 @@ function resolveOperationalPhone(payload: IntegrationPayload): string | null {
     "order.phone",
     "order.user.phone",
     "subscription.user.phone",
+    "checkout_session.phone",
   ]));
 }
 
@@ -167,11 +248,13 @@ function normalizePix(eventSlug: SupportedIntegrationEventSlug, payload: Integra
   if (eventSlug !== "pix_gerado") return null;
   const pix = asRecord(payload.pix);
   if (!pix) return null;
+
   const normalized = {
     qrcode: normalizeString(firstDefined(pix, ["qrcode"])),
     copyPaste: normalizeString(firstDefined(pix, ["copy_paste", "copyPaste"])),
     transactionId: normalizeString(firstDefined(pix, ["transaction_id", "transactionId"])),
   };
+
   return normalized.qrcode || normalized.copyPaste || normalized.transactionId ? normalized : null;
 }
 
@@ -179,12 +262,14 @@ function normalizeBoleto(eventSlug: SupportedIntegrationEventSlug, payload: Inte
   if (eventSlug !== "boleto_gerado") return null;
   const boleto = asRecord(payload.boleto);
   if (!boleto) return null;
+
   const normalized = {
     amount: normalizeString(firstDefined(boleto, ["amount"])),
     expireAt: normalizeString(firstDefined(boleto, ["expire_at", "expireAt"])),
     barcode: normalizeString(firstDefined(boleto, ["barcode"])),
     pdfUrl: normalizeUrl(firstDefined(boleto, ["pdf_url", "pdfUrl"])),
   };
+
   return normalized.amount || normalized.expireAt || normalized.barcode || normalized.pdfUrl ? normalized : null;
 }
 
@@ -211,6 +296,63 @@ function normalizeAccess(eventSlug: SupportedIntegrationEventSlug, payload: Inte
   return entries.length > 0 ? Object.fromEntries(entries) : null;
 }
 
+export function getProductImage(payload: IntegrationPayload, baseUrl?: string | null): string | null {
+  const product = resolveProductSource(payload);
+  if (!product) return null;
+
+  const thumbnailUrl = normalizeUrl(firstDefined(product, ["thumbnail_url", "thumbnailUrl"]));
+  if (thumbnailUrl) return thumbnailUrl;
+
+  const cover = normalizeString(firstDefined(product, ["cover"]));
+  const coverUrl = normalizeUrl(cover);
+  if (coverUrl) return coverUrl;
+
+  const image = normalizeString(firstDefined(product, ["image"]));
+  const imageUrl = normalizeUrl(image);
+  if (imageUrl) return imageUrl;
+
+  if (image) return buildStorageAssetUrl(image, payload, baseUrl);
+  if (cover) return buildStorageAssetUrl(cover, payload, baseUrl);
+
+  return null;
+}
+
+export function extractContext(
+  eventSlug: SupportedIntegrationEventSlug,
+  payload: IntegrationPayload,
+  baseUrl?: string | null,
+): IntegrationExtractedContext {
+  const customer = normalizeCustomer(payload);
+  const phone = resolveOperationalPhone(payload);
+  const product = normalizeProduct(payload);
+  const pix = normalizePix(eventSlug, payload);
+  const boleto = normalizeBoleto(eventSlug, payload);
+
+  return {
+    name: customer.name,
+    email: customer.email,
+    phone,
+    productName: product.name ?? product.offerName ?? product.planName,
+    productImage: getProductImage(payload, baseUrl),
+    total: normalizeString(firstDefined(payload, [
+      "order.total",
+      "order.amount",
+      "checkout_session.total",
+      "checkout_session.amount",
+      "subscription.next_billing",
+      "subscription.amount",
+    ])),
+    checkoutLink: normalizeUrl(firstDefined(payload, ["checkout_link", "checkoutLink"])),
+    pixQrCode: pix?.qrcode ?? null,
+    pixCopyPaste: pix?.copyPaste ?? null,
+    pixTxId: pix?.transactionId ?? null,
+    boletoAmount: boleto?.amount ?? null,
+    boletoExpire: boleto?.expireAt ?? null,
+    boletoBarcode: boleto?.barcode ?? null,
+    boletoUrl: boleto?.pdfUrl ?? null,
+  };
+}
+
 export function isSupportedIntegrationEventSlug(value: string): value is SupportedIntegrationEventSlug {
   return (SUPPORTED_INTEGRATION_EVENT_SLUGS as readonly string[]).includes(value);
 }
@@ -221,21 +363,24 @@ export function normalizeIntegrationEventContext(eventSlug: string, payload: Int
   }
 
   const customer = normalizeCustomer(payload);
-  const phone = resolveOperationalPhone(payload);
-  const phoneDigits = normalizePhoneDigits(phone);
+  const phoneDigits = normalizePhoneDigits(resolveOperationalPhone(payload));
+  const product = normalizeProduct(payload);
+  const pix = normalizePix(eventSlug, payload);
+  const boleto = normalizeBoleto(eventSlug, payload);
+  const access = normalizeAccess(eventSlug, payload);
+  const extracted = extractContext(eventSlug, payload);
 
   return {
     eventSlug,
     customer,
-    phone,
     phoneDigits,
     recipientJid: phoneDigits ? `${phoneDigits}@s.whatsapp.net` : null,
-    product: normalizeProduct(payload),
-    checkoutLink: normalizeUrl(firstDefined(payload, ["checkout_link", "checkoutLink"])),
-    pix: normalizePix(eventSlug, payload),
-    boleto: normalizeBoleto(eventSlug, payload),
-    access: normalizeAccess(eventSlug, payload),
+    product,
+    pix,
+    boleto,
+    access,
     raw: payload,
+    ...extracted,
   };
 }
 
@@ -244,7 +389,10 @@ export function createIntegrationEventCatalogService() {
     supportedEventSlugs: [...SUPPORTED_INTEGRATION_EVENT_SLUGS],
     isSupportedEventSlug: isSupportedIntegrationEventSlug,
     normalizeEventContext: normalizeIntegrationEventContext,
+    extractContext,
+    getProductImage,
   };
 }
 
 export const integrationEventCatalogService = createIntegrationEventCatalogService();
+
