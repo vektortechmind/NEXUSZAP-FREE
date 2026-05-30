@@ -185,7 +185,8 @@ function assertNoRawLeak(template) {
     const rendered = renderIntegrationDispatchTemplate("pix_gerado", payloadForEvent("pix_gerado"));
     assert.equal(rendered.body.includes("R$ 199.90"), true);
     assert.equal(rendered.body.includes("000201PIX-COPIA-COLA"), false);
-    assert.equal(rendered.followup.body, "📌 *Codigo Pix (copia e cola):*\n\n```000201PIX-COPIA-COLA```");
+    assert.equal(rendered.body.includes("codigo Pix copia e cola"), true);
+    assert.equal(rendered.followup.body, "000201PIX-COPIA-COLA");
   }
 
   {

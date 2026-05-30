@@ -149,8 +149,8 @@ function createDispatchService(options = {}) {
     assert.deepEqual(sentPayloads[0].content.image, Buffer.from("image-data"));
     assert.equal(sentPayloads[0].content.caption, result.template.body);
     assert.equal(sentPayloads[0].content.contextInfo, undefined);
-    assert.equal(sentPayloads[0].content.caption.includes("Código Pix"), false);
-    assert.equal(sentPayloads[1].content.text, "📌 *Codigo Pix (copia e cola):*\n\n```000201PIX-COPIA-COLA```");
+    assert.equal(sentPayloads[0].content.caption.includes("codigo Pix copia e cola"), true);
+    assert.equal(sentPayloads[1].content.text, "000201PIX-COPIA-COLA");
     assert.equal(result.dispatchLog.messageType, "image");
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"image_clean"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":null'), true);
@@ -261,10 +261,10 @@ function createDispatchService(options = {}) {
       payload,
     });
     assert.equal(sentPayloads[0].content.text.includes("PIX"), true);
-    assert.equal(sentPayloads[0].content.text.includes("Codigo Pix"), false);
+    assert.equal(sentPayloads[0].content.text.includes("codigo Pix copia e cola"), true);
     assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
     assert.equal(sentPayloads[0].content.contextInfo.externalAdReply.title, "Visualizar pedido");
-    assert.equal(sentPayloads[1].content.text, "📌 *Codigo Pix (copia e cola):*\n\n```000201PIX-COPIA-COLA```");
+    assert.equal(sentPayloads[1].content.text, "000201PIX-COPIA-COLA");
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":"missing_image_url"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text_fallback_image"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"secondaryDispatchStatus":"sent"'), true);

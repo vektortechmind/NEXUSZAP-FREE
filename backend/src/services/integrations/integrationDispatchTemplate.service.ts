@@ -241,7 +241,7 @@ function createPixCopyPasteFollowup(context: IntegrationNormalizedEventContext):
   return {
     type: "pix_copy_paste_text",
     messageType: "text",
-    body: assertRenderedText(`📌 *Codigo Pix (copia e cola):*\n\n\`\`\`${context.pixCopyPaste}\`\`\``, context.eventSlug),
+    body: assertRenderedText(context.pixCopyPaste, context.eventSlug),
   };
 }
 
@@ -307,6 +307,7 @@ export function renderIntegrationDispatchTemplateFromContext(
           `💳 *${customer}*, o PIX do *${product}* foi gerado!`,
           context.total ? `📋 *Valor:* R$ ${context.total}` : null,
           "⚠️ *Pague até o vencimento para garantir sua vaga!*",
+          context.pixCopyPaste ? "📌 O codigo Pix copia e cola sera enviado na próxima mensagem." : null,
         ],
         createExternalAdReply("Visualizar pedido", product, context.checkoutLink),
         createPixCopyPasteFollowup(context),
