@@ -1,7 +1,8 @@
 import { Link, useLocation } from "react-router-dom";
-import { LogOut, Sparkles, X } from "lucide-react";
+import { LogOut, X } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { APP_NAV_GROUPS } from "../features/navigation/appNavigation";
+import nexusLogo from "../assets/branding/nexus.png";
 
 type SidebarProps = {
   mobileOpen: boolean;
@@ -26,15 +27,9 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
       <aside
         className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-slate-200/80 bg-white/94 shadow-[0_18px_80px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-transform duration-200 dark:border-slate-800/80 dark:bg-slate-950/94 dark:shadow-[0_18px_80px_rgba(2,6,23,0.5)] lg:w-24 lg:translate-x-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <div className="flex items-center justify-between border-b border-slate-200/80 px-5 py-5 dark:border-slate-800/80 lg:justify-center lg:px-0">
+        <div className="flex items-center justify-between px-5 py-5 lg:justify-center lg:px-3">
           <div className="flex items-center gap-3 lg:gap-0">
-            <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[radial-gradient(circle_at_top,#34d399,#059669)] text-white shadow-[0_10px_30px_rgba(5,150,105,0.28)] dark:text-slate-950">
-              <Sparkles size={22} strokeWidth={1.8} />
-            </div>
-            <div className="lg:hidden">
-              <p className="text-sm font-semibold text-slate-950 dark:text-slate-50">NexusZAP</p>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Menu principal</p>
-            </div>
+            <img src={nexusLogo} alt="NexusZAP" className="h-11 w-auto max-w-[164px] object-contain lg:h-12 lg:max-w-[56px]" />
           </div>
           <button
             type="button"
