@@ -3,7 +3,14 @@ import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Metric } from "../../components/ui/Metric";
 import { Panel } from "../../components/ui/Panel";
-import { type IntegrationAuditEntry, type IntegrationDashboardResponse, summarizeIntegrationCards } from "../dashboard/integrationDashboard";
+import { type IntegrationDashboardResponse, summarizeIntegrationCards } from "../dashboard/integrationDashboard";
+import {
+  formatAuditEntryType,
+  formatAuditMeta,
+  getVisibleAuditLogs,
+  INTEGRATION_AUDIT_SCROLL_CONTAINER_CLASSNAME,
+  INTEGRATION_AUDIT_VISIBLE_LIMIT,
+} from "./integrationAuditOverview";
 
 function formatDateTime(value: string): string {
   const date = new Date(value);
@@ -16,16 +23,6 @@ function formatDateTime(value: string): string {
   }).format(date);
 }
 
-function formatEntryType(type: IntegrationAuditEntry["entryType"]): string {
-  return type === "ingress" ? "Ingress" : "Dispatch";
-}
-
-function formatAuditMeta(entry: IntegrationAuditEntry): string {
-  if (entry.providerMessageId) return entry.providerMessageId;
-  if (entry.failureCode) return entry.failureCode;
-  return entry.instanceName;
-}
-
 type IntegrationOperationsOverviewProps = {
   overview: IntegrationDashboardResponse;
   refreshing: boolean;
@@ -34,7 +31,7 @@ type IntegrationOperationsOverviewProps = {
 
 export function IntegrationOperationsOverview({ overview, refreshing, onRefresh }: IntegrationOperationsOverviewProps) {
   const integrationSummary = summarizeIntegrationCards(overview.summary);
-  const auditLogs = overview.auditLogs;
+  const auditLogs = getVisibleAuditLogs(overview.auditLogs);
 
   return (
     <div className="space-y-4">
@@ -56,46 +53,54 @@ export function IntegrationOperationsOverview({ overview, refreshing, onRefresh 
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold text-slate-950 dark:text-slate-50">Auditoria global</p>
-            <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Linha única com ingressos e dispatches recentes, ordenada do registro mais novo para o mais antigo.</p>
+            <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Ultimos {INTEGRATION_AUDIT_VISIBLE_LIMIT} registros em lista compacta, do mais novo para o mais antigo.</p>
           </div>
-          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">{auditLogs.length} registros</div>
+          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">{auditLogs.length} visiveis</div>
         </div>
 
         {auditLogs.length > 0 ? (
-          <div className="space-y-3">
-            {auditLogs.map((entry) => (
-              <div key={`${entry.entryType}-${entry.identifier}`} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/45">
-                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">{formatEntryType(entry.entryType)}</span>
-                      <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">{entry.status}</span>
+          <div className={INTEGRATION_AUDIT_SCROLL_CONTAINER_CLASSNAME}>
+            <div className="space-y-2">
+              {auditLogs.map((entry) => (
+                <article key={`${entry.entryType}-${entry.identifier}`} className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-950/45">
+                  <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">{formatAuditEntryType(entry.entryType)}</span>
+                        <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">{entry.status}</span>
+                        <span className="truncate text-xs text-slate-500 dark:text-slate-400">{entry.instanceName}</span>
+                      </div>
+                      <p className="mt-2 truncate text-sm font-semibold text-slate-950 dark:text-slate-50">{entry.eventSlug ?? "evento"}</p>
+                      <div className="mt-1 flex flex-col gap-1 text-xs text-slate-600 dark:text-slate-400 sm:flex-row sm:items-center sm:gap-3">
+                        <code className="truncate rounded bg-white px-2 py-1 font-mono text-[11px] text-slate-700 dark:bg-slate-900 dark:text-slate-200">{entry.identifier}</code>
+                        <span className="truncate">{formatAuditMeta(entry)}</span>
+                      </div>
                     </div>
-                    <p className="mt-3 text-sm font-semibold text-slate-950 dark:text-slate-50">{entry.eventSlug ?? "evento"}</p>
-                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{entry.instanceName}</p>
+                    <div className="flex shrink-0 items-center gap-2 lg:flex-col lg:items-end lg:text-right">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{formatDateTime(entry.timestamp)}</p>
+                    </div>
                   </div>
-                  <div className="flex flex-col items-start gap-2 text-left lg:items-end lg:text-right">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{formatDateTime(entry.timestamp)}</p>
-                    <code className="rounded-lg bg-white px-2 py-1 font-mono text-[12px] text-slate-700 dark:bg-slate-900 dark:text-slate-200">{entry.identifier}</code>
-                  </div>
-                </div>
 
-                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                  <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Timestamp</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{formatDateTime(entry.timestamp)}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Identificador</p>
-                    <p className="mt-1 truncate font-mono text-sm font-semibold text-slate-950 dark:text-slate-50">{entry.identifier}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Meta</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{formatAuditMeta(entry)}</p>
-                  </div>
-                </div>
-              </div>
-            ))}
+                  <details className="mt-2 rounded-lg border border-slate-200 bg-white/80 p-2 dark:border-slate-800 dark:bg-slate-900/70">
+                    <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Detalhes</summary>
+                    <div className="mt-2 grid gap-2 text-xs text-slate-600 dark:text-slate-400 md:grid-cols-3">
+                      <div>
+                        <p className="font-semibold text-slate-950 dark:text-slate-50">Timestamp</p>
+                        <p>{formatDateTime(entry.timestamp)}</p>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-slate-950 dark:text-slate-50">Identificador</p>
+                        <code className="break-all font-mono text-[11px] text-slate-700 dark:text-slate-200">{entry.identifier}</code>
+                      </div>
+                      <div>
+                        <p className="font-semibold text-slate-950 dark:text-slate-50">Meta</p>
+                        <p className="break-all">{formatAuditMeta(entry)}</p>
+                      </div>
+                    </div>
+                  </details>
+                </article>
+              ))}
+            </div>
           </div>
         ) : (
           <EmptyState icon={<Rows3 size={22} aria-hidden="true" />} title="Sem registros na auditoria global" description="Ingressos e dispatches recentes aparecerão aqui assim que a integração registrar atividade persistida." />

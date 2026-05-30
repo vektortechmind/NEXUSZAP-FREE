@@ -132,6 +132,52 @@ function createOverviewService() {
   }
 
   {
+    const ingressLogs = Array.from({ length: 80 }, (_, index) => ({
+      id: `ingress-limit-${index}` ,
+      instanceId: "instance-a",
+      eventSlug: "pedido_pago",
+      dedupKey: `evt-limit-${index}` ,
+      status: "ACCEPTED",
+      failureCode: null,
+      requestTimestamp: new Date(Date.UTC(2026, 4, 29, 9, index, 0, index)),
+      receivedAt: new Date(Date.UTC(2026, 4, 29, 9, index, 0, index)),
+      processedAt: new Date(Date.UTC(2026, 4, 29, 9, index, 1, index)),
+    }));
+    const dispatchLogs = Array.from({ length: 80 }, (_, index) => ({
+      id: `dispatch-limit-${index}` ,
+      instanceId: "instance-a",
+      eventSlug: "pix_gerado",
+      messageType: "text",
+      dispatchStatus: "SENT",
+      failureCode: null,
+      providerMessageId: `wamid.limit.${index}` ,
+      createdAt: new Date(Date.UTC(2026, 4, 29, 10, index, 0, index)),
+      processedAt: new Date(Date.UTC(2026, 4, 29, 10, index, 1, index)),
+    }));
+
+    const service = createIntegrationDashboardService(createInMemoryIntegrationDashboardStore({
+      instances: [{ id: "instance-a", name: "Vendas", slot: 1, status: "CONNECTED" }],
+      credentials: [{
+        id: "cred-a",
+        instanceId: "instance-a",
+        status: "ACTIVE",
+        tokenPreview: "nz_live_abc***",
+        replayWindowMs: 300000,
+        dedupWindowMs: 300000,
+        lastUsedAt: new Date("2026-05-29T12:00:00.000Z"),
+        updatedAt: new Date("2026-05-29T12:00:00.000Z"),
+      }],
+      ingressLogs,
+      dispatchLogs,
+    }));
+
+    const overview = await service.getOverview();
+    assert.equal(overview.auditLogs.length, 100);
+    assert.equal(overview.auditLogs[0].identifier, "dispatch-limit-79");
+    assert.equal(overview.auditLogs.at(-1).identifier, "dispatch-limit-0");
+  }
+
+  {
     const app = Fastify();
     const service = createOverviewService();
     app.get("/api/dashboard/integrations", async () => service.getOverview({

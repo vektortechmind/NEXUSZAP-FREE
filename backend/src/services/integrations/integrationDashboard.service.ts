@@ -4,7 +4,7 @@ import { integrationEventCatalogService } from "./integrationEventCatalog.servic
 
 export const INTEGRATION_DASHBOARD_DOC_PATH = "/integracoes/documentacao";
 export const INTEGRATION_DASHBOARD_RECENT_ACTIVITY_WINDOW_MS = 24 * 60 * 60 * 1000;
-const DEFAULT_RECENT_LOG_LIMIT = 120;
+const DEFAULT_RECENT_LOG_LIMIT = 100;
 const DEFAULT_RECENT_ITEMS_PER_INSTANCE = 3;
 
 export type IntegrationDashboardInstanceRecord = {
@@ -461,7 +461,7 @@ export function createIntegrationDashboardService(store: IntegrationDashboardSto
             providerMessageId: log.providerMessageId,
           };
         }),
-      ].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+      ].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, recentLogLimit);
 
       const summary = integrations.reduce((acc, item) => {
         acc.trackedInstances += 1;
