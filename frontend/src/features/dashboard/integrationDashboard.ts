@@ -30,6 +30,20 @@ export type IntegrationDispatchSnapshot = IntegrationLogSnapshot & {
   processedAt: string | null;
 };
 
+export type IntegrationAuditEntryType = "ingress" | "dispatch";
+
+export type IntegrationAuditEntry = {
+  identifier: string;
+  entryType: IntegrationAuditEntryType;
+  instanceId: string;
+  instanceName: string;
+  eventSlug: string | null;
+  status: string;
+  timestamp: string;
+  failureCode: string | null;
+  providerMessageId: string | null;
+};
+
 export type IntegrationDashboardItem = {
   instanceId: string;
   instanceName: string;
@@ -65,6 +79,7 @@ export type IntegrationDashboardResponse = {
     supportedMessageTypes: string[];
   };
   integrations: IntegrationDashboardItem[];
+  auditLogs: IntegrationAuditEntry[];
 };
 
 export function formatIntegrationOperationalStatus(status: IntegrationOperationalStatus): string {
@@ -122,17 +137,11 @@ export function formatWindowMinutes(windowMs: number | null): string {
   return `${Math.round(windowMs / 1000)} s`;
 }
 
-export function summarizeIntegrationCards(items: IntegrationDashboardItem[]) {
-  return items.reduce((acc, item) => {
-    if (item.credentialStatus === "ACTIVE") acc.activeConnections += 1;
-    if (item.operationalStatus === "ACTIVE_RECENT_ACTIVITY") acc.recentActivity += 1;
-    if (item.operationalStatus === "ACTIVE_IDLE") acc.idle += 1;
-    if (item.operationalStatus === "INGRESS_ERROR" || item.operationalStatus === "DISPATCH_FAILED") acc.failures += 1;
-    return acc;
-  }, {
-    activeConnections: 0,
-    recentActivity: 0,
-    idle: 0,
-    failures: 0,
-  });
+export function summarizeIntegrationCards(response: IntegrationDashboardResponse["summary"]) {
+  return {
+    activeConnections: response.activeConnections,
+    recentActivity: response.activeWithRecentActivity,
+    idle: response.activeWithoutRecentActivity,
+    failures: response.recentFailures,
+  };
 }

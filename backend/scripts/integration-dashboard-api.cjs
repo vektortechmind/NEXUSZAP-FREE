@@ -120,6 +120,14 @@ function createOverviewService() {
     assert.equal(overview.integrations[1].operationalStatus, "DISPATCH_FAILED");
     assert.equal(overview.integrations[2].instanceId, "instance-b");
     assert.equal(overview.integrations[2].credentialStatus, "DISABLED");
+    assert.equal(overview.auditLogs.length, 4);
+    assert.deepEqual(overview.auditLogs.map((entry) => entry.identifier), ["dispatch-a-1", "ingress-a-1", "dispatch-c-1", "ingress-c-1"]);
+    assert.equal(overview.auditLogs[0].entryType, "dispatch");
+    assert.equal(overview.auditLogs[0].status, "SENT");
+    assert.equal(overview.auditLogs[0].providerMessageId, "wamid.123");
+    assert.equal(overview.auditLogs[1].entryType, "ingress");
+    assert.equal(overview.auditLogs[1].instanceName, "Vendas");
+    assert.equal(overview.auditLogs[3].failureCode, "INTEGRATION_DISPATCH_INSTANCE_OFFLINE");
     assert.ok(!("secretToken" in overview.integrations[0]));
   }
 
@@ -140,6 +148,9 @@ function createOverviewService() {
     assert.equal(payload.integrations[0].recentDispatches[0].providerMessageId, "wamid.123");
     assert.equal(payload.integrations[1].lastDispatch.failureCode, "INTEGRATION_DISPATCH_INSTANCE_OFFLINE");
     assert.equal(payload.integrations[2].tokenPreview, "nz_live_xyz***");
+    assert.equal(payload.auditLogs[0].identifier, "dispatch-a-1");
+    assert.equal(payload.auditLogs[1].entryType, "ingress");
+    assert.equal(payload.auditLogs[2].eventSlug, "boleto_gerado");
     assert.equal(payload.integrations.some((item) => Object.prototype.hasOwnProperty.call(item, "encryptedToken")), false);
 
     await app.close();

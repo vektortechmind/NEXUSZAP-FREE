@@ -35,4 +35,5 @@ export const EMPTY_INTEGRATIONS: IntegrationDashboardResponse = {
     supportedMessageTypes: ["text", "link", "document"],
   },
   integrations: [],
+  auditLogs: [],
 };

@@ -26,7 +26,7 @@ test("integration workspace keeps the intended compact section order", () => {
   assert.deepEqual(INTEGRATION_WORKSPACE_SECTIONS.map((section) => section.label), ["Credenciais", "Operação"]);
 });
 
-test("integration route renders compact workspace sections and a dedicated documentation entrypoint", () => {
+test("integration route renders compact workspace sections and a global audit operations view", () => {
   const html = renderToStaticMarkup(
     <MemoryRouter initialEntries={["/integracoes"]}>
       <Routes>
@@ -66,6 +66,9 @@ test("integration route renders compact workspace sections and a dedicated docum
   assert.match(html, /Atualizar operação/);
   assert.match(html, /Abrir documentação/);
   assert.match(html, /href="\/integracoes\/documentacao"/);
+  assert.match(html, /Auditoria global/);
+  assert.match(html, /Sem registros na auditoria global/);
+  assert.doesNotMatch(html, /Instâncias monitoradas/);
   assert.doesNotMatch(html, />Documentação<\/h2>/);
   assert.doesNotMatch(html, /Página própria de documentação disponível no painel/);
   assert.doesNotMatch(html, /docs\/integrations\/nexuszap-plugin-api\.md/);

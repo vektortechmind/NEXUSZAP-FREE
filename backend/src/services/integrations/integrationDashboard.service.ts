@@ -126,6 +126,17 @@ export type IntegrationDashboardOverview = {
       processedAt: string | null;
     }>;
   }>;
+  auditLogs: Array<{
+    identifier: string;
+    entryType: "ingress" | "dispatch";
+    instanceId: string;
+    instanceName: string;
+    eventSlug: string | null;
+    status: string;
+    timestamp: string;
+    failureCode: string | null;
+    providerMessageId: string | null;
+  }>;
 };
 
 export interface IntegrationDashboardStore {
@@ -419,6 +430,39 @@ export function createIntegrationDashboardService(store: IntegrationDashboardSto
         return (right ?? "").localeCompare(left ?? "") || a.instanceName.localeCompare(b.instanceName);
       });
 
+      const auditLogs = [
+        ...ingressLogs.filter((log) => log.instanceId).map((log) => {
+          const instanceId = log.instanceId!;
+          const instance = instanceById.get(instanceId);
+          return {
+            identifier: log.id,
+            entryType: "ingress" as const,
+            instanceId,
+            instanceName: instance?.name ?? fallbackInstanceName(instanceId),
+            eventSlug: log.eventSlug,
+            status: log.status,
+            timestamp: log.receivedAt.toISOString(),
+            failureCode: log.failureCode,
+            providerMessageId: null,
+          };
+        }),
+        ...dispatchLogs.filter((log) => log.instanceId).map((log) => {
+          const instanceId = log.instanceId!;
+          const instance = instanceById.get(instanceId);
+          return {
+            identifier: log.id,
+            entryType: "dispatch" as const,
+            instanceId,
+            instanceName: instance?.name ?? fallbackInstanceName(instanceId),
+            eventSlug: log.eventSlug,
+            status: log.dispatchStatus,
+            timestamp: log.createdAt.toISOString(),
+            failureCode: log.failureCode,
+            providerMessageId: log.providerMessageId,
+          };
+        }),
+      ].sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+
       const summary = integrations.reduce((acc, item) => {
         acc.trackedInstances += 1;
         if (item.credentialStatus === "ACTIVE") acc.activeConnections += 1;
@@ -448,6 +492,7 @@ export function createIntegrationDashboardService(store: IntegrationDashboardSto
           supportedMessageTypes: ["text", "link", "document"],
         },
         integrations,
+        auditLogs,
       };
     },
   };

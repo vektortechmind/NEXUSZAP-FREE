@@ -7,6 +7,7 @@ import {
   integrationOperationalTone,
   summarizeIntegrationCards,
   type IntegrationDashboardItem,
+  type IntegrationDashboardResponse,
 } from "../src/features/dashboard/integrationDashboard.ts";
 
 function createItem(overrides: Partial<IntegrationDashboardItem>): IntegrationDashboardItem {
@@ -29,6 +30,19 @@ function createItem(overrides: Partial<IntegrationDashboardItem>): IntegrationDa
   };
 }
 
+function createSummaryResponse(overrides?: Partial<IntegrationDashboardResponse["summary"]>): IntegrationDashboardResponse["summary"] {
+  return {
+    trackedInstances: 4,
+    activeConnections: 3,
+    activeWithRecentActivity: 1,
+    activeWithoutRecentActivity: 1,
+    recentFailures: 1,
+    inactiveConnections: 1,
+    missingCredential: 1,
+    ...overrides,
+  };
+}
+
 test("status labels and tones stay stable for operator rendering", () => {
   assert.equal(formatIntegrationOperationalStatus("ACTIVE_IDLE"), "Ativa sem atividade recente");
   assert.equal(formatIntegrationOperationalStatus("DISPATCH_FAILED"), "Falha recente no disparo");
@@ -43,13 +57,8 @@ test("window formatting keeps operator-facing values compact", () => {
   assert.equal(formatWindowMinutes(null), "N/D");
 });
 
-test("integration summary counts active, idle and failures for compact operator metrics", () => {
-  const summary = summarizeIntegrationCards([
-    createItem({ operationalStatus: "ACTIVE_RECENT_ACTIVITY", credentialStatus: "ACTIVE" }),
-    createItem({ instanceId: "instance-2", operationalStatus: "ACTIVE_IDLE", credentialStatus: "ACTIVE" }),
-    createItem({ instanceId: "instance-3", operationalStatus: "DISPATCH_FAILED", credentialStatus: "ACTIVE" }),
-    createItem({ instanceId: "instance-4", operationalStatus: "MISSING_CREDENTIAL", credentialStatus: "MISSING" }),
-  ]);
+test("integration summary maps backend summary values for global audit metrics", () => {
+  const summary = summarizeIntegrationCards(createSummaryResponse());
 
   assert.deepEqual(summary, {
     activeConnections: 3,
@@ -57,4 +66,10 @@ test("integration summary counts active, idle and failures for compact operator 
     idle: 1,
     failures: 1,
   });
+});
+
+test("integration dashboard item fixture remains compatible with instance-level credential data", () => {
+  const item = createItem({ operationalStatus: "DISPATCH_FAILED", credentialStatus: "ACTIVE" });
+  assert.equal(item.instanceName, "Vendas");
+  assert.equal(item.operationalStatus, "DISPATCH_FAILED");
 });

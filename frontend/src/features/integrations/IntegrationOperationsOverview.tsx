@@ -1,21 +1,11 @@
-import { Activity, AlertTriangle, Clock3, RefreshCw, Webhook } from "lucide-react";
+import { Activity, AlertTriangle, Clock3, RefreshCw, Rows3, Webhook } from "lucide-react";
 import { Button } from "../../components/ui/Button";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Metric } from "../../components/ui/Metric";
 import { Panel } from "../../components/ui/Panel";
-import { StatusDot } from "../../components/ui/StatusDot";
-import {
-  type IntegrationDashboardItem,
-  type IntegrationDashboardResponse,
-  formatIntegrationCredentialStatus,
-  formatIntegrationOperationalStatus,
-  formatWindowMinutes,
-  integrationOperationalTone,
-  summarizeIntegrationCards,
-} from "../dashboard/integrationDashboard";
+import { type IntegrationAuditEntry, type IntegrationDashboardResponse, summarizeIntegrationCards } from "../dashboard/integrationDashboard";
 
-function formatDateTime(value: string | null): string {
-  if (!value) return "Sem registro";
+function formatDateTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat("pt-BR", {
@@ -26,20 +16,14 @@ function formatDateTime(value: string | null): string {
   }).format(date);
 }
 
-function formatInstanceLabel(item: IntegrationDashboardItem): string {
-  return item.instanceSlot ? `${item.instanceName} · slot ${item.instanceSlot}` : item.instanceName;
+function formatEntryType(type: IntegrationAuditEntry["entryType"]): string {
+  return type === "ingress" ? "Ingress" : "Dispatch";
 }
 
-function formatRecentDispatch(item: IntegrationDashboardItem): string {
-  if (!item.lastDispatch) return "Nenhum disparo recente";
-  const last = item.lastDispatch;
-  return `${last.eventSlug ?? "evento"} · ${last.dispatchStatus}${last.providerMessageId ? ` · ${last.providerMessageId}` : ""}`;
-}
-
-function formatRecentIngress(item: IntegrationDashboardItem): string {
-  if (!item.lastIngress) return "Nenhum ingresso recente";
-  const last = item.lastIngress;
-  return `${last.eventSlug ?? "evento"} · ${last.status}${last.failureCode ? ` · ${last.failureCode}` : ""}`;
+function formatAuditMeta(entry: IntegrationAuditEntry): string {
+  if (entry.providerMessageId) return entry.providerMessageId;
+  if (entry.failureCode) return entry.failureCode;
+  return entry.instanceName;
 }
 
 type IntegrationOperationsOverviewProps = {
@@ -49,8 +33,8 @@ type IntegrationOperationsOverviewProps = {
 };
 
 export function IntegrationOperationsOverview({ overview, refreshing, onRefresh }: IntegrationOperationsOverviewProps) {
-  const integrations = overview.integrations;
-  const integrationSummary = summarizeIntegrationCards(integrations);
+  const integrationSummary = summarizeIntegrationCards(overview.summary);
+  const auditLogs = overview.auditLogs;
 
   return (
     <div className="space-y-4">
@@ -71,72 +55,50 @@ export function IntegrationOperationsOverview({ overview, refreshing, onRefresh 
       <Panel className="p-4">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
-            <p className="text-sm font-semibold text-slate-950 dark:text-slate-50">Instâncias monitoradas</p>
-            <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Conexões ativas, últimos ingressos e últimos dispatches persistidos.</p>
+            <p className="text-sm font-semibold text-slate-950 dark:text-slate-50">Auditoria global</p>
+            <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Linha única com ingressos e dispatches recentes, ordenada do registro mais novo para o mais antigo.</p>
           </div>
-          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">{overview.summary.trackedInstances} instâncias</div>
+          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200">{auditLogs.length} registros</div>
         </div>
 
-        {integrations.length > 0 ? (
+        {auditLogs.length > 0 ? (
           <div className="space-y-3">
-            {integrations.map((item) => (
-              <div key={item.instanceId} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/45">
-                <div className="flex flex-wrap items-start justify-between gap-3">
+            {auditLogs.map((entry) => (
+              <div key={`${entry.entryType}-${entry.identifier}`} className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/45">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
-                    <p className="truncate text-sm font-semibold text-slate-950 dark:text-slate-50">{formatInstanceLabel(item)}</p>
-                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{item.instanceStatus} · credencial {formatIntegrationCredentialStatus(item.credentialStatus)}</p>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">{formatEntryType(entry.entryType)}</span>
+                      <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">{entry.status}</span>
+                    </div>
+                    <p className="mt-3 text-sm font-semibold text-slate-950 dark:text-slate-50">{entry.eventSlug ?? "evento"}</p>
+                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{entry.instanceName}</p>
                   </div>
-                  <StatusDot tone={integrationOperationalTone(item.operationalStatus)} pulse={item.operationalStatus === "ACTIVE_RECENT_ACTIVITY"} label={formatIntegrationOperationalStatus(item.operationalStatus)} />
-                </div>
-
-                <div className="mt-4 grid gap-3 md:grid-cols-3">
-                  <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Credencial</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{item.tokenPreview ?? "Sem preview"}</p>
-                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Replay {formatWindowMinutes(item.replayWindowMs)} · Dedup {formatWindowMinutes(item.dedupWindowMs)}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Último ingresso</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{formatRecentIngress(item)}</p>
-                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{formatDateTime(item.lastIngress?.receivedAt ?? null)}</p>
-                  </div>
-                  <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Último disparo</p>
-                    <p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{formatRecentDispatch(item)}</p>
-                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">{formatDateTime(item.lastDispatch?.createdAt ?? null)}</p>
+                  <div className="flex flex-col items-start gap-2 text-left lg:items-end lg:text-right">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{formatDateTime(entry.timestamp)}</p>
+                    <code className="rounded-lg bg-white px-2 py-1 font-mono text-[12px] text-slate-700 dark:bg-slate-900 dark:text-slate-200">{entry.identifier}</code>
                   </div>
                 </div>
 
-                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Ingressos recentes</p>
-                    <div className="mt-2 space-y-2">
-                      {item.recentIngresses.length > 0 ? item.recentIngresses.map((log) => (
-                        <div key={log.id} className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700 dark:bg-slate-950/45 dark:text-slate-300">
-                          <p className="font-semibold text-slate-900 dark:text-slate-100">{log.eventSlug ?? "evento"} · {log.status}</p>
-                          <p className="mt-1">{log.failureCode ?? "Sem falha registrada"}</p>
-                        </div>
-                      )) : <p className="text-xs text-slate-500 dark:text-slate-400">Nenhum ingresso recente.</p>}
-                    </div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Timestamp</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{formatDateTime(entry.timestamp)}</p>
                   </div>
-
                   <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Dispatches recentes</p>
-                    <div className="mt-2 space-y-2">
-                      {item.recentDispatches.length > 0 ? item.recentDispatches.map((log) => (
-                        <div key={log.id} className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-700 dark:bg-slate-950/45 dark:text-slate-300">
-                          <p className="font-semibold text-slate-900 dark:text-slate-100">{log.eventSlug ?? "evento"} · {log.dispatchStatus}</p>
-                          <p className="mt-1">{log.providerMessageId ?? log.failureCode ?? "Sem providerMessageId"}</p>
-                        </div>
-                      )) : <p className="text-xs text-slate-500 dark:text-slate-400">Nenhum dispatch recente.</p>}
-                    </div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Identificador</p>
+                    <p className="mt-1 truncate font-mono text-sm font-semibold text-slate-950 dark:text-slate-50">{entry.identifier}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-900">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Meta</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{formatAuditMeta(entry)}</p>
                   </div>
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <EmptyState icon={<Webhook size={22} aria-hidden="true" />} title="Sem integrações operacionais" description="As credenciais e os registros persistidos aparecerão aqui quando houver integração ativa ou atividade recente." />
+          <EmptyState icon={<Rows3 size={22} aria-hidden="true" />} title="Sem registros na auditoria global" description="Ingressos e dispatches recentes aparecerão aqui assim que a integração registrar atividade persistida." />
         )}
       </Panel>
     </div>
