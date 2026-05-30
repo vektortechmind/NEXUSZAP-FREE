@@ -36,6 +36,8 @@ services:
       UPDATE_SCRIPT_PATH: /workspace/update.sh
       UPDATE_STORAGE_DIR: /workspace/updates
       UPDATE_WORKSPACE_DIR: /workspace
+    ports:
+      - "3001:3000"
     expose:
       - "3000"
     healthcheck:
@@ -57,3 +59,4 @@ services:
 
 volumes:
   pgdata:
+
