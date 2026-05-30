@@ -25,11 +25,11 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-slate-200/80 bg-white/94 shadow-[0_18px_80px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-transform duration-200 dark:border-slate-800/80 dark:bg-slate-950/94 dark:shadow-[0_18px_80px_rgba(2,6,23,0.5)] lg:w-24 lg:translate-x-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
+        className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-slate-200/80 bg-white/94 shadow-[0_18px_80px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-transform duration-200 dark:border-slate-800/80 dark:bg-slate-950/94 dark:shadow-[0_18px_80px_rgba(2,6,23,0.5)] lg:translate-x-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <div className="flex items-center justify-between px-5 py-5 lg:justify-center lg:px-3">
-          <div className="flex items-center gap-3 lg:gap-0">
-            <img src={nexusLogo} alt="NexusZAP" className="h-11 w-auto max-w-[164px] object-contain lg:h-12 lg:max-w-[56px]" />
+        <div className="flex items-center justify-between px-5 py-5">
+          <div className="flex items-center gap-3">
+            <img src={nexusLogo} alt="NexusZAP" className="h-11 w-auto max-w-[164px] object-contain" />
           </div>
           <button
             type="button"
@@ -41,8 +41,8 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto px-3 py-5 lg:px-0 lg:py-6" aria-label="Navegação principal">
-          <div className="space-y-1 lg:flex lg:flex-col lg:items-center lg:gap-2 lg:space-y-0">
+        <nav className="flex-1 overflow-y-auto px-3 py-5" aria-label="Navegação principal">
+          <div className="space-y-1">
             {navItems.map((nav) => {
               const Icon = nav.icon;
               const isActive = nav.path === "/" ? pathname === "/" : pathname.startsWith(nav.path);
@@ -53,25 +53,25 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
                   onClick={onCloseMobile}
                   aria-current={isActive ? "page" : undefined}
                   title={nav.name}
-                  className={`group relative flex min-h-12 items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 lg:h-14 lg:w-14 lg:justify-center lg:px-0 ${
+                  className={`group relative flex min-h-12 items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
                     isActive
                       ? "bg-emerald-50 text-emerald-800 shadow-[inset_0_0_0_1px_rgba(52,211,153,0.45)] dark:bg-emerald-950/35 dark:text-emerald-300"
                       : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-50"
                   }`}
                 >
-                  <span className={`absolute left-0 top-1/2 hidden h-7 w-1 -translate-y-1/2 rounded-r-full lg:block ${isActive ? "bg-emerald-500" : "bg-transparent group-hover:bg-slate-300 dark:group-hover:bg-slate-700"}`} aria-hidden="true" />
+                  <span className={`absolute left-0 top-1/2 h-7 w-1 -translate-y-1/2 rounded-r-full ${isActive ? "bg-emerald-500" : "bg-transparent group-hover:bg-slate-300 dark:group-hover:bg-slate-700"}`} aria-hidden="true" />
                   <span className={isActive ? "text-emerald-700 dark:text-emerald-400" : "text-slate-500 dark:text-slate-400"}>
                     <Icon size={20} strokeWidth={1.85} />
                   </span>
-                  <span className="truncate lg:hidden">{nav.name}</span>
+                  <span className="truncate">{nav.name}</span>
                 </Link>
               );
             })}
           </div>
         </nav>
 
-        <div className="border-t border-slate-200/80 px-3 py-4 dark:border-slate-800/80 lg:px-0">
-          <div className="lg:flex lg:justify-center">
+        <div className="border-t border-slate-200/80 px-3 py-4 dark:border-slate-800/80">
+          <div>
             <button
               type="button"
               onClick={() => {
@@ -79,10 +79,10 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
                 logout();
               }}
               title="Sair"
-              className="flex w-full cursor-pointer items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 dark:text-red-400 dark:hover:bg-red-950/35 lg:h-14 lg:w-14 lg:justify-center lg:px-0"
+              className="flex w-full cursor-pointer items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 dark:text-red-400 dark:hover:bg-red-950/35"
             >
               <LogOut size={20} strokeWidth={1.85} className="shrink-0" />
-              <span className="lg:hidden">Sair</span>
+              <span>Sair</span>
             </button>
           </div>
         </div>

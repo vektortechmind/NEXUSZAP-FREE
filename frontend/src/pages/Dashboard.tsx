@@ -10,6 +10,7 @@ import { Skeleton } from "../components/ui/Skeleton";
 import { StatusDot } from "../components/ui/StatusDot";
 import { Toolbar } from "../components/ui/Toolbar";
 import { useToast } from "../contexts/ToastContext";
+import nexusLogo from "../assets/branding/nexus.png";
 
 type MessageStats = {
   date: string;
@@ -236,6 +237,18 @@ export function Dashboard() {
 
   return (
     <div className="space-y-6">
+      <Panel className="overflow-hidden border-emerald-200 bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.16),_transparent_38%),linear-gradient(135deg,_rgba(255,255,255,0.96),_rgba(240,253,244,0.88))] p-5 shadow-[0_24px_70px_-50px_rgba(16,185,129,0.55)] dark:border-emerald-900/70 dark:bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.18),_transparent_30%),linear-gradient(135deg,_rgba(2,6,23,0.96),_rgba(3,15,10,0.94))] sm:p-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="max-w-2xl">
+            <p className="text-sm font-semibold uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-400">Painel operacional</p>
+            <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950 dark:text-slate-50 sm:text-3xl">Visão consolidada de canais, IA e base ativa</h2>
+            <p className="mt-3 text-sm leading-7 text-slate-700 dark:text-slate-300">Acompanhe o volume do período, a atividade por canal e o uso operacional do runtime em um único painel.</p>
+          </div>
+          <div className="rounded-3xl border border-white/70 bg-white/70 p-4 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-950/55">
+            <img src={nexusLogo} alt="NexusZAP" className="h-20 w-auto max-w-[240px] object-contain sm:h-24" />
+          </div>
+        </div>
+      </Panel>
       <Toolbar aria-label="Filtros do dashboard">
         <div className="grid w-full gap-3 md:grid-cols-[minmax(10rem,1fr)_minmax(10rem,1fr)_minmax(11rem,1fr)_auto] md:items-end">
           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
