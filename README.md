@@ -169,8 +169,7 @@ NEXUSZAP-FREE/
 │   └── start-safe.cjs
 ├── docker-compose.yml
 ├── install.sh
-├── update.sh
-└── ecosystem.config.cjs
+└── update.sh
 ```
 
 ## Desenvolvimento local
@@ -348,3 +347,4 @@ Nunca commite:
 - secrets, tokens ou credenciais exportadas do painel
 
 Esses caminhos devem permanecer locais e ja ficam protegidos pelo `.gitignore` quando aplicavel.
+
