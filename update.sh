@@ -110,6 +110,32 @@ random_password() {
   node -e "console.log(require('crypto').randomBytes(18).toString('base64').replace(/[+/=]/g,'A')+'a1!')"
 }
 
+public_ip() {
+  local ip=""
+  if command -v curl >/dev/null 2>&1; then
+    ip="$(curl -fsSL --max-time 4 https://api.ipify.org 2>/dev/null || true)"
+  fi
+  if [[ -z "$ip" ]]; then
+    ip="$(hostname -I 2>/dev/null | awk '{print $1}' || true)"
+  fi
+  echo "${ip:-SEU_IP}"
+}
+
+env_set() {
+  local key="$1"
+  local value="$2"
+  if [[ ! -f "backend/.env" ]]; then
+    return 0
+  fi
+
+  if grep -q "^${key}=" backend/.env; then
+    sed -i "s|^${key}=.*|${key}=\"${value}\"|" backend/.env
+  else
+    printf '%s="%s"\n' "$key" "$value" >> backend/.env
+  fi
+  export "$key=$value"
+}
+
 ensure_env() {
   if [[ -f "backend/.env" ]]; then
     return 0
@@ -150,6 +176,19 @@ load_env() {
   # shellcheck disable=SC1091
   source backend/.env
   set +a
+}
+
+ensure_bootstrap_app_url() {
+  local current="${APP_URL:-}"
+  if [[ -n "$current" ]]; then
+    return 0
+  fi
+
+  local ip bootstrap_url
+  ip="$(public_ip)"
+  bootstrap_url="http://${ip}:3001"
+  env_set APP_URL "$bootstrap_url"
+  echo "APP_URL ausente no backend/.env. Aplicando bootstrap temporario ${bootstrap_url} para permitir o start da API."
 }
 
 compose_env_set() {
@@ -309,6 +348,7 @@ npm run build
 if docker_compose_available; then
   load_env
   ensure_frontend_port
+  ensure_bootstrap_app_url
 
   update_backend=false
   update_frontend=false
@@ -346,6 +386,8 @@ if docker_compose_available; then
   fi
   echo "Stack Docker atualizada."
 else
+  load_env
+  ensure_bootstrap_app_url
   run_backend_migrations_local
   echo "Update local concluido. Reinicie seu process manager manualmente."
 fi

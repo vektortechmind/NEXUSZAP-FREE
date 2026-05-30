@@ -296,6 +296,19 @@ public_base_url() {
   fi
 }
 
+ensure_bootstrap_app_url() {
+  local current="${APP_URL:-}"
+  if [[ -n "$current" ]]; then
+    return 0
+  fi
+
+  local ip bootstrap_url
+  ip="$(public_ip)"
+  bootstrap_url="http://${ip}:3001"
+  env_set APP_URL "$bootstrap_url"
+  echo "APP_URL nao definido. Usando bootstrap temporario ${bootstrap_url} ate a configuracao final do dominio/API."
+}
+
 ensure_env() {
   if [[ -f "backend/.env" ]]; then
     echo "backend/.env ja existe. Mantendo configuracao atual."
@@ -393,6 +406,7 @@ echo "[5/5] Subindo stack Docker, se Docker estiver disponivel..."
 if docker_compose_available; then
   load_env
   ensure_frontend_port
+  ensure_bootstrap_app_url
   docker_compose up -d --build
   run_backend_migrations_docker
   PUBLIC_BASE_URL="$(public_base_url "$(public_ip)")"
