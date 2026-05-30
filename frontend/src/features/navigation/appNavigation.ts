@@ -1,9 +1,9 @@
-import { Bot, Boxes, Cable, KeyRound, LayoutDashboard } from "lucide-react";
+import { House, Settings2, Sparkles, Server, Waypoints } from "lucide-react";
 
 export type AppNavItem = {
   name: string;
   path: string;
-  icon: typeof LayoutDashboard;
+  icon: typeof House;
 };
 
 export type AppNavGroup = {
@@ -15,21 +15,21 @@ export const APP_NAV_GROUPS: AppNavGroup[] = [
   {
     label: "Operação",
     items: [
-      { name: "Dashboard", path: "/dashboard", icon: LayoutDashboard },
-      { name: "Instâncias", path: "/", icon: Boxes },
-      { name: "Integrações", path: "/integracoes", icon: Cable },
+      { name: "Dashboard", path: "/dashboard", icon: House },
+      { name: "Instâncias", path: "/", icon: Server },
+      { name: "Integrações", path: "/integracoes", icon: Waypoints },
     ],
   },
   {
     label: "Inteligência",
     items: [
-      { name: "Agente IA", path: "/agente", icon: Bot },
+      { name: "Agente IA", path: "/agente", icon: Sparkles },
     ],
   },
   {
     label: "Sistema",
     items: [
-      { name: "Configurações", path: "/settings", icon: KeyRound },
+      { name: "Configurações", path: "/settings", icon: Settings2 },
     ],
   },
 ];

@@ -8,9 +8,9 @@ type AppShellProps = {
 
 export function AppShell({ sidebar, header, children }: AppShellProps) {
   return (
-    <div className="flex min-h-screen bg-[var(--nexus-bg)] text-[var(--nexus-text)]">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(16,185,129,0.08),transparent_20rem),var(--nexus-bg)] text-[var(--nexus-text)]">
       {sidebar}
-      <div className="flex min-w-0 flex-1 flex-col">
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col lg:pl-24">
         {header}
         <main className="min-w-0 flex-1 overflow-y-auto">
           {children}
