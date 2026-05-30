@@ -100,6 +100,21 @@ export type IntegrationButtonFallbackReason =
   | "unsupported_socket_transport"
   | "button_dispatch_failed";
 
+export type IntegrationCtaButtonFormat =
+  | "template_hydrated"
+  | "buttons_message"
+  | "interactive_native_flow";
+
+export type IntegrationCtaTransport = "relay_message";
+
+export type IntegrationCtaFormatMatrixEntry = {
+  format: IntegrationCtaButtonFormat;
+  transport: IntegrationCtaTransport;
+  requiresLinkUrl: true;
+  source: "context7_and_local_proto";
+  deliveryEvidence: "manual_validation_required";
+};
+
 export type IntegrationSecondaryDispatchStatus =
   | "not_applicable"
   | "skipped_missing_pix_code"
@@ -110,12 +125,38 @@ export type IntegrationSecondaryDispatchFailureCode = "send_failed";
 
 export type IntegrationDispatchDeliveryPath =
   | "template_cta"
+  | "buttons_cta"
+  | "interactive_cta"
   | "image_clean"
   | "text_fallback_button"
   | "text_fallback_image"
   | "document"
   | "link"
   | "text";
+
+export const INTEGRATION_CTA_FORMAT_MATRIX: readonly IntegrationCtaFormatMatrixEntry[] = [
+  {
+    format: "template_hydrated",
+    transport: "relay_message",
+    requiresLinkUrl: true,
+    source: "context7_and_local_proto",
+    deliveryEvidence: "manual_validation_required",
+  },
+  {
+    format: "buttons_message",
+    transport: "relay_message",
+    requiresLinkUrl: true,
+    source: "context7_and_local_proto",
+    deliveryEvidence: "manual_validation_required",
+  },
+  {
+    format: "interactive_native_flow",
+    transport: "relay_message",
+    requiresLinkUrl: true,
+    source: "context7_and_local_proto",
+    deliveryEvidence: "manual_validation_required",
+  },
+] as const;
 
 export type IntegrationDispatchTransportPayload = AnyMessageContent | proto.IMessage;
 
@@ -366,6 +407,24 @@ function buildCtaButtonLabel(template: IntegrationRenderedDispatchTemplate): str
   return template.title ?? "Abrir link";
 }
 
+export function resolveIntegrationCtaButtonFormat(rawValue: string | null | undefined): IntegrationCtaButtonFormat {
+  switch (rawValue) {
+    case "buttons_message":
+    case "interactive_native_flow":
+    case "template_hydrated":
+      return rawValue;
+    default:
+      return "template_hydrated";
+  }
+}
+
+function buildInteractiveNativeFlowButtonParams(template: IntegrationRenderedDispatchTemplate): string {
+  return JSON.stringify({
+    display_text: buildCtaButtonLabel(template),
+    url: template.linkUrl,
+  });
+}
+
 function buildRealCtaTemplateMessage(template: IntegrationRenderedDispatchTemplate): proto.IMessage {
   return proto.Message.fromObject({
     templateMessage: {
@@ -388,10 +447,78 @@ function buildRealCtaTemplateMessage(template: IntegrationRenderedDispatchTempla
   });
 }
 
+function buildRealCtaButtonsMessage(template: IntegrationRenderedDispatchTemplate): proto.IMessage {
+  return proto.Message.fromObject({
+    buttonsMessage: {
+      contentText: template.caption ?? template.body,
+      footerText: template.linkUrl ?? undefined,
+      headerType: proto.Message.ButtonsMessage.HeaderType.EMPTY,
+      buttons: [
+        {
+          buttonId: 'cta_button',
+          buttonText: {
+            displayText: buildCtaButtonLabel(template),
+          },
+          type: proto.Message.ButtonsMessage.Button.Type.NATIVE_FLOW,
+          nativeFlowInfo: {
+            name: "cta_url",
+            paramsJson: buildInteractiveNativeFlowButtonParams(template),
+          },
+        },
+      ],
+    },
+  });
+}
+
+function buildRealCtaInteractiveNativeFlowMessage(template: IntegrationRenderedDispatchTemplate): proto.IMessage {
+  return proto.Message.fromObject({
+    interactiveMessage: {
+      body: {
+        text: template.caption ?? template.body,
+      },
+      footer: {
+        text: template.linkUrl ?? undefined,
+      },
+      nativeFlowMessage: {
+        buttons: [
+          {
+            name: "cta_url",
+            buttonParamsJson: buildInteractiveNativeFlowButtonParams(template),
+          },
+        ],
+        messageVersion: 1,
+      },
+    },
+  });
+}
+
+export function buildRealCtaMessage(
+  template: IntegrationRenderedDispatchTemplate,
+  format: IntegrationCtaButtonFormat,
+): proto.IMessage {
+  switch (format) {
+    case "buttons_message":
+      return buildRealCtaButtonsMessage(template);
+    case "interactive_native_flow":
+      return buildRealCtaInteractiveNativeFlowMessage(template);
+    case "template_hydrated":
+    default:
+      return buildRealCtaTemplateMessage(template);
+  }
+}
+
 function buildButtonFallbackPayload(template: IntegrationRenderedDispatchTemplate): AnyMessageContent {
   return {
     text: buildButtonFallbackBody(template),
   };
+}
+
+function isRealCtaPayload(content: IntegrationDispatchTransportPayload): boolean {
+  return Boolean(
+    ("templateMessage" in content && content.templateMessage)
+    || ("buttonsMessage" in content && content.buttonsMessage)
+    || ("interactiveMessage" in content && content.interactiveMessage),
+  );
 }
 
 function buildFollowupPayload(template: IntegrationRenderedDispatchTemplate): AnyMessageContent | null {
@@ -409,6 +536,8 @@ function resolveDeliveryPath(
   buttonFallbackReason: IntegrationButtonFallbackReason | null,
 ): IntegrationDispatchDeliveryPath {
   if ("templateMessage" in content && content.templateMessage) return "template_cta";
+  if ("buttonsMessage" in content && content.buttonsMessage) return "buttons_cta";
+  if ("interactiveMessage" in content && content.interactiveMessage) return "interactive_cta";
   if ("image" in content) return "image_clean";
   if ("document" in content) return "document";
   if (buttonFallbackReason) return "text_fallback_button";
@@ -481,6 +610,8 @@ function buildPayloadSummary(
   imageAsset: IntegrationDownloadedImageAsset | null,
   imageFallbackReason: IntegrationImageFallbackReason | null,
   buttonFallbackReason: IntegrationButtonFallbackReason | null,
+  ctaButtonFormat: IntegrationCtaButtonFormat | null,
+  ctaTransport: IntegrationCtaTransport | null,
   secondaryProviderMessageId: string | null,
   secondaryDispatchFailureCode: IntegrationSecondaryDispatchFailureCode | null,
 ) {
@@ -508,7 +639,10 @@ function buildPayloadSummary(
     hasExternalAdReply: Boolean(template.externalAdReply),
     fallbackWithoutImage: template.messageType === "image" && !imageAsset,
     imageFallbackReason,
-    usedRealCtaButton: Boolean("templateMessage" in content && content.templateMessage),
+    usedRealCtaButton: isRealCtaPayload(content),
+    ctaButtonFormat,
+    ctaTransport,
+    ctaFormatMatrix: INTEGRATION_CTA_FORMAT_MATRIX,
     buttonFallbackReason,
     secondaryDispatchKind: template.followup?.type ?? null,
     secondaryDispatchMessageType: template.followup?.messageType ?? null,
@@ -573,7 +707,7 @@ function resolveDispatchedMessageType(
   template: IntegrationRenderedDispatchTemplate,
   content: IntegrationDispatchTransportPayload,
 ): IntegrationDispatchMessageType {
-  if ("templateMessage" in content && content.templateMessage) return "template";
+  if (isRealCtaPayload(content)) return "template";
   if ("image" in content) return "image";
   if ("document" in content) return "document";
   if (template.messageType === "link") return "link";
@@ -587,9 +721,11 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
   const instanceLookup = deps.instanceLookup ?? (async (instanceId: string) => prisma.instance.findUnique({ where: { id: instanceId }, select: { id: true, status: true } }));
   const socketLookup = deps.socketLookup ?? ((instanceId: string) => InstanceManager.get(instanceId));
   const imageDownloader = deps.imageDownloader ?? downloadIntegrationImageAsset;
+  const ctaButtonFormat = resolveIntegrationCtaButtonFormat(process.env.INTEGRATION_CTA_BUTTON_FORMAT);
 
   return {
     buildBaileysPayload: buildBaileysDispatchPayload,
+    ctaButtonFormat,
     async dispatchEvent(input: {
       ingressLogId?: string | null;
       credentialId?: string | null;
@@ -639,6 +775,8 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
         let imageFallbackReason: IntegrationImageFallbackReason | null = null;
         let buttonFallbackReason: IntegrationButtonFallbackReason | null = null;
         const shouldUseButtonPilot = shouldUseRealCtaButton(template);
+        const selectedCtaButtonFormat = shouldUseButtonPilot ? ctaButtonFormat : null;
+        const selectedCtaTransport: IntegrationCtaTransport | null = shouldUseButtonPilot ? "relay_message" : null;
 
         if (template.messageType === "image" && !shouldUseButtonPilot) {
           if (!template.imageUrl) {
@@ -665,7 +803,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
         }
 
         const content = canSendRealCtaButton
-          ? buildRealCtaTemplateMessage(template)
+          ? buildRealCtaMessage(template, ctaButtonFormat)
           : shouldUseButtonPilot
             ? buildButtonFallbackPayload(template)
             : buildBaileysDispatchPayload(template, {
@@ -700,7 +838,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
                 dispatchStatus: INTEGRATION_DISPATCH_STATUS.SENT,
                 failureCode: null,
                 providerMessageId,
-                payloadSummary: buildPayloadSummary(template, fallbackContent, imageAsset, imageFallbackReason, buttonFallbackReason, secondaryProviderMessageId, secondaryDispatchFailureCode),
+                payloadSummary: buildPayloadSummary(template, fallbackContent, imageAsset, imageFallbackReason, buttonFallbackReason, selectedCtaButtonFormat, selectedCtaTransport, secondaryProviderMessageId, secondaryDispatchFailureCode),
               });
 
               return {
@@ -733,7 +871,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
             dispatchStatus: INTEGRATION_DISPATCH_STATUS.SENT,
             failureCode: null,
             providerMessageId,
-            payloadSummary: buildPayloadSummary(template, content, imageAsset, imageFallbackReason, buttonFallbackReason, secondaryProviderMessageId, secondaryDispatchFailureCode),
+            payloadSummary: buildPayloadSummary(template, content, imageAsset, imageFallbackReason, buttonFallbackReason, selectedCtaButtonFormat, selectedCtaTransport, secondaryProviderMessageId, secondaryDispatchFailureCode),
           });
 
           return {

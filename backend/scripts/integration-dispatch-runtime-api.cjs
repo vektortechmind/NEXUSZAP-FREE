@@ -13,14 +13,17 @@ require("ts-node/register");
 const assert = require("assert");
 const {
   buildBaileysDispatchPayload,
+  buildRealCtaMessage,
   createInMemoryIntegrationDispatchStore,
   createIntegrationDispatchLogService,
   createIntegrationDispatchRuntimeService,
+  INTEGRATION_CTA_FORMAT_MATRIX,
   INTEGRATION_DISPATCH_STATUS,
   IntegrationDispatchInstanceNotFoundError,
   IntegrationDispatchInstanceOfflineError,
   IntegrationDispatchRecipientMissingError,
   IntegrationDispatchSendFailedError,
+  resolveIntegrationCtaButtonFormat,
 } = require("../src/services/integrations/integrationDispatchRuntime.service.ts");
 
 function createBasePayload() {
@@ -82,6 +85,25 @@ function createDispatchService(options = {}) {
   return { service, store, sentPayloads, relayedPayloads, sock };
 }
 
+async function withCtaFormat(format, run) {
+  const previous = process.env.INTEGRATION_CTA_BUTTON_FORMAT;
+  if (format === undefined || format === null) {
+    delete process.env.INTEGRATION_CTA_BUTTON_FORMAT;
+  } else {
+    process.env.INTEGRATION_CTA_BUTTON_FORMAT = format;
+  }
+
+  try {
+    return await run();
+  } finally {
+    if (previous === undefined) {
+      delete process.env.INTEGRATION_CTA_BUTTON_FORMAT;
+    } else {
+      process.env.INTEGRATION_CTA_BUTTON_FORMAT = previous;
+    }
+  }
+}
+
 (async () => {
   {
     const { service, store, sentPayloads, relayedPayloads } = createDispatchService();
@@ -104,7 +126,40 @@ function createDispatchService(options = {}) {
     assert.equal(Array.from(store.logs.values())[0].dispatchStatus, INTEGRATION_DISPATCH_STATUS.SENT);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"usedRealCtaButton":true'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"template_cta"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"ctaButtonFormat":"template_hydrated"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"ctaTransport":"relay_message"'), true);
   }
+
+  await withCtaFormat("buttons_message", async () => {
+    const { service, store, relayedPayloads } = createDispatchService();
+    const result = await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pedido_pago",
+      dedupKey: "evt-buttons-matrix",
+      payload: createBasePayload(),
+    });
+    assert.equal(service.ctaButtonFormat, "buttons_message");
+    assert.equal(relayedPayloads[0].message.buttonsMessage.contentText, result.template.body);
+    assert.equal(relayedPayloads[0].message.buttonsMessage.buttons[0].type, 2);
+    assert.equal(relayedPayloads[0].message.buttonsMessage.buttons[0].nativeFlowInfo.name, "cta_url");
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"buttons_cta"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"ctaButtonFormat":"buttons_message"'), true);
+  });
+
+  await withCtaFormat("interactive_native_flow", async () => {
+    const { service, store, relayedPayloads } = createDispatchService();
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pedido_pago",
+      dedupKey: "evt-interactive-matrix",
+      payload: createBasePayload(),
+    });
+    assert.equal(service.ctaButtonFormat, "interactive_native_flow");
+    assert.equal(relayedPayloads[0].message.interactiveMessage.body.text.includes("Parabéns"), true);
+    assert.equal(relayedPayloads[0].message.interactiveMessage.nativeFlowMessage.buttons[0].name, "cta_url");
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"interactive_cta"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"ctaButtonFormat":"interactive_native_flow"'), true);
+  });
 
   {
     const { service, sentPayloads } = createDispatchService();
@@ -402,6 +457,32 @@ function createDispatchService(options = {}) {
     const payload = buildBaileysDispatchPayload(template, { imageBuffer: null, imageMimeType: null });
     assert.equal(payload.text, "Texto principal\n\nhttps://checkout.example.com/c/123");
     assert.equal(payload.contextInfo.externalAdReply.sourceUrl, "https://checkout.example.com/c/123");
+  }
+
+  {
+    const template = {
+      eventSlug: "pedido_pago",
+      messageType: "image",
+      title: "Synthetic CTA",
+      body: "Texto principal",
+      caption: "Texto principal",
+      linkUrl: "https://checkout.example.com/c/123",
+      documentUrl: null,
+      imageUrl: "https://cdn.example.com/file.jpg",
+      fileName: null,
+      mimeType: null,
+      externalAdReply: null,
+      followup: null,
+      context: { eventSlug: "pedido_pago" },
+    };
+    const templatePayload = buildRealCtaMessage(template, "template_hydrated");
+    const buttonsPayload = buildRealCtaMessage(template, "buttons_message");
+    const interactivePayload = buildRealCtaMessage(template, "interactive_native_flow");
+    assert.equal(templatePayload.templateMessage.hydratedTemplate.hydratedButtons[0].urlButton.url, "https://checkout.example.com/c/123");
+    assert.equal(buttonsPayload.buttonsMessage.buttons[0].nativeFlowInfo.paramsJson.includes('display_text'), true);
+    assert.equal(interactivePayload.interactiveMessage.nativeFlowMessage.buttons[0].buttonParamsJson.includes('https://checkout.example.com/c/123'), true);
+    assert.equal(INTEGRATION_CTA_FORMAT_MATRIX.length, 3);
+    assert.equal(resolveIntegrationCtaButtonFormat("invalid-value"), "template_hydrated");
   }
 
   {
