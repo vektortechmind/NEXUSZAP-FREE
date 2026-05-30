@@ -15,6 +15,12 @@ export type IntegrationRenderedExternalAdReply = {
   mediaType: 1;
 };
 
+export type IntegrationRenderedDispatchFollowup = {
+  type: "pix_copy_paste_text";
+  messageType: "text";
+  body: string;
+};
+
 export type IntegrationRenderedDispatchTemplate = {
   eventSlug: SupportedIntegrationEventSlug;
   messageType: IntegrationDispatchMessageType;
@@ -27,6 +33,7 @@ export type IntegrationRenderedDispatchTemplate = {
   fileName: string | null;
   mimeType: string | null;
   externalAdReply: IntegrationRenderedExternalAdReply | null;
+  followup: IntegrationRenderedDispatchFollowup | null;
   context: IntegrationNormalizedEventContext;
 };
 
@@ -141,6 +148,7 @@ function renderTextTemplate(
     fileName: null,
     mimeType: null,
     externalAdReply: externalAdReply ?? null,
+    followup: null,
     context,
   };
 }
@@ -167,6 +175,7 @@ function renderLinkTemplate(
     fileName: null,
     mimeType: null,
     externalAdReply: null,
+    followup: null,
     context,
   };
 }
@@ -194,6 +203,7 @@ function renderDocumentTemplate(
     fileName: "boleto.pdf",
     mimeType: "application/pdf",
     externalAdReply: externalAdReply ?? null,
+    followup: null,
     context,
   };
 }
@@ -204,6 +214,7 @@ function renderImageTemplate(
   imageUrl: string | null,
   paragraphs: Array<string | null | undefined>,
   externalAdReply?: IntegrationRenderedExternalAdReply | null,
+  followup?: IntegrationRenderedDispatchFollowup | null,
 ): IntegrationRenderedDispatchTemplate {
   const body = assertRenderedText(joinParagraphs(paragraphs), context.eventSlug);
 
@@ -219,7 +230,18 @@ function renderImageTemplate(
     fileName: null,
     mimeType: null,
     externalAdReply: externalAdReply ?? null,
+    followup: followup ?? null,
     context,
+  };
+}
+
+function createPixCopyPasteFollowup(context: IntegrationNormalizedEventContext): IntegrationRenderedDispatchFollowup | null {
+  if (!context.pixCopyPaste) return null;
+
+  return {
+    type: "pix_copy_paste_text",
+    messageType: "text",
+    body: assertRenderedText(`📌 *Codigo Pix (copia e cola):*\n\n\`\`\`${context.pixCopyPaste}\`\`\``, context.eventSlug),
   };
 }
 
@@ -246,7 +268,7 @@ export function renderIntegrationDispatchTemplateFromContext(
     case "pedido_pendente":
       return renderTextTemplate(context, "Pedido pendente", [
         `⏳ *Olá ${customer}!*`,
-        `Recebemos seu pedido do *${product}*.` ,
+        `Recebemos seu pedido do *${product}*.`,
         "Assim que o pagamento for confirmado, você receberá o acesso automaticamente.",
         "Qualquer dúvida, estamos à disposição.",
       ]);
@@ -285,9 +307,9 @@ export function renderIntegrationDispatchTemplateFromContext(
           `💳 *${customer}*, o PIX do *${product}* foi gerado!`,
           context.total ? `📋 *Valor:* R$ ${context.total}` : null,
           "⚠️ *Pague até o vencimento para garantir sua vaga!*",
-          context.pixCopyPaste ? `📌 *Código Pix (copia e cola):*\n\`\`\`${context.pixCopyPaste}\`\`\`` : null,
         ],
         createExternalAdReply("Visualizar pedido", product, context.checkoutLink),
+        createPixCopyPasteFollowup(context),
       );
 
     case "boleto_gerado":

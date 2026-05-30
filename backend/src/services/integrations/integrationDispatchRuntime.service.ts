@@ -100,6 +100,14 @@ export type IntegrationButtonFallbackReason =
   | "unsupported_socket_transport"
   | "button_dispatch_failed";
 
+export type IntegrationSecondaryDispatchStatus =
+  | "not_applicable"
+  | "skipped_missing_pix_code"
+  | "sent"
+  | "failed_send";
+
+export type IntegrationSecondaryDispatchFailureCode = "send_failed";
+
 export type IntegrationDispatchDeliveryPath =
   | "template_cta"
   | "image_clean"
@@ -386,6 +394,14 @@ function buildButtonFallbackPayload(template: IntegrationRenderedDispatchTemplat
   };
 }
 
+function buildFollowupPayload(template: IntegrationRenderedDispatchTemplate): AnyMessageContent | null {
+  if (!template.followup) return null;
+
+  return {
+    text: template.followup.body,
+  };
+}
+
 function resolveDeliveryPath(
   template: IntegrationRenderedDispatchTemplate,
   content: IntegrationDispatchTransportPayload,
@@ -465,7 +481,19 @@ function buildPayloadSummary(
   imageAsset: IntegrationDownloadedImageAsset | null,
   imageFallbackReason: IntegrationImageFallbackReason | null,
   buttonFallbackReason: IntegrationButtonFallbackReason | null,
+  secondaryProviderMessageId: string | null,
+  secondaryDispatchFailureCode: IntegrationSecondaryDispatchFailureCode | null,
 ) {
+  const secondaryDispatchStatus: IntegrationSecondaryDispatchStatus = template.followup
+    ? secondaryDispatchFailureCode
+      ? "failed_send"
+      : secondaryProviderMessageId
+        ? "sent"
+        : "failed_send"
+    : template.eventSlug === "pix_gerado"
+      ? "skipped_missing_pix_code"
+      : "not_applicable";
+
   return {
     eventSlug: template.eventSlug,
     intendedMessageType: template.messageType,
@@ -482,6 +510,11 @@ function buildPayloadSummary(
     imageFallbackReason,
     usedRealCtaButton: Boolean("templateMessage" in content && content.templateMessage),
     buttonFallbackReason,
+    secondaryDispatchKind: template.followup?.type ?? null,
+    secondaryDispatchMessageType: template.followup?.messageType ?? null,
+    secondaryDispatchStatus,
+    secondaryProviderMessageId,
+    secondaryDispatchFailureCode,
   };
 }
 
@@ -642,6 +675,8 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
 
         try {
           let providerMessageId: string | null;
+          let secondaryProviderMessageId: string | null = null;
+          let secondaryDispatchFailureCode: IntegrationSecondaryDispatchFailureCode | null = null;
 
           if (canSendRealCtaButton) {
             try {
@@ -665,7 +700,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
                 dispatchStatus: INTEGRATION_DISPATCH_STATUS.SENT,
                 failureCode: null,
                 providerMessageId,
-                payloadSummary: buildPayloadSummary(template, fallbackContent, imageAsset, imageFallbackReason, buttonFallbackReason),
+                payloadSummary: buildPayloadSummary(template, fallbackContent, imageAsset, imageFallbackReason, buttonFallbackReason, secondaryProviderMessageId, secondaryDispatchFailureCode),
               });
 
               return {
@@ -673,6 +708,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
                 template,
                 content: fallbackContent,
                 providerMessageId,
+                secondaryProviderMessageId,
                 dispatchLog: finalLog,
               };
             }
@@ -681,13 +717,23 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
             providerMessageId = extractProviderMessageId(sentMessage as WAMessage | null | undefined);
           }
 
+          const followupPayload = buildFollowupPayload(template);
+          if (followupPayload) {
+            try {
+              const followupMessage = await sock.sendMessage(context.recipientJid, followupPayload);
+              secondaryProviderMessageId = extractProviderMessageId(followupMessage as WAMessage | null | undefined);
+            } catch {
+              secondaryDispatchFailureCode = "send_failed";
+            }
+          }
+
           const finalLog = await logService.updateLog(dispatchLog.id, {
             recipientJid: context.recipientJid,
             messageType: resolveDispatchedMessageType(template, content),
             dispatchStatus: INTEGRATION_DISPATCH_STATUS.SENT,
             failureCode: null,
             providerMessageId,
-            payloadSummary: buildPayloadSummary(template, content, imageAsset, imageFallbackReason, buttonFallbackReason),
+            payloadSummary: buildPayloadSummary(template, content, imageAsset, imageFallbackReason, buttonFallbackReason, secondaryProviderMessageId, secondaryDispatchFailureCode),
           });
 
           return {
@@ -695,6 +741,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
             template,
             content,
             providerMessageId,
+            secondaryProviderMessageId,
             dispatchLog: finalLog,
           };
         } catch {
