@@ -75,7 +75,8 @@ O `install.sh` executa o fluxo completo:
 - instala dependencias da raiz, backend e frontend;
 - executa `prisma generate`;
 - builda backend e frontend;
-- sobe `postgres`, `backend` e `frontend` com `docker compose up -d --build` quando Docker estiver disponivel.
+- sobe `postgres`, `backend` e `frontend` com `docker compose up -d --build` quando Docker estiver disponivel;
+- expoe o backend diretamente na porta `3001` do host para acesso tecnico e troubleshooting da API.
 
 ## Primeiro acesso
 
@@ -98,7 +99,8 @@ Essa etapa substitui a senha temporaria gerada na instalacao e bloqueia nova cri
 URLs padrao na VPS com Docker:
 
 - Painel: `http://SEU_IP` ou `https://SEU_DOMINIO`
-- API: `http://SEU_IP/api` ou `https://SEU_DOMINIO/api`
+- API direta do backend: `http://SEU_IP:3001/api`
+- API publica final: `https://SEU_DOMINIO/api` quando `APP_URL` estiver configurado com proxy/dominio real
 - PostgreSQL: container interno `postgres:5432`
 
 ## Update na VPS
@@ -154,6 +156,8 @@ GITHUB_REPO="vektortechmind/NEXUSZAP-FREE"
 
 Em producao, ajuste `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `APP_URL` e `CORS_ORIGINS` para o dominio real do painel.
 
+`APP_URL` deve apontar para a URL publica real que expoe o backend/API. Sem isso, o painel nao inventa `endpointUrl` para integracoes em ambiente publico.
+
 ## Estrutura do projeto
 
 ```text
@@ -199,6 +203,12 @@ Subir stack manualmente:
 ```bash
 docker compose up -d --build
 ```
+
+Acesso padrao apos subir manualmente:
+
+- painel: `http://SEU_IP` ou porta definida em `FRONTEND_HTTP_PORT`
+- backend direto: `http://SEU_IP:3001/api`
+- endpoint publico final de integracoes: usar o dominio configurado em `APP_URL`
 
 Ver logs:
 
@@ -313,7 +323,7 @@ Cada credencial e vinculada a uma instancia operacional.
 
 Campos operacionais:
 
-- `endpointUrl`: URL final completa da integracao;
+- `endpointUrl`: URL final completa da integracao derivada de `APP_URL`;
 - `instanceId`: identificador autorizado para a chamada;
 - `secretToken`: token Bearer ativo emitido ou rotacionado no painel.
 
@@ -347,4 +357,5 @@ Nunca commite:
 - secrets, tokens ou credenciais exportadas do painel
 
 Esses caminhos devem permanecer locais e ja ficam protegidos pelo `.gitignore` quando aplicavel.
+
 
