@@ -56,10 +56,16 @@ function createDispatchService(options = {}) {
   const store = createInMemoryIntegrationDispatchStore();
   const logService = createIntegrationDispatchLogService(store);
   const sentPayloads = [];
+  const relayedPayloads = [];
   const sock = options.sock ?? {
+    user: { id: "5511911111111@s.whatsapp.net" },
     async sendMessage(jid, content) {
       sentPayloads.push({ jid, content });
       return { key: { id: "wamid.123" } };
+    },
+    async relayMessage(jid, message, options) {
+      relayedPayloads.push({ jid, message, options });
+      return options?.messageId || "relay.wamid.123";
     },
   };
 
@@ -71,12 +77,12 @@ function createDispatchService(options = {}) {
     templateService: options.templateService,
   });
 
-  return { service, store, sentPayloads, sock };
+  return { service, store, sentPayloads, relayedPayloads, sock };
 }
 
 (async () => {
   {
-    const { service, store, sentPayloads } = createDispatchService();
+    const { service, store, sentPayloads, relayedPayloads } = createDispatchService();
     const result = await service.dispatchEvent({
       ingressLogId: "ingress-1",
       credentialId: "cred-1",
@@ -85,14 +91,16 @@ function createDispatchService(options = {}) {
       dedupKey: "evt-1",
       payload: createBasePayload(),
     });
-    assert.equal(sentPayloads[0].jid, "5511998765432@s.whatsapp.net");
-    assert.deepEqual(sentPayloads[0].content.image, Buffer.from("image-data"));
-    assert.equal(sentPayloads[0].content.caption, result.template.body);
-    assert.equal(sentPayloads[0].content.contextInfo, undefined);
+    assert.equal(sentPayloads.length, 0);
+    assert.equal(relayedPayloads[0].jid, "5511998765432@s.whatsapp.net");
+    assert.equal(relayedPayloads[0].message.templateMessage.hydratedTemplate.hydratedContentText, result.template.body);
+    assert.equal(relayedPayloads[0].message.templateMessage.hydratedTemplate.hydratedButtons[0].urlButton.displayText, "Acessar agora");
+    assert.equal(relayedPayloads[0].message.templateMessage.hydratedTemplate.hydratedButtons[0].urlButton.url, "https://checkout.example.com/c/123");
     assert.equal(result.dispatchLog.dispatchStatus, INTEGRATION_DISPATCH_STATUS.SENT);
-    assert.equal(result.dispatchLog.messageType, "image");
-    assert.equal(result.dispatchLog.providerMessageId, "wamid.123");
+    assert.equal(result.dispatchLog.messageType, "template");
+    assert.equal(result.dispatchLog.providerMessageId, relayedPayloads[0].options.messageId);
     assert.equal(Array.from(store.logs.values())[0].dispatchStatus, INTEGRATION_DISPATCH_STATUS.SENT);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"usedRealCtaButton":true'), true);
   }
 
   {
@@ -128,8 +136,15 @@ function createDispatchService(options = {}) {
 
   {
     const { service, sentPayloads, store } = createDispatchService({
-      imageDownloader: async () => {
-        throw new Error("download failed");
+      sock: {
+        user: { id: "5511911111111@s.whatsapp.net" },
+        async sendMessage(jid, content) {
+          sentPayloads.push({ jid, content });
+          return { key: { id: "wamid.123" } };
+        },
+        async relayMessage() {
+          throw new Error("relay failed");
+        },
       },
     });
     const result = await service.dispatchEvent({
@@ -140,30 +155,40 @@ function createDispatchService(options = {}) {
     });
     assert.equal(sentPayloads[0].content.text.includes("Parabéns"), true);
     assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
-    assert.equal("image" in sentPayloads[0].content, false);
+    assert.equal(sentPayloads[0].content.contextInfo, undefined);
     assert.equal(result.dispatchLog.messageType, "text");
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"fallbackWithoutImage":true'), true);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":"image_download_failed"'), true);
-  }
-
-  {
-    const payload = createBasePayload();
-    payload.order.product.image = "   ";
-    const { service, sentPayloads, store } = createDispatchService();
-    await service.dispatchEvent({
-      instanceId: "instance-a",
-      eventSlug: "pedido_pago",
-      dedupKey: "evt-no-image",
-      payload,
-    });
-    assert.equal(sentPayloads[0].content.text.includes("Parabéns"), true);
-    assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
-    assert.equal(sentPayloads[0].content.contextInfo.externalAdReply.title, "Curso Premium");
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":"missing_image_url"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"buttonFallbackReason":"button_dispatch_failed"'), true);
   }
 
   {
     const { service, sentPayloads, store } = createDispatchService({
+      sock: {
+        async sendMessage(jid, content) {
+          sentPayloads.push({ jid, content });
+          return { key: { id: "wamid.123" } };
+        },
+      },
+    });
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pedido_pago",
+      dedupKey: "evt-no-image",
+      payload: createBasePayload(),
+    });
+    assert.equal(sentPayloads[0].content.text.includes("Parabéns"), true);
+    assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
+    assert.equal(sentPayloads[0].content.contextInfo, undefined);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"buttonFallbackReason":"unsupported_socket_transport"'), true);
+  }
+
+  {
+    const { service, sentPayloads, store } = createDispatchService({
+      sock: {
+        async sendMessage(jid, content) {
+          sentPayloads.push({ jid, content });
+          return { key: { id: "wamid.123" } };
+        },
+      },
       templateService: {
         renderTemplateFromContext(context) {
           return {
@@ -195,7 +220,8 @@ function createDispatchService(options = {}) {
       payload: createBasePayload(),
     });
     assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":"invalid_image_url"'), true);
+    assert.equal(sentPayloads[0].content.contextInfo, undefined);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"buttonFallbackReason":"unsupported_socket_transport"'), true);
   }
 
   {

@@ -6,7 +6,7 @@ import integrationEventCatalog = require("./integrationEventCatalog.service");
 
 const { normalizeIntegrationEventContext } = integrationEventCatalog;
 
-export type IntegrationDispatchMessageType = "text" | "link" | "document" | "image";
+export type IntegrationDispatchMessageType = "text" | "link" | "document" | "image" | "template";
 
 export type IntegrationRenderedExternalAdReply = {
   title: string;
