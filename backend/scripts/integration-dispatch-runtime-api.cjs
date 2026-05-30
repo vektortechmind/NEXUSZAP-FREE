@@ -146,6 +146,7 @@ async function withCtaFormat(format, run) {
     assert.equal(relayedPayloads[0].message.buttonsMessage.buttons[0].type, 2);
     assert.equal(relayedPayloads[0].message.buttonsMessage.buttons[0].nativeFlowInfo.name, "cta_url");
     assert.equal(relayedPayloads[0].message.messageContextInfo.messageSecret.length, 32);
+    assert.equal(relayedPayloads[0].options.additionalNodes, undefined);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"buttons_cta"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"ctaButtonFormat":"buttons_message"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"reportingTokenFieldCovered":false'), true);
@@ -163,9 +164,15 @@ async function withCtaFormat(format, run) {
     assert.equal(relayedPayloads[0].message.interactiveMessage.body.text.includes("Parabéns"), true);
     assert.equal(relayedPayloads[0].message.interactiveMessage.nativeFlowMessage.buttons[0].name, "cta_url");
     assert.equal(relayedPayloads[0].message.messageContextInfo.messageSecret.length, 32);
+    assert.equal(relayedPayloads[0].options.additionalNodes.length, 2);
+    assert.equal(relayedPayloads[0].options.additionalNodes[0].tag, "bot");
+    assert.equal(relayedPayloads[0].options.additionalNodes[0].attrs.biz_bot, "1");
+    assert.equal(relayedPayloads[0].options.additionalNodes[1].tag, "biz");
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"interactive_cta"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"ctaButtonFormat":"interactive_native_flow"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"reportingTokenFieldCovered":false'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"relayAdditionalNodesCount":2'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"relayAdditionalNodeTags":["bot","biz"]'), true);
   });
 
   {

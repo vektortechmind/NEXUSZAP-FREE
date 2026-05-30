@@ -121,6 +121,7 @@ export type IntegrationCtaProtocolTrace = {
   reportingTokenEligible: true;
   reportingTokenFieldCovered: boolean;
   relayAdditionalNodesCount: number;
+  relayAdditionalNodeTags: string[];
   relayAdditionalAttributesKeys: string[];
   buttonSchemaEvidence: IntegrationCtaProtocolSchemaEvidence;
 };
@@ -541,11 +542,43 @@ function buildCtaProtocolTrace(
     reportingTokenEligible: true,
     reportingTokenFieldCovered: format === "template_hydrated",
     relayAdditionalNodesCount: relayOptions.additionalNodes?.length ?? 0,
+    relayAdditionalNodeTags: (relayOptions.additionalNodes ?? []).map((node) => {
+      if (node && typeof node === "object" && "tag" in node && typeof node.tag === "string") {
+        return node.tag;
+      }
+
+      return "unknown";
+    }),
     relayAdditionalAttributesKeys: Object.keys(relayOptions.additionalAttributes ?? {}),
     buttonSchemaEvidence: format === "template_hydrated"
       ? "proto_url_button"
       : "project_local_native_flow_guess",
   };
+}
+
+function buildCtaRelayOptions(
+  format: IntegrationCtaButtonFormat,
+  messageId: string,
+): { messageId: string; additionalNodes?: Array<{ tag: string; attrs: Record<string, string> }> } {
+  if (format === "interactive_native_flow") {
+    return {
+      messageId,
+      additionalNodes: [
+        {
+          tag: "bot",
+          attrs: {
+            biz_bot: "1",
+          },
+        },
+        {
+          tag: "biz",
+          attrs: {},
+        },
+      ],
+    };
+  }
+
+  return { messageId };
 }
 
 export function buildRealCtaMessage(
@@ -881,9 +914,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
               const outbound = generateWAMessageFromContent(context.recipientJid, content as proto.IMessage, {
                 userJid: senderJid,
               });
-              const relayOptions = {
-                messageId: outbound.key.id!,
-              };
+              const relayOptions = buildCtaRelayOptions(selectedCtaButtonFormat!, outbound.key.id!);
               ctaProtocolTrace = buildCtaProtocolTrace(outbound.message!, selectedCtaButtonFormat!, relayOptions);
 
               providerMessageId = await sock.relayMessage(context.recipientJid, outbound.message!, relayOptions);
