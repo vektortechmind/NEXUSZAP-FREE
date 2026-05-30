@@ -68,6 +68,7 @@ function createDispatchService(options = {}) {
     instanceLookup: options.instanceLookup ?? (async (instanceId) => ({ id: instanceId, status: "CONNECTED" })),
     socketLookup: options.socketLookup ?? (() => sock),
     imageDownloader: options.imageDownloader ?? (async () => ({ buffer: Buffer.from("image-data"), mimeType: "image/jpeg" })),
+    templateService: options.templateService,
   });
 
   return { service, store, sentPayloads, sock };
@@ -139,15 +140,17 @@ function createDispatchService(options = {}) {
       payload: createBasePayload(),
     });
     assert.equal(sentPayloads[0].content.text.includes("Parabéns"), true);
+    assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
     assert.equal("image" in sentPayloads[0].content, false);
     assert.equal(result.dispatchLog.messageType, "text");
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"fallbackWithoutImage":true'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":"image_download_failed"'), true);
   }
 
   {
     const payload = createBasePayload();
     payload.order.product.image = "   ";
-    const { service, sentPayloads } = createDispatchService();
+    const { service, sentPayloads, store } = createDispatchService();
     await service.dispatchEvent({
       instanceId: "instance-a",
       eventSlug: "pedido_pago",
@@ -155,7 +158,60 @@ function createDispatchService(options = {}) {
       payload,
     });
     assert.equal(sentPayloads[0].content.text.includes("Parabéns"), true);
+    assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
     assert.equal(sentPayloads[0].content.contextInfo.externalAdReply.title, "Curso Premium");
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":"missing_image_url"'), true);
+  }
+
+  {
+    const { service, sentPayloads, store } = createDispatchService({
+      templateService: {
+        renderTemplateFromContext(context) {
+          return {
+            eventSlug: context.eventSlug,
+            messageType: "image",
+            title: "Synthetic invalid image",
+            body: "Texto principal",
+            caption: "Texto principal",
+            linkUrl: "https://checkout.example.com/c/123",
+            documentUrl: null,
+            imageUrl: "ftp://invalid-image.example.com/file.png",
+            fileName: null,
+            mimeType: null,
+            externalAdReply: {
+              title: "Curso Premium",
+              body: "Clique para acessar",
+              sourceUrl: "https://checkout.example.com/c/123",
+              mediaType: 1,
+            },
+            context,
+          };
+        },
+      },
+    });
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pedido_pago",
+      dedupKey: "evt-invalid-image",
+      payload: createBasePayload(),
+    });
+    assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":"invalid_image_url"'), true);
+  }
+
+  {
+    const payload = createBasePayload();
+    delete payload.checkout_link;
+    payload.order.product.image = "   ";
+    const { service, sentPayloads } = createDispatchService();
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "assinatura_em_atraso",
+      dedupKey: "evt-no-url-no-image",
+      payload,
+    });
+    assert.equal(sentPayloads[0].content.text.includes("Regularize agora"), true);
+    assert.equal(sentPayloads[0].content.contextInfo, undefined);
   }
 
   {
@@ -177,6 +233,31 @@ function createDispatchService(options = {}) {
     const payload = buildBaileysDispatchPayload(template);
     assert.equal(payload.text, "Use o link abaixo\n\nhttps://checkout.example.com/c/123");
     assert.equal(typeof service.buildBaileysPayload, "function");
+  }
+
+  {
+    const template = {
+      eventSlug: "pedido_pago",
+      messageType: "image",
+      title: "Synthetic image",
+      body: "Texto principal",
+      caption: "Texto principal",
+      linkUrl: "https://checkout.example.com/c/123",
+      documentUrl: null,
+      imageUrl: null,
+      fileName: null,
+      mimeType: null,
+      externalAdReply: {
+        title: "Curso Premium",
+        body: "Clique para acessar",
+        sourceUrl: "https://checkout.example.com/c/123",
+        mediaType: 1,
+      },
+      context: { eventSlug: "pedido_pago" },
+    };
+    const payload = buildBaileysDispatchPayload(template, { imageBuffer: null, imageMimeType: null });
+    assert.equal(payload.text, "Texto principal\n\nhttps://checkout.example.com/c/123");
+    assert.equal(payload.contextInfo.externalAdReply.sourceUrl, "https://checkout.example.com/c/123");
   }
 
   {
@@ -252,5 +333,6 @@ function createDispatchService(options = {}) {
   console.error("integration-dispatch-runtime-api:", error);
   process.exit(1);
 });
+
 
 

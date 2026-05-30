@@ -90,6 +90,11 @@ export type IntegrationDownloadedImageAsset = {
   mimeType: string | null;
 };
 
+export type IntegrationImageFallbackReason =
+  | "missing_image_url"
+  | "invalid_image_url"
+  | "image_download_failed";
+
 export class IntegrationDispatchRuntimeError extends Error {
   statusCode: number;
   code: string;
@@ -317,6 +322,10 @@ function buildLinkBody(template: IntegrationRenderedDispatchTemplate): string {
   return `${template.body}\n\n${template.linkUrl ?? ""}`.trim();
 }
 
+function buildImageFallbackBody(template: IntegrationRenderedDispatchTemplate): string {
+  return template.linkUrl ? buildLinkBody(template) : template.body;
+}
+
 function buildContextInfo(template: IntegrationRenderedDispatchTemplate, thumbnail?: Buffer): { externalAdReply: { title: string; body: string; sourceUrl: string; mediaType: 1; thumbnail?: Buffer } } | undefined {
   if (!template.externalAdReply) return undefined;
 
@@ -348,7 +357,7 @@ export function buildBaileysDispatchPayload(
     }
 
     return {
-      text: template.body,
+      text: buildImageFallbackBody(template),
       contextInfo,
     };
   }
@@ -380,6 +389,7 @@ function buildPayloadSummary(
   template: IntegrationRenderedDispatchTemplate,
   content: AnyMessageContent,
   imageAsset: IntegrationDownloadedImageAsset | null,
+  imageFallbackReason: IntegrationImageFallbackReason | null,
 ) {
   return {
     eventSlug: template.eventSlug,
@@ -393,6 +403,7 @@ function buildPayloadSummary(
     hasCaption: Boolean(template.caption),
     hasExternalAdReply: Boolean(template.externalAdReply),
     fallbackWithoutImage: template.messageType === "image" && !imageAsset,
+    imageFallbackReason,
   };
 }
 
@@ -513,11 +524,18 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
         }
 
         let imageAsset: IntegrationDownloadedImageAsset | null = null;
-        if (template.messageType === "image" && template.imageUrl) {
-          try {
-            imageAsset = await imageDownloader(template.imageUrl);
-          } catch {
-            imageAsset = null;
+        let imageFallbackReason: IntegrationImageFallbackReason | null = null;
+        if (template.messageType === "image") {
+          if (!template.imageUrl) {
+            imageFallbackReason = "missing_image_url";
+          } else if (!isHttpUrl(template.imageUrl)) {
+            imageFallbackReason = "invalid_image_url";
+          } else {
+            try {
+              imageAsset = await imageDownloader(template.imageUrl);
+            } catch {
+              imageFallbackReason = "image_download_failed";
+            }
           }
         }
 
@@ -535,7 +553,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
             dispatchStatus: INTEGRATION_DISPATCH_STATUS.SENT,
             failureCode: null,
             providerMessageId,
-            payloadSummary: buildPayloadSummary(template, content, imageAsset),
+            payloadSummary: buildPayloadSummary(template, content, imageAsset, imageFallbackReason),
           });
 
           return {
@@ -572,4 +590,3 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
 export const prismaIntegrationDispatchStore = createPrismaIntegrationDispatchStore(prisma);
 export const integrationDispatchLogService = createIntegrationDispatchLogService(prismaIntegrationDispatchStore);
 export const integrationDispatchRuntimeService = createIntegrationDispatchRuntimeService();
-
