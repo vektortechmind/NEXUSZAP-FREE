@@ -344,23 +344,22 @@ export function buildBaileysDispatchPayload(
     imageMimeType?: string | null;
   } = {},
 ): AnyMessageContent {
-  const contextInfo = buildContextInfo(template, options.imageBuffer ?? undefined);
-
   if (template.messageType === "image") {
     if (options.imageBuffer) {
       return {
         image: options.imageBuffer,
         mimetype: options.imageMimeType ?? undefined,
         caption: template.caption ?? template.body,
-        contextInfo,
       };
     }
 
     return {
       text: buildImageFallbackBody(template),
-      contextInfo,
+      contextInfo: buildContextInfo(template),
     };
   }
+
+  const contextInfo = buildContextInfo(template, options.imageBuffer ?? undefined);
 
   if (template.messageType === "text") {
     return {
