@@ -18,6 +18,7 @@ const {
 } = require("../src/services/integrations/integrationAuth.service.ts");
 const {
   createDashboardRoutes,
+  resolvePublicEndpointUrl,
 } = require("../src/routes/dashboard.routes.ts");
 const {
   createInMemoryIntegrationCredentialsSurfaceStore,

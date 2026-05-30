@@ -120,7 +120,7 @@ function assertStaticGuards(backendRoot, frontendRoot) {
   assert.ok(serviceSource.includes("child.unref()"), "worker destacado deve usar unref");
 
   assert.ok(runnerSource.includes('path.basename(scriptPath) !== "update.sh"'), "runner deve restringir execucao ao update.sh");
-  assert.ok(frontendSource.includes("Executar atualização"), "UI deve expor o botao de execucao");
+  assert.ok(frontendSource.includes("Atualizar"), "UI deve expor o botao de execucao");
 }
 
 (async () => {
@@ -207,3 +207,4 @@ function assertStaticGuards(backendRoot, frontendRoot) {
   console.error("update-disabled:", err);
   process.exit(1);
 });
+

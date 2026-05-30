@@ -88,8 +88,7 @@ function createDispatchService(options = {}) {
     assert.equal(sentPayloads[0].jid, "5511998765432@s.whatsapp.net");
     assert.deepEqual(sentPayloads[0].content.image, Buffer.from("image-data"));
     assert.equal(sentPayloads[0].content.caption, result.template.body);
-    assert.equal(sentPayloads[0].content.contextInfo.externalAdReply.title, "Curso Premium");
-    assert.deepEqual(sentPayloads[0].content.contextInfo.externalAdReply.thumbnail, Buffer.from("image-data"));
+    assert.equal(sentPayloads[0].content.contextInfo, undefined);
     assert.equal(result.dispatchLog.dispatchStatus, INTEGRATION_DISPATCH_STATUS.SENT);
     assert.equal(result.dispatchLog.messageType, "image");
     assert.equal(result.dispatchLog.providerMessageId, "wamid.123");
@@ -235,6 +234,31 @@ function createDispatchService(options = {}) {
     assert.equal(typeof service.buildBaileysPayload, "function");
   }
 
+  {
+    const template = {
+      eventSlug: "pedido_pago",
+      messageType: "image",
+      title: "Synthetic image",
+      body: "Texto principal",
+      caption: "Texto principal",
+      linkUrl: "https://checkout.example.com/c/123",
+      documentUrl: null,
+      imageUrl: "https://cdn.example.com/file.jpg",
+      fileName: null,
+      mimeType: null,
+      externalAdReply: {
+        title: "Curso Premium",
+        body: "Clique para acessar",
+        sourceUrl: "https://checkout.example.com/c/123",
+        mediaType: 1,
+      },
+      context: { eventSlug: "pedido_pago" },
+    };
+    const payload = buildBaileysDispatchPayload(template, { imageBuffer: Buffer.from("image-data"), imageMimeType: "image/jpeg" });
+    assert.deepEqual(payload.image, Buffer.from("image-data"));
+    assert.equal(payload.caption, "Texto principal");
+    assert.equal(payload.contextInfo, undefined);
+  }
   {
     const template = {
       eventSlug: "pedido_pago",
