@@ -74,6 +74,26 @@ assert.ok(
   "install.sh deve instalar Docker Engine e Docker Compose plugin em VPS Debian/Ubuntu"
 );
 assert.ok(
+  read("install.sh").includes("run_backend_migrations_docker"),
+  "install.sh deve verificar e aplicar migrations Prisma no fluxo Docker"
+);
+assert.ok(
+  read("install.sh").includes("prisma migrate status --schema prisma/schema.prisma"),
+  "install.sh deve verificar status das migrations Prisma"
+);
+assert.ok(
+  read("update.sh").includes("run_backend_migrations_docker"),
+  "update.sh deve verificar e aplicar migrations Prisma no fluxo Docker"
+);
+assert.ok(
+  read("update.sh").includes("run_backend_migrations_local"),
+  "update.sh deve verificar e aplicar migrations Prisma no fluxo local"
+);
+assert.ok(
+  read("update.sh").includes("prisma migrate status --schema prisma/schema.prisma"),
+  "update.sh deve verificar status das migrations Prisma"
+);
+assert.ok(
   /^v\d+\.\d+\.\d+/.test(read("backend/VERSION").trim()),
   "backend/VERSION deve conter a versao versionada da aplicacao"
 );
@@ -104,3 +124,4 @@ assert.deepStrictEqual(
 );
 
 console.log("ops-postgresql-cleanup: OK");
+
