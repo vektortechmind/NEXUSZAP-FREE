@@ -34,6 +34,21 @@ type IntegrationCredentialsSectionProps = {
   onCopyField: (label: string, value: string | null) => void;
 };
 
+function formatInstanceStatus(status: string) {
+  switch (status) {
+    case "CONNECTED":
+      return "Conectado";
+    case "DISCONNECTED":
+      return "Desconectado";
+    default:
+      return status;
+  }
+}
+
+function shouldHideCredentialStatus(instanceStatus: string, credentialStatus: string) {
+  return instanceStatus === "CONNECTED" && credentialStatus === "ACTIVE";
+}
+
 function CompactField({
   label,
   value,
@@ -54,14 +69,14 @@ function CompactField({
   return (
     <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-slate-900">
       <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">{label}</p>
-          <div className={`mt-2 flex items-start gap-2 text-sm ${muted ? "text-slate-500 dark:text-slate-400" : "text-slate-950 dark:text-slate-50"}`}>
+          <div className={`mt-2 flex min-w-0 items-start gap-2 text-sm ${muted ? "text-slate-500 dark:text-slate-400" : "text-slate-950 dark:text-slate-50"}`}>
             <span className="mt-0.5 shrink-0 text-slate-400 dark:text-slate-500">{icon}</span>
-            <code className="min-w-0 break-all rounded-lg bg-slate-50 px-2 py-1 font-mono text-[12px] dark:bg-slate-950/60">{value}</code>
+            <code title={value} className="block min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap rounded-lg bg-slate-50 px-2 py-1 font-mono text-[12px] dark:bg-slate-950/60">{value}</code>
           </div>
         </div>
-        <Button variant="secondary" size="sm" onClick={() => onCopy(copyLabel, copyValue)} className="shrink-0">
+        <Button variant="secondary" size="sm" onClick={() => onCopy(copyLabel, copyValue)} className="shrink-0" aria-label={`Copiar ${copyLabel}`}>
           <Copy className="h-4 w-4" aria-hidden="true" />
         </Button>
       </div>
@@ -130,7 +145,7 @@ function CredentialsIssueModal({
                       {selected ? <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden="true" /> : null}
                     </div>
                     <p className="mt-4 text-sm font-semibold text-slate-950 dark:text-slate-50">{instance.instanceName}</p>
-                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Slot {instance.instanceSlot} · {instance.instanceStatus}</p>
+                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">Slot {instance.instanceSlot} · {formatInstanceStatus(instance.instanceStatus)}</p>
                     <p className="mt-3 break-all font-mono text-[12px] text-slate-500 dark:text-slate-400">{instance.instanceId}</p>
                   </button>
                 );
@@ -216,45 +231,44 @@ export function IntegrationCredentialsSection({
             const primaryAction = getCredentialPrimaryAction(currentStatus);
             const detailVisible = isExpanded && currentDetail;
             const secretLabel = getCredentialSecretLabel(currentDetail);
+            const hideCredentialStatus = shouldHideCredentialStatus(instance.instanceStatus, currentStatus);
 
             return (
               <Panel key={instance.instanceId} className="overflow-hidden">
-                <div className="border-b border-slate-200 bg-slate-50/80 p-4 dark:border-slate-800 dark:bg-slate-950/35">
+                <div className="border-b border-slate-200 bg-slate-50/80 px-4 py-3 dark:border-slate-800 dark:bg-slate-950/35">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="inline-flex items-center rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white dark:bg-emerald-500 dark:text-slate-950">Instância {instance.instanceSlot}</span>
-                        <StatusDot
-                          tone={credentialSurfaceTone(currentStatus)}
-                          pulse={currentStatus === "ACTIVE"}
-                          label={formatCredentialSurfaceStatus(currentStatus)}
-                          className="text-xs font-semibold text-slate-800 dark:text-slate-200"
-                        />
-                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">{instance.instanceStatus}</span>
+                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">{formatInstanceStatus(instance.instanceStatus)}</span>
+                        {!hideCredentialStatus ? (
+                          <StatusDot
+                            tone={credentialSurfaceTone(currentStatus)}
+                            pulse={currentStatus === "ACTIVE"}
+                            label={formatCredentialSurfaceStatus(currentStatus)}
+                            className="text-xs font-semibold text-slate-800 dark:text-slate-200"
+                          />
+                        ) : null}
                       </div>
-                      <h3 className="mt-3 truncate text-lg font-semibold text-slate-950 dark:text-slate-50">{instance.instanceName}</h3>
-                      <p className="mt-1 break-all font-mono text-[12px] text-slate-500 dark:text-slate-400">{instance.instanceId}</p>
+                      <h3 className="mt-2 truncate text-base font-semibold text-slate-950 dark:text-slate-50">{instance.instanceName}</h3>
+                      <p className="mt-1 line-clamp-1 max-w-full text-xs text-slate-500 dark:text-slate-400">{instance.instanceId}</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => onToggleInstance(instance.instanceId)}
-                        className="rounded-xl border border-slate-200 bg-white p-2 text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
-                        aria-label={`${isExpanded ? "Ocultar" : "Abrir"} detalhes de ${instance.instanceName}`}
-                      >
-                        <Cog size={18} aria-hidden="true" />
-                      </button>
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => onToggleInstance(instance.instanceId)}
+                      className="rounded-xl border border-slate-200 bg-white p-2 text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                      aria-label={`${isExpanded ? "Ocultar" : "Abrir"} detalhes de ${instance.instanceName}`}
+                    >
+                      <Cog size={18} aria-hidden="true" />
+                    </button>
                   </div>
                 </div>
 
-                <div className="space-y-4 p-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {instance.tokenPreview ? (
-                      <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">{instance.tokenPreview}</span>
-                    ) : (
-                      <span className="rounded-full border border-dashed border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">Sem credencial ativa</span>
-                    )}
+                <div className="space-y-3 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className={`rounded-full px-3 py-1 text-xs font-semibold ${currentStatus === "ACTIVE" ? "border border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/25 dark:text-emerald-300" : "border border-slate-200 bg-white text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"}`}>
+                      {currentStatus === "ACTIVE" ? "Credencial ativa" : "Sem credencial ativa"}
+                    </span>
                     <button
                       type="button"
                       onClick={() => onToggleInstance(instance.instanceId)}
@@ -268,10 +282,10 @@ export function IntegrationCredentialsSection({
                     loadingDetail && !currentDetail ? (
                       <Skeleton className="h-56" />
                     ) : detailVisible ? (
-                      <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/35">
-                        <div className="grid gap-3 lg:grid-cols-3">
+                      <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/35">
+                        <div className="space-y-3">
                           <CompactField
-                            label="instanceId"
+                            label="ID"
                             value={currentDetail.instanceId}
                             icon={<Fingerprint size={16} aria-hidden="true" />}
                             copyLabel="instanceId"
@@ -279,7 +293,7 @@ export function IntegrationCredentialsSection({
                             onCopy={onCopyField}
                           />
                           <CompactField
-                            label="endpointUrl"
+                            label="URL do endpoint"
                             value={currentDetail.endpointUrl ?? workspace.endpointUrl ?? "/api/integrations/events"}
                             icon={<Link2 size={16} aria-hidden="true" />}
                             copyLabel="endpointUrl"
@@ -288,7 +302,7 @@ export function IntegrationCredentialsSection({
                             muted={!currentDetail.endpointUrl}
                           />
                           <CompactField
-                            label="secretToken"
+                            label="Token"
                             value={secretLabel}
                             icon={<KeyRound size={16} aria-hidden="true" />}
                             copyLabel="secretToken"
@@ -319,12 +333,6 @@ export function IntegrationCredentialsSection({
                               {primaryAction.label}
                             </Button>
                           )}
-                          {primaryAction.kind !== "issue" ? (
-                            <Button variant="secondary" onClick={() => onOpenIssueModal(instance.instanceId)} className="w-full sm:w-auto">
-                              <ShieldCheck className="mr-2 h-4 w-4" aria-hidden="true" />
-                              Nova emissão guiada
-                            </Button>
-                          ) : null}
                         </div>
 
                         <InlineAlert tone={currentDetail.secretToken ? "warning" : "info"} icon={currentDetail.secretToken ? <ShieldOff size={16} aria-hidden="true" /> : <ShieldCheck size={16} aria-hidden="true" />}>
