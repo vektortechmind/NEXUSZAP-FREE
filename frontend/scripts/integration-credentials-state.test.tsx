@@ -80,7 +80,7 @@ test("credential helpers keep labels, issue eligibility and token disclosure rul
   assert.equal(getCredentialSecretLabel(activeDetail), "Disponível somente após emissão ou rotação.");
 });
 
-test("credentials section renders compact cards and lazy detail without revealing the full token on initial active detail", () => {
+test("credentials section renders compact cards without masked preview noise and keeps active connection status non-duplicated", () => {
   const html = renderToStaticMarkup(
     <IntegrationCredentialsSection
       workspace={workspace}
@@ -104,9 +104,17 @@ test("credentials section renders compact cards and lazy detail without revealin
   assert.match(html, /Criar credencial/);
   assert.match(html, /Vendas/);
   assert.match(html, /Suporte/);
+  assert.match(html, /Conectado/);
+  assert.match(html, /Credencial ativa/);
+  assert.doesNotMatch(html, /nz_live_abc\*\*\*/);
+  assert.doesNotMatch(html, />Ativa</);
   assert.match(html, /Ver detalhes|Ocultar detalhes/);
+  assert.match(html, /ID/);
+  assert.match(html, /URL do endpoint/);
+  assert.match(html, /Token/);
   assert.match(html, /https:\/\/painel\.exemplo\.com\/api\/integrations\/events/);
   assert.match(html, /Disponível somente após emissão ou rotação\./);
+  assert.doesNotMatch(html, /Nova emissão guiada/);
   assert.doesNotMatch(html, /nz_live_secret_123/);
   assert.match(html, /Rotacionar secretToken/);
 });
