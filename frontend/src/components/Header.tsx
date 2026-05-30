@@ -1,6 +1,7 @@
 import { Menu } from "lucide-react";
 import React from "react";
 import { useLocation } from "react-router-dom";
+import { getAppRouteTitle } from "../features/navigation/appNavigation";
 import { ThemeToggle } from "./ThemeToggle";
 
 type HeaderProps = {
@@ -8,20 +9,9 @@ type HeaderProps = {
   actions?: React.ReactNode;
 };
 
-const routeMeta = [
-  { match: (path: string) => path === "/", title: "Instâncias" },
-  { match: (path: string) => path.startsWith("/dashboard"), title: "Dashboard" },
-  { match: (path: string) => path.startsWith("/agente") || path.startsWith("/telegram"), title: "Agentes" },
-  { match: (path: string) => path.startsWith("/settings"), title: "Configurações" },
-];
-
-function getRouteMeta(pathname: string) {
-  return routeMeta.find((route) => route.match(pathname)) ?? routeMeta[0];
-}
-
 export function Header({ onOpenMobileSidebar, actions }: HeaderProps) {
   const { pathname } = useLocation();
-  const meta = getRouteMeta(pathname);
+  const title = getAppRouteTitle(pathname);
 
   return (
     <header className="px-4 pt-4 sm:px-6 sm:pt-6 lg:px-8">
@@ -37,7 +27,7 @@ export function Header({ onOpenMobileSidebar, actions }: HeaderProps) {
             <Menu size={18} />
           </button>
           <div className="min-w-0">
-            <h1 className="truncate text-xl font-semibold tracking-normal text-slate-950 dark:text-slate-50 sm:text-2xl">{meta.title}</h1>
+            <h1 className="truncate text-xl font-semibold tracking-normal text-slate-950 dark:text-slate-50 sm:text-2xl">{title}</h1>
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">

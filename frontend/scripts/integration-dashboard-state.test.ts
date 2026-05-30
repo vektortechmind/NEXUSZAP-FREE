@@ -43,7 +43,7 @@ test("window formatting keeps operator-facing values compact", () => {
   assert.equal(formatWindowMinutes(null), "N/D");
 });
 
-test("integration summary counts active, idle, failures and missing credentials", () => {
+test("integration summary counts active, idle and failures for compact operator metrics", () => {
   const summary = summarizeIntegrationCards([
     createItem({ operationalStatus: "ACTIVE_RECENT_ACTIVITY", credentialStatus: "ACTIVE" }),
     createItem({ instanceId: "instance-2", operationalStatus: "ACTIVE_IDLE", credentialStatus: "ACTIVE" }),
@@ -56,6 +56,5 @@ test("integration summary counts active, idle, failures and missing credentials"
     recentActivity: 1,
     idle: 1,
     failures: 1,
-    missingCredential: 1,
   });
 });

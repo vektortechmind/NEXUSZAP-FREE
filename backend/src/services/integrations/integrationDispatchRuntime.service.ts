@@ -85,6 +85,16 @@ export interface IntegrationDispatchStore {
   }): Promise<IntegrationDispatchLogRecord>;
 }
 
+export type IntegrationDownloadedImageAsset = {
+  buffer: Buffer;
+  mimeType: string | null;
+};
+
+export type IntegrationImageFallbackReason =
+  | "missing_image_url"
+  | "invalid_image_url"
+  | "image_download_failed";
+
 export class IntegrationDispatchRuntimeError extends Error {
   statusCode: number;
   code: string;
@@ -297,6 +307,7 @@ export type IntegrationDispatchServiceDeps = {
   logService?: Pick<ReturnType<typeof createIntegrationDispatchLogService>, "persistLog" | "updateLog">;
   instanceLookup?: (instanceId: string) => Promise<IntegrationDispatchInstanceRecord | null>;
   socketLookup?: (instanceId: string) => WASocket | null;
+  imageDownloader?: (imageUrl: string) => Promise<IntegrationDownloadedImageAsset>;
 };
 
 const integrationEventCatalogServiceBridge = {
@@ -311,13 +322,58 @@ function buildLinkBody(template: IntegrationRenderedDispatchTemplate): string {
   return `${template.body}\n\n${template.linkUrl ?? ""}`.trim();
 }
 
-export function buildBaileysDispatchPayload(template: IntegrationRenderedDispatchTemplate): AnyMessageContent {
+function buildImageFallbackBody(template: IntegrationRenderedDispatchTemplate): string {
+  return template.linkUrl ? buildLinkBody(template) : template.body;
+}
+
+function buildContextInfo(template: IntegrationRenderedDispatchTemplate, thumbnail?: Buffer): { externalAdReply: { title: string; body: string; sourceUrl: string; mediaType: 1; thumbnail?: Buffer } } | undefined {
+  if (!template.externalAdReply) return undefined;
+
+  return {
+    externalAdReply: {
+      ...template.externalAdReply,
+      thumbnail: thumbnail ?? undefined,
+    },
+  };
+}
+
+export function buildBaileysDispatchPayload(
+  template: IntegrationRenderedDispatchTemplate,
+  options: {
+    imageBuffer?: Buffer | null;
+    imageMimeType?: string | null;
+  } = {},
+): AnyMessageContent {
+  const contextInfo = buildContextInfo(template, options.imageBuffer ?? undefined);
+
+  if (template.messageType === "image") {
+    if (options.imageBuffer) {
+      return {
+        image: options.imageBuffer,
+        mimetype: options.imageMimeType ?? undefined,
+        caption: template.caption ?? template.body,
+        contextInfo,
+      };
+    }
+
+    return {
+      text: buildImageFallbackBody(template),
+      contextInfo,
+    };
+  }
+
   if (template.messageType === "text") {
-    return { text: template.body };
+    return {
+      text: template.body,
+      contextInfo,
+    };
   }
 
   if (template.messageType === "link") {
-    return { text: buildLinkBody(template) };
+    return {
+      text: buildLinkBody(template),
+      contextInfo,
+    };
   }
 
   return {
@@ -325,18 +381,29 @@ export function buildBaileysDispatchPayload(template: IntegrationRenderedDispatc
     mimetype: template.mimeType!,
     fileName: template.fileName ?? undefined,
     caption: template.caption ?? undefined,
+    contextInfo,
   };
 }
 
-function buildPayloadSummary(template: IntegrationRenderedDispatchTemplate) {
+function buildPayloadSummary(
+  template: IntegrationRenderedDispatchTemplate,
+  content: AnyMessageContent,
+  imageAsset: IntegrationDownloadedImageAsset | null,
+  imageFallbackReason: IntegrationImageFallbackReason | null,
+) {
   return {
     eventSlug: template.eventSlug,
-    messageType: template.messageType,
+    intendedMessageType: template.messageType,
+    dispatchedMessageType: resolveDispatchedMessageType(template, content),
     title: template.title,
     linkUrl: template.linkUrl,
     documentUrl: template.documentUrl,
+    imageUrl: template.imageUrl,
     fileName: template.fileName,
     hasCaption: Boolean(template.caption),
+    hasExternalAdReply: Boolean(template.externalAdReply),
+    fallbackWithoutImage: template.messageType === "image" && !imageAsset,
+    imageFallbackReason,
   };
 }
 
@@ -354,12 +421,60 @@ function toTemplateRenderRuntimeError(error: IntegrationDispatchTemplateRenderEr
   );
 }
 
+function isHttpUrl(value: string): boolean {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+export async function downloadIntegrationImageAsset(imageUrl: string): Promise<IntegrationDownloadedImageAsset> {
+  if (!isHttpUrl(imageUrl)) {
+    throw new Error("Invalid integration image URL");
+  }
+
+  const response = await fetch(imageUrl, {
+    headers: {
+      Accept: "image/*,*/*;q=0.8",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Image download failed with status ${response.status}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  if (!buffer.byteLength) {
+    throw new Error("Downloaded integration image is empty");
+  }
+
+  const mimeType = response.headers.get("content-type");
+  return {
+    buffer,
+    mimeType: mimeType && mimeType.trim() ? mimeType : null,
+  };
+}
+
+function resolveDispatchedMessageType(
+  template: IntegrationRenderedDispatchTemplate,
+  content: AnyMessageContent,
+): IntegrationDispatchMessageType {
+  if ("image" in content) return "image";
+  if ("document" in content) return "document";
+  if (template.messageType === "link") return "link";
+  return "text";
+}
+
 export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatchServiceDeps = {}) {
   const eventCatalogService = deps.eventCatalogService ?? integrationEventCatalogServiceBridge;
   const templateService = deps.templateService ?? integrationDispatchTemplateServiceBridge;
   const logService = deps.logService ?? integrationDispatchLogService;
   const instanceLookup = deps.instanceLookup ?? (async (instanceId: string) => prisma.instance.findUnique({ where: { id: instanceId }, select: { id: true, status: true } }));
   const socketLookup = deps.socketLookup ?? ((instanceId: string) => InstanceManager.get(instanceId));
+  const imageDownloader = deps.imageDownloader ?? downloadIntegrationImageAsset;
 
   return {
     buildBaileysPayload: buildBaileysDispatchPayload,
@@ -408,18 +523,37 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
           throw error;
         }
 
-        const content = buildBaileysDispatchPayload(template);
+        let imageAsset: IntegrationDownloadedImageAsset | null = null;
+        let imageFallbackReason: IntegrationImageFallbackReason | null = null;
+        if (template.messageType === "image") {
+          if (!template.imageUrl) {
+            imageFallbackReason = "missing_image_url";
+          } else if (!isHttpUrl(template.imageUrl)) {
+            imageFallbackReason = "invalid_image_url";
+          } else {
+            try {
+              imageAsset = await imageDownloader(template.imageUrl);
+            } catch {
+              imageFallbackReason = "image_download_failed";
+            }
+          }
+        }
+
+        const content = buildBaileysDispatchPayload(template, {
+          imageBuffer: imageAsset?.buffer ?? null,
+          imageMimeType: imageAsset?.mimeType ?? null,
+        });
 
         try {
           const sentMessage = await sock.sendMessage(context.recipientJid, content);
           const providerMessageId = extractProviderMessageId(sentMessage as WAMessage | null | undefined);
           const finalLog = await logService.updateLog(dispatchLog.id, {
             recipientJid: context.recipientJid,
-            messageType: template.messageType,
+            messageType: resolveDispatchedMessageType(template, content),
             dispatchStatus: INTEGRATION_DISPATCH_STATUS.SENT,
             failureCode: null,
             providerMessageId,
-            payloadSummary: buildPayloadSummary(template),
+            payloadSummary: buildPayloadSummary(template, content, imageAsset, imageFallbackReason),
           });
 
           return {
@@ -429,7 +563,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
             providerMessageId,
             dispatchLog: finalLog,
           };
-        } catch (error) {
+        } catch {
           throw new IntegrationDispatchSendFailedError(context.eventSlug);
         }
       } catch (error) {

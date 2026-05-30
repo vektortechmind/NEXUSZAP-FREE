@@ -30,13 +30,27 @@ function createBasePayload() {
       cpf: "12345678900",
     },
     order: {
-      product: { name: "Curso Premium" },
+      total: "199.90",
+      product: {
+        name: "Curso Premium",
+        image: "products/curso-premium/capa.jpg",
+      },
       product_offer: { name: "Oferta Relampago" },
       subscription_plan: { name: "Plano Anual" },
     },
+    checkout_session: {
+      total: "87.50",
+      name: "Lead Carrinho",
+      phone: "31987654321",
+      product: {
+        name: "Produto do Carrinho",
+        image: "products/carrinho/imagem.png",
+      },
+    },
     subscription: {
-      user: { phone: "31988887777", email: "assinatura@example.com" },
-      product: { name: "Clube VIP" },
+      next_billing: "59.90",
+      user: { phone: "31988887777", email: "assinatura@example.com", name: "Assinante VIP" },
+      product: { name: "Clube VIP", image: "products/clube-vip/capa.png" },
       subscription_plan: { name: "Plano Mensal" },
     },
     checkout_link: "https://checkout.example.com/c/123",
@@ -64,6 +78,25 @@ function createBasePayload() {
   };
 }
 
+function payloadForEvent(eventSlug) {
+  const payload = createBasePayload();
+
+  if (eventSlug === "carrinho_abandonado") {
+    delete payload.customer.phone;
+    delete payload.order;
+    delete payload.subscription;
+  }
+
+  if (eventSlug.startsWith("assinatura_")) {
+    delete payload.order;
+    delete payload.checkout_session;
+    payload.customer.phone = null;
+    payload.subscription.product = { name: "Comunidade de Assinantes", image: "products/comunidade/capa.jpg" };
+  }
+
+  return payload;
+}
+
 function assertNoRawLeak(template) {
   assert.equal(template.body.includes("TEXTO EXTERNO MALICIOSO"), false);
   assert.equal(template.body.includes("IGNORAR TEXTO BRUTO"), false);
@@ -74,37 +107,44 @@ function assertNoRawLeak(template) {
 }
 
 (() => {
+  const imageEvents = new Set([
+    "pedido_pago",
+    "pix_gerado",
+    "carrinho_abandonado",
+    "envio_acesso",
+    "assinatura_criada",
+    "assinatura_em_atraso",
+  ]);
+  const externalReplyEvents = new Set([
+    "pedido_pago",
+    "pagamento_recusado",
+    "pix_gerado",
+    "boleto_gerado",
+    "carrinho_abandonado",
+    "envio_acesso",
+    "assinatura_criada",
+    "assinatura_em_atraso",
+  ]);
+
   for (const eventSlug of SUPPORTED_INTEGRATION_EVENT_SLUGS) {
-    const payload = createBasePayload();
-
-    if (eventSlug === "carrinho_abandonado") {
-      payload.checkout_session = { product: { name: "Recuperacao Carrinho" } };
-      delete payload.customer.phone;
-      delete payload.order;
-      delete payload.subscription;
-    }
-
-    if (eventSlug.startsWith("assinatura_")) {
-      delete payload.order;
-      payload.subscription.product = { name: "Comunidade de Assinantes" };
-    }
-
+    const payload = payloadForEvent(eventSlug);
     const rendered = renderIntegrationDispatchTemplate(eventSlug, payload);
+
     assert.equal(rendered.eventSlug, eventSlug);
+    assert.deepEqual(rendered.context, normalizeIntegrationEventContext(eventSlug, payload));
     assert.equal(typeof rendered.body, "string");
     assert.ok(rendered.body.length > 0);
-    assert.deepEqual(rendered.context, normalizeIntegrationEventContext(eventSlug, payload));
     assertNoRawLeak(rendered);
 
-    if (["pedido_pendente", "envio_acesso", "pagamento_recusado", "carrinho_abandonado", "assinatura_em_atraso"].includes(eventSlug)) {
-      assert.equal(rendered.messageType, "link");
-      assert.ok(rendered.linkUrl);
-      assert.equal(rendered.documentUrl, null);
+    if (imageEvents.has(eventSlug)) {
+      assert.equal(rendered.messageType, "image");
+      assert.equal(rendered.caption, rendered.body);
+      assert.equal(typeof rendered.imageUrl === "string" || rendered.imageUrl === null, true);
     }
 
-    if (["pedido_pago", "pedido_cancelado", "reembolso", "pix_gerado", "assinatura_criada", "assinatura_renovada", "assinatura_cancelada"].includes(eventSlug)) {
+    if (!imageEvents.has(eventSlug) && eventSlug !== "boleto_gerado") {
       assert.equal(rendered.messageType, "text");
-      assert.equal(rendered.linkUrl, null);
+      assert.equal(rendered.imageUrl, null);
       assert.equal(rendered.documentUrl, null);
     }
 
@@ -114,65 +154,80 @@ function assertNoRawLeak(template) {
       assert.equal(rendered.fileName, "boleto.pdf");
       assert.equal(rendered.mimeType, "application/pdf");
       assert.equal(rendered.caption, rendered.body);
+      assert.equal(rendered.externalAdReply.title, "Baixar boleto");
     }
 
-    if (eventSlug === "pix_gerado") {
-      assert.equal(rendered.body.includes("000201PIX-COPIA-COLA"), true);
-      assert.equal(rendered.body.includes("tx-123"), true);
-    }
-
-    if (eventSlug === "envio_acesso") {
-      assert.equal(rendered.linkUrl, "https://members.example.com/aula-1");
-      assert.equal(rendered.body.includes("temporary-pass"), true);
+    if (externalReplyEvents.has(eventSlug)) {
+      assert.ok(rendered.externalAdReply);
+      assert.equal(rendered.externalAdReply.mediaType, 1);
+      assert.equal(typeof rendered.externalAdReply.sourceUrl, "string");
+    } else {
+      assert.equal(rendered.externalAdReply, null);
     }
   }
 
   {
-    const payload = createBasePayload();
+    const rendered = renderIntegrationDispatchTemplate("pedido_pago", payloadForEvent("pedido_pago"));
+    assert.equal(rendered.body, "✅ *Parabéns Maria Cliente!*\n\nSeu *Curso Premium* foi aprovado com sucesso!\n\n👉 Acesse agora sua área de membros e comece a aprender.");
+    assert.equal(rendered.externalAdReply.title, "Curso Premium");
+    assert.equal(rendered.externalAdReply.body, "Clique para acessar");
+  }
+
+  {
+    const rendered = renderIntegrationDispatchTemplate("pagamento_recusado", payloadForEvent("pagamento_recusado"));
+    assert.equal(rendered.messageType, "text");
+    assert.equal(rendered.body.includes("• Cartão sem limite"), true);
+    assert.equal(rendered.externalAdReply.title, "Tentar novamente");
+    assert.equal(rendered.linkUrl, "https://checkout.example.com/c/123");
+  }
+
+  {
+    const rendered = renderIntegrationDispatchTemplate("pix_gerado", payloadForEvent("pix_gerado"));
+    assert.equal(rendered.body.includes("R$ 199.90"), true);
+    assert.equal(rendered.body.includes("000201PIX-COPIA-COLA"), true);
+  }
+
+  {
+    const payload = payloadForEvent("pedido_pago");
     delete payload.customer.name;
     delete payload.order.product.name;
     const rendered = renderIntegrationDispatchTemplate("pedido_pago", payload);
-    assert.ok(rendered.body.length > 0);
     assert.equal(rendered.body.includes("undefined"), false);
+    assert.equal(rendered.body.includes("null"), false);
   }
 
   {
-    const payload = createBasePayload();
-    delete payload.access.login;
-    delete payload.access.password;
-    delete payload.access.instructions;
-    const rendered = renderIntegrationDispatchTemplate("envio_acesso", payload);
-    assert.equal(rendered.messageType, "link");
-    assert.equal(rendered.body.includes("Login:"), false);
-    assert.equal(rendered.body.includes("Senha:"), false);
+    const payload = payloadForEvent("pedido_pago");
+    payload.order.product.image = "   ";
+    const rendered = renderIntegrationDispatchTemplate("pedido_pago", payload);
+    assert.equal(rendered.messageType, "image");
+    assert.equal(rendered.imageUrl, null);
   }
 
   {
-    const payload = createBasePayload();
+    const payload = payloadForEvent("pagamento_recusado");
     delete payload.checkout_link;
-    assert.throws(
-      () => renderIntegrationDispatchTemplate("pedido_pendente", payload),
-      (error) => error instanceof MissingIntegrationTemplateUrlError && error.code === "INTEGRATION_TEMPLATE_REQUIRED_URL_MISSING",
-    );
+    const rendered = renderIntegrationDispatchTemplate("pagamento_recusado", payload);
+    assert.equal(rendered.messageType, "text");
+    assert.equal(rendered.externalAdReply, null);
   }
 
   {
-    const payload = createBasePayload();
-    payload.access.url = "ftp://members.example.com";
-    const context = normalizeIntegrationEventContext("envio_acesso", payload);
-    assert.throws(
-      () => renderIntegrationDispatchTemplateFromContext(context),
-      (error) => error instanceof MissingIntegrationTemplateUrlError && error.code === "INTEGRATION_TEMPLATE_REQUIRED_URL_MISSING",
-    );
-  }
-
-  {
-    const payload = createBasePayload();
+    const payload = payloadForEvent("boleto_gerado");
     delete payload.boleto.pdf_url;
     assert.throws(
       () => renderIntegrationDispatchTemplate("boleto_gerado", payload),
       (error) => error instanceof MissingIntegrationTemplateUrlError && error.code === "INTEGRATION_TEMPLATE_REQUIRED_URL_MISSING",
     );
+  }
+
+  {
+    const payload = payloadForEvent("assinatura_em_atraso");
+    delete payload.checkout_link;
+    const context = normalizeIntegrationEventContext("assinatura_em_atraso", payload);
+    const rendered = renderIntegrationDispatchTemplateFromContext(context);
+    assert.equal(rendered.messageType, "image");
+    assert.equal(rendered.externalAdReply, null);
   }
 
   console.log("integration-dispatch-template-api: OK");

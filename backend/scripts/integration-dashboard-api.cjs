@@ -135,7 +135,7 @@ function createOverviewService() {
     const response = await app.inject({ method: "GET", url: "/api/dashboard/integrations" });
     assert.equal(response.statusCode, 200, response.body);
     const payload = JSON.parse(response.body);
-    assert.equal(payload.documentation.path, "docs/integrations/nexuszap-plugin-api.md");
+    assert.equal(payload.documentation.path, "/integracoes/documentacao");
     assert.equal(payload.documentation.endpointUrl, "https://painel.exemplo.com/api/integrations/events");
     assert.equal(payload.integrations[0].recentDispatches[0].providerMessageId, "wamid.123");
     assert.equal(payload.integrations[1].lastDispatch.failureCode, "INTEGRATION_DISPATCH_INSTANCE_OFFLINE");

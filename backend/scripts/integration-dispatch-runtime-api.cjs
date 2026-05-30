@@ -12,6 +12,7 @@ require("ts-node/register");
 
 const assert = require("assert");
 const {
+  buildBaileysDispatchPayload,
   createInMemoryIntegrationDispatchStore,
   createIntegrationDispatchLogService,
   createIntegrationDispatchRuntimeService,
@@ -25,8 +26,18 @@ const {
 function createBasePayload() {
   return {
     customer: { name: "Maria", phone: "(11) 99876-5432" },
-    order: { product: { name: "Curso Premium" } },
+    order: {
+      total: "199.90",
+      product: { name: "Curso Premium", image: "https://cdn.example.com/curso-premium.jpg" },
+    },
+    subscription: {
+      user: { phone: "31988887777", name: "Assinante VIP" },
+      product: { name: "Clube VIP", image: "https://cdn.example.com/clube-vip.jpg" },
+    },
     checkout_link: "https://checkout.example.com/c/123",
+    pix: {
+      copy_paste: "000201PIX-COPIA-COLA",
+    },
     boleto: {
       pdf_url: "https://checkout.example.com/boleto.pdf",
       amount: "149.90",
@@ -56,6 +67,8 @@ function createDispatchService(options = {}) {
     logService,
     instanceLookup: options.instanceLookup ?? (async (instanceId) => ({ id: instanceId, status: "CONNECTED" })),
     socketLookup: options.socketLookup ?? (() => sock),
+    imageDownloader: options.imageDownloader ?? (async () => ({ buffer: Buffer.from("image-data"), mimeType: "image/jpeg" })),
+    templateService: options.templateService,
   });
 
   return { service, store, sentPayloads, sock };
@@ -73,8 +86,12 @@ function createDispatchService(options = {}) {
       payload: createBasePayload(),
     });
     assert.equal(sentPayloads[0].jid, "5511998765432@s.whatsapp.net");
-    assert.deepEqual(sentPayloads[0].content, { text: result.template.body });
+    assert.deepEqual(sentPayloads[0].content.image, Buffer.from("image-data"));
+    assert.equal(sentPayloads[0].content.caption, result.template.body);
+    assert.equal(sentPayloads[0].content.contextInfo.externalAdReply.title, "Curso Premium");
+    assert.deepEqual(sentPayloads[0].content.contextInfo.externalAdReply.thumbnail, Buffer.from("image-data"));
     assert.equal(result.dispatchLog.dispatchStatus, INTEGRATION_DISPATCH_STATUS.SENT);
+    assert.equal(result.dispatchLog.messageType, "image");
     assert.equal(result.dispatchLog.providerMessageId, "wamid.123");
     assert.equal(Array.from(store.logs.values())[0].dispatchStatus, INTEGRATION_DISPATCH_STATUS.SENT);
   }
@@ -83,11 +100,13 @@ function createDispatchService(options = {}) {
     const { service, sentPayloads } = createDispatchService();
     await service.dispatchEvent({
       instanceId: "instance-a",
-      eventSlug: "pedido_pendente",
-      dedupKey: "evt-link",
+      eventSlug: "pagamento_recusado",
+      dedupKey: "evt-text-reply",
       payload: createBasePayload(),
     });
-    assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
+    assert.equal(sentPayloads[0].content.text.includes("Tente novamente"), true);
+    assert.equal(sentPayloads[0].content.contextInfo.externalAdReply.title, "Tentar novamente");
+    assert.equal(sentPayloads[0].content.contextInfo.externalAdReply.sourceUrl, "https://checkout.example.com/c/123");
   }
 
   {
@@ -103,7 +122,142 @@ function createDispatchService(options = {}) {
       mimetype: "application/pdf",
       fileName: "boleto.pdf",
       caption: sentPayloads[0].content.caption,
+      contextInfo: sentPayloads[0].content.contextInfo,
     });
+    assert.equal(sentPayloads[0].content.contextInfo.externalAdReply.title, "Baixar boleto");
+  }
+
+  {
+    const { service, sentPayloads, store } = createDispatchService({
+      imageDownloader: async () => {
+        throw new Error("download failed");
+      },
+    });
+    const result = await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pedido_pago",
+      dedupKey: "evt-img-fallback",
+      payload: createBasePayload(),
+    });
+    assert.equal(sentPayloads[0].content.text.includes("Parabéns"), true);
+    assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
+    assert.equal("image" in sentPayloads[0].content, false);
+    assert.equal(result.dispatchLog.messageType, "text");
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"fallbackWithoutImage":true'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":"image_download_failed"'), true);
+  }
+
+  {
+    const payload = createBasePayload();
+    payload.order.product.image = "   ";
+    const { service, sentPayloads, store } = createDispatchService();
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pedido_pago",
+      dedupKey: "evt-no-image",
+      payload,
+    });
+    assert.equal(sentPayloads[0].content.text.includes("Parabéns"), true);
+    assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
+    assert.equal(sentPayloads[0].content.contextInfo.externalAdReply.title, "Curso Premium");
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":"missing_image_url"'), true);
+  }
+
+  {
+    const { service, sentPayloads, store } = createDispatchService({
+      templateService: {
+        renderTemplateFromContext(context) {
+          return {
+            eventSlug: context.eventSlug,
+            messageType: "image",
+            title: "Synthetic invalid image",
+            body: "Texto principal",
+            caption: "Texto principal",
+            linkUrl: "https://checkout.example.com/c/123",
+            documentUrl: null,
+            imageUrl: "ftp://invalid-image.example.com/file.png",
+            fileName: null,
+            mimeType: null,
+            externalAdReply: {
+              title: "Curso Premium",
+              body: "Clique para acessar",
+              sourceUrl: "https://checkout.example.com/c/123",
+              mediaType: 1,
+            },
+            context,
+          };
+        },
+      },
+    });
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pedido_pago",
+      dedupKey: "evt-invalid-image",
+      payload: createBasePayload(),
+    });
+    assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":"invalid_image_url"'), true);
+  }
+
+  {
+    const payload = createBasePayload();
+    delete payload.checkout_link;
+    payload.order.product.image = "   ";
+    const { service, sentPayloads } = createDispatchService();
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "assinatura_em_atraso",
+      dedupKey: "evt-no-url-no-image",
+      payload,
+    });
+    assert.equal(sentPayloads[0].content.text.includes("Regularize agora"), true);
+    assert.equal(sentPayloads[0].content.contextInfo, undefined);
+  }
+
+  {
+    const { service } = createDispatchService();
+    const template = {
+      eventSlug: "pedido_pendente",
+      messageType: "link",
+      title: "Synthetic",
+      body: "Use o link abaixo",
+      caption: null,
+      linkUrl: "https://checkout.example.com/c/123",
+      documentUrl: null,
+      imageUrl: null,
+      fileName: null,
+      mimeType: null,
+      externalAdReply: null,
+      context: { eventSlug: "pedido_pendente" },
+    };
+    const payload = buildBaileysDispatchPayload(template);
+    assert.equal(payload.text, "Use o link abaixo\n\nhttps://checkout.example.com/c/123");
+    assert.equal(typeof service.buildBaileysPayload, "function");
+  }
+
+  {
+    const template = {
+      eventSlug: "pedido_pago",
+      messageType: "image",
+      title: "Synthetic image",
+      body: "Texto principal",
+      caption: "Texto principal",
+      linkUrl: "https://checkout.example.com/c/123",
+      documentUrl: null,
+      imageUrl: null,
+      fileName: null,
+      mimeType: null,
+      externalAdReply: {
+        title: "Curso Premium",
+        body: "Clique para acessar",
+        sourceUrl: "https://checkout.example.com/c/123",
+        mediaType: 1,
+      },
+      context: { eventSlug: "pedido_pago" },
+    };
+    const payload = buildBaileysDispatchPayload(template, { imageBuffer: null, imageMimeType: null });
+    assert.equal(payload.text, "Texto principal\n\nhttps://checkout.example.com/c/123");
+    assert.equal(payload.contextInfo.externalAdReply.sourceUrl, "https://checkout.example.com/c/123");
   }
 
   {
@@ -142,6 +296,7 @@ function createDispatchService(options = {}) {
     const payload = createBasePayload();
     delete payload.customer.phone;
     delete payload.order;
+    delete payload.subscription;
     const { service, store } = createDispatchService();
     await assert.rejects(
       () => service.dispatchEvent({
@@ -178,3 +333,6 @@ function createDispatchService(options = {}) {
   console.error("integration-dispatch-runtime-api:", error);
   process.exit(1);
 });
+
+
+
