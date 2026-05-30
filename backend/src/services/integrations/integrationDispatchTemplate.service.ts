@@ -1,5 +1,4 @@
 import type {
-  IntegrationNormalizedAccess,
   IntegrationNormalizedEventContext,
   SupportedIntegrationEventSlug,
 } from "./integrationEventCatalog.service";
@@ -7,7 +6,14 @@ import integrationEventCatalog = require("./integrationEventCatalog.service");
 
 const { normalizeIntegrationEventContext } = integrationEventCatalog;
 
-export type IntegrationDispatchMessageType = "text" | "link" | "document";
+export type IntegrationDispatchMessageType = "text" | "link" | "document" | "image";
+
+export type IntegrationRenderedExternalAdReply = {
+  title: string;
+  body: string;
+  sourceUrl: string;
+  mediaType: 1;
+};
 
 export type IntegrationRenderedDispatchTemplate = {
   eventSlug: SupportedIntegrationEventSlug;
@@ -17,8 +23,10 @@ export type IntegrationRenderedDispatchTemplate = {
   caption: string | null;
   linkUrl: string | null;
   documentUrl: string | null;
+  imageUrl: string | null;
   fileName: string | null;
   mimeType: string | null;
+  externalAdReply: IntegrationRenderedExternalAdReply | null;
   context: IntegrationNormalizedEventContext;
 };
 
@@ -63,26 +71,18 @@ function joinParagraphs(paragraphs: Array<string | null | undefined>): string {
   return compactWhitespace(filtered.join("\n\n"));
 }
 
-function toLine(label: string, value: string | null | undefined): string | null {
-  const normalized = normalizeTextValue(value);
-  return normalized ? `${label}: ${normalized}` : null;
-}
-
 function productLabel(context: IntegrationNormalizedEventContext, fallback: string): string {
-  return normalizeTextValue(context.product.name)
+  return normalizeTextValue(context.productName)
+    || normalizeTextValue(context.product.name)
     || normalizeTextValue(context.product.offerName)
     || normalizeTextValue(context.product.planName)
     || fallback;
 }
 
 function customerLabel(context: IntegrationNormalizedEventContext): string {
-  return normalizeTextValue(context.customer.name) || "cliente";
-}
-
-function accessField(access: IntegrationNormalizedAccess, fieldName: string): string | null {
-  if (!access) return null;
-  const value = access[fieldName];
-  return typeof value === "string" && value.trim() ? value.trim() : null;
+  return normalizeTextValue(context.name)
+    || normalizeTextValue(context.customer.name)
+    || "cliente";
 }
 
 function ensureRequiredUrl(eventSlug: SupportedIntegrationEventSlug, fieldName: string, value: string | null): string {
@@ -107,10 +107,26 @@ function assertRenderedText(value: string, eventSlug: SupportedIntegrationEventS
   return normalized;
 }
 
+function createExternalAdReply(
+  title: string,
+  body: string | null | undefined,
+  sourceUrl: string | null,
+): IntegrationRenderedExternalAdReply | null {
+  if (!sourceUrl) return null;
+  return {
+    title,
+    body: normalizeTextValue(body) || title,
+    sourceUrl,
+    mediaType: 1,
+  };
+}
+
 function renderTextTemplate(
   context: IntegrationNormalizedEventContext,
   title: string,
   paragraphs: Array<string | null | undefined>,
+  externalAdReply?: IntegrationRenderedExternalAdReply | null,
+  linkUrl?: string | null,
 ): IntegrationRenderedDispatchTemplate {
   const body = assertRenderedText(joinParagraphs(paragraphs), context.eventSlug);
   return {
@@ -119,10 +135,12 @@ function renderTextTemplate(
     title,
     body,
     caption: null,
-    linkUrl: null,
+    linkUrl: linkUrl ?? null,
     documentUrl: null,
+    imageUrl: null,
     fileName: null,
     mimeType: null,
+    externalAdReply: externalAdReply ?? null,
     context,
   };
 }
@@ -145,8 +163,10 @@ function renderLinkTemplate(
     caption: null,
     linkUrl: requiredUrl,
     documentUrl: null,
+    imageUrl: null,
     fileName: null,
     mimeType: null,
+    externalAdReply: null,
     context,
   };
 }
@@ -157,6 +177,7 @@ function renderDocumentTemplate(
   documentUrl: string | null,
   paragraphs: Array<string | null | undefined>,
   fieldName: string,
+  externalAdReply?: IntegrationRenderedExternalAdReply | null,
 ): IntegrationRenderedDispatchTemplate {
   const requiredUrl = ensureRequiredUrl(context.eventSlug, fieldName, documentUrl);
   const body = assertRenderedText(joinParagraphs(paragraphs), context.eventSlug);
@@ -167,10 +188,37 @@ function renderDocumentTemplate(
     title,
     body,
     caption: body,
-    linkUrl: null,
+    linkUrl: externalAdReply?.sourceUrl ?? null,
     documentUrl: requiredUrl,
+    imageUrl: null,
     fileName: "boleto.pdf",
     mimeType: "application/pdf",
+    externalAdReply: externalAdReply ?? null,
+    context,
+  };
+}
+
+function renderImageTemplate(
+  context: IntegrationNormalizedEventContext,
+  title: string,
+  imageUrl: string | null,
+  paragraphs: Array<string | null | undefined>,
+  externalAdReply?: IntegrationRenderedExternalAdReply | null,
+): IntegrationRenderedDispatchTemplate {
+  const body = assertRenderedText(joinParagraphs(paragraphs), context.eventSlug);
+
+  return {
+    eventSlug: context.eventSlug,
+    messageType: "image",
+    title,
+    body,
+    caption: body,
+    linkUrl: externalAdReply?.sourceUrl ?? null,
+    documentUrl: null,
+    imageUrl: imageUrl ?? null,
+    fileName: null,
+    mimeType: null,
+    externalAdReply: externalAdReply ?? null,
     context,
   };
 }
@@ -179,105 +227,145 @@ export function renderIntegrationDispatchTemplateFromContext(
   context: IntegrationNormalizedEventContext,
 ): IntegrationRenderedDispatchTemplate {
   const customer = customerLabel(context);
+  const product = productLabel(context, "seu produto");
 
   switch (context.eventSlug) {
-    case "pedido_pendente":
-      return renderLinkTemplate(context, "Pedido pendente", context.checkoutLink, [
-        `Ola, ${customer}.`,
-        `Seu pedido de ${productLabel(context, "seu produto")} esta pendente.`,
-        "Use o link para retomar a compra e concluir o pagamento.",
-      ], "checkoutLink");
-
     case "pedido_pago":
-      return renderTextTemplate(context, "Pedido pago", [
-        `Ola, ${customer}.`,
-        `Recebemos o pagamento de ${productLabel(context, "seu pedido")}.`,
-        "Seu pedido foi confirmado com sucesso.",
+      return renderImageTemplate(
+        context,
+        "Pedido pago",
+        context.productImage,
+        [
+          `✅ *Parabéns ${customer}!*`,
+          `Seu *${product}* foi aprovado com sucesso!`,
+          "👉 Acesse agora sua área de membros e comece a aprender.",
+        ],
+        createExternalAdReply(product, "Clique para acessar", context.checkoutLink),
+      );
+
+    case "pedido_pendente":
+      return renderTextTemplate(context, "Pedido pendente", [
+        `⏳ *Olá ${customer}!*`,
+        `Recebemos seu pedido do *${product}*.` ,
+        "Assim que o pagamento for confirmado, você receberá o acesso automaticamente.",
+        "Qualquer dúvida, estamos à disposição.",
       ]);
 
-    case "envio_acesso": {
-      const accessUrl = accessField(context.access, "url");
-      return renderLinkTemplate(context, "Acesso liberado", accessUrl, [
-        `Ola, ${customer}.`,
-        `Seu acesso para ${productLabel(context, "seu produto")} esta pronto.`,
-        toLine("Login", accessField(context.access, "login") ?? accessField(context.access, "email") ?? accessField(context.access, "username")),
-        toLine("Senha", accessField(context.access, "password") ?? accessField(context.access, "temporaryPassword")),
-        toLine("Codigo", accessField(context.access, "code")),
-        toLine("Token", accessField(context.access, "token")),
-        toLine("Plataforma", accessField(context.access, "platform")),
-        toLine("Expira em", accessField(context.access, "expiresAt")),
-        accessField(context.access, "instructions"),
-        "Use o link para acessar sua area liberada.",
-      ], "access.url");
-    }
-
     case "pagamento_recusado":
-      return renderLinkTemplate(context, "Pagamento recusado", context.checkoutLink, [
-        `Ola, ${customer}.`,
-        `Nao conseguimos aprovar o pagamento de ${productLabel(context, "seu pedido")}.`,
-        "Use o link para tentar novamente com uma nova forma de pagamento.",
-      ], "checkoutLink");
+      return renderTextTemplate(
+        context,
+        "Pagamento recusado",
+        [
+          `❌ *${customer}*, o pagamento do *${product}* foi recusado.`,
+          "Isso pode ter ocorrido por:\n• Cartão sem limite\n• Dados incorretos\n• Bloqueio da operadora",
+          "👉 Tente novamente com outro cartão ou forma de pagamento:",
+        ],
+        createExternalAdReply("Tentar novamente", product, context.checkoutLink),
+        context.checkoutLink,
+      );
 
     case "pedido_cancelado":
       return renderTextTemplate(context, "Pedido cancelado", [
-        `Ola, ${customer}.`,
-        `O pedido de ${productLabel(context, "seu produto")} foi cancelado.`,
+        `⛔ *${customer}*, seu pedido do *${product}* foi cancelado conforme solicitado.`,
+        "Se precisar de ajuda, estamos aqui!",
       ]);
 
     case "reembolso":
       return renderTextTemplate(context, "Reembolso processado", [
-        `Ola, ${customer}.`,
-        `O reembolso de ${productLabel(context, "seu pedido")} foi processado.`,
+        `💰 *${customer}*, o reembolso do *${product}* foi processado com sucesso.`,
+        "O valor será estornado em até *5 dias úteis* na forma de pagamento original.",
       ]);
 
     case "pix_gerado":
-      return renderTextTemplate(context, "PIX gerado", [
-        `Ola, ${customer}.`,
-        `Geramos o PIX para ${productLabel(context, "seu pedido")}.`,
-        toLine("Codigo PIX", context.pix?.copyPaste ?? context.pix?.qrcode),
-        toLine("Transacao", context.pix?.transactionId),
-      ]);
+      return renderImageTemplate(
+        context,
+        "PIX gerado",
+        context.productImage,
+        [
+          `💳 *${customer}*, o PIX do *${product}* foi gerado!`,
+          context.total ? `📋 *Valor:* R$ ${context.total}` : null,
+          "⚠️ *Pague até o vencimento para garantir sua vaga!*",
+          context.pixCopyPaste ? `📌 *Código Pix (copia e cola):*\n\`\`\`${context.pixCopyPaste}\`\`\`` : null,
+        ],
+        createExternalAdReply("Visualizar pedido", product, context.checkoutLink),
+      );
 
     case "boleto_gerado":
-      return renderDocumentTemplate(context, "Boleto gerado", context.boleto?.pdfUrl ?? null, [
-        `Ola, ${customer}.`,
-        `Segue o boleto de ${productLabel(context, "seu pedido")}.`,
-        toLine("Valor", context.boleto?.amount),
-        toLine("Vencimento", context.boleto?.expireAt),
-        toLine("Codigo de barras", context.boleto?.barcode),
-      ], "boleto.pdfUrl");
+      return renderDocumentTemplate(
+        context,
+        "Boleto gerado",
+        context.boletoUrl,
+        [
+          `📄 *${customer}*, o boleto do *${product}* foi gerado!`,
+          context.boletoAmount ? `📋 *Valor:* R$ ${context.boletoAmount}` : null,
+          context.boletoExpire ? `📅 *Vencimento:* ${context.boletoExpire}` : null,
+          context.boletoBarcode ? `🔢 *Linha digitável:* ${context.boletoBarcode}` : null,
+        ],
+        "boletoUrl",
+        createExternalAdReply("Baixar boleto", product, context.boletoUrl),
+      );
 
     case "carrinho_abandonado":
-      return renderLinkTemplate(context, "Carrinho aguardando", context.checkoutLink, [
-        `Ola, ${customer}.`,
-        `Seu carrinho para ${productLabel(context, "seu produto")} ainda esta esperando por voce.`,
-        "Use o link para retomar a compra de onde parou.",
-      ], "checkoutLink");
+      return renderImageTemplate(
+        context,
+        "Carrinho abandonado",
+        context.productImage,
+        [
+          `🛒 *${customer}*, você deixou o *${product}* no carrinho!`,
+          "🔥 Não perca esta oportunidade!",
+          "👉 Finalize sua compra agora e garanta seu acesso.",
+        ],
+        createExternalAdReply("Finalizar Compra", product, context.checkoutLink),
+      );
+
+    case "envio_acesso":
+      return renderImageTemplate(
+        context,
+        "Acesso liberado",
+        context.productImage,
+        [
+          `🔓 *Olá ${customer}!*`,
+          `Seu acesso ao *${product}* foi liberado!`,
+          "Já pode assistir às aulas e começar sua jornada.",
+        ],
+        createExternalAdReply("Acessar agora", product, context.checkoutLink),
+      );
 
     case "assinatura_criada":
-      return renderTextTemplate(context, "Assinatura criada", [
-        `Ola, ${customer}.`,
-        `Sua assinatura de ${productLabel(context, "seu plano")} foi criada com sucesso.`,
-      ]);
+      return renderImageTemplate(
+        context,
+        "Assinatura criada",
+        context.productImage,
+        [
+          `🔄 *${customer}*, sua assinatura do *${product}* foi criada com sucesso!`,
+          "Bem-vindo(a) à nossa plataforma! 🎉",
+        ],
+        createExternalAdReply("Acessar agora", product, context.checkoutLink),
+      );
 
     case "assinatura_renovada":
       return renderTextTemplate(context, "Assinatura renovada", [
-        `Ola, ${customer}.`,
-        `Sua assinatura de ${productLabel(context, "seu plano")} foi renovada com sucesso.`,
+        `✅ *${customer}*, sua assinatura do *${product}* foi renovada com sucesso!`,
+        "Seu acesso continua ativo.",
       ]);
 
     case "assinatura_cancelada":
       return renderTextTemplate(context, "Assinatura cancelada", [
-        `Ola, ${customer}.`,
-        `Sua assinatura de ${productLabel(context, "seu plano")} foi cancelada.`,
+        `⛔ *${customer}*, sua assinatura do *${product}* foi cancelada.`,
+        "Sentiremos sua falta! Caso queira retornar, estaremos aqui.",
       ]);
 
     case "assinatura_em_atraso":
-      return renderLinkTemplate(context, "Assinatura em atraso", context.checkoutLink, [
-        `Ola, ${customer}.`,
-        `Identificamos atraso no pagamento da assinatura ${productLabel(context, "do seu plano")}.`,
-        "Use o link para regularizar sua assinatura.",
-      ], "checkoutLink");
+      return renderImageTemplate(
+        context,
+        "Assinatura em atraso",
+        context.productImage,
+        [
+          `⚠️ *${customer}*, sua assinatura do *${product}* está *atrasada*!`,
+          "Regularize agora para não perder o acesso.",
+        ],
+        createExternalAdReply("Pagar agora", product, context.checkoutLink),
+      );
   }
 }
 
