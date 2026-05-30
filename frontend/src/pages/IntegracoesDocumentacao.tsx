@@ -1,17 +1,22 @@
-import { ArrowLeft, BookOpenText, Cable, KeyRound } from "lucide-react";
+import { ArrowLeft, BookOpenText, Cable, Check, Copy, ImageUp, KeyRound, ReceiptText } from "lucide-react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Panel } from "../components/ui/Panel";
 import { Section } from "../components/ui/Section";
 import {
+  INTEGRATION_CONTEXT_FIELDS,
   INTEGRATION_CREDENTIAL_FIELDS,
   INTEGRATION_CURL_EXAMPLE,
   INTEGRATION_DOCUMENTATION_TOPICS,
   INTEGRATION_ENDPOINT_PATH,
   INTEGRATION_ENDPOINT_URL_EXAMPLE,
+  INTEGRATION_EVENT_BEHAVIORS,
   INTEGRATION_PAYLOAD_FIELDS,
   INTEGRATION_PHONE_FIELD_PRIORITY,
+  INTEGRATION_RENDER_RULES,
   INTEGRATION_REQUEST_EXAMPLE,
   INTEGRATION_RESPONSE_CODES,
+  INTEGRATION_SUCCESS_RESPONSE_EXAMPLE,
   INTEGRATION_SUPPORTED_EVENTS,
   INTEGRATION_SUPPORTED_MESSAGE_TYPES,
   INTEGRATION_TROUBLESHOOTING,
@@ -20,11 +25,31 @@ import {
 const docsButtonClassName = "inline-flex min-h-10 items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:hover:bg-slate-800";
 
 function CodeBlock({ code, language }: { code: string; language: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1600);
+    } catch (error) {
+      console.error("Falha ao copiar código", error);
+    }
+  };
+
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 shadow-sm dark:border-slate-800">
       <div className="flex items-center justify-between border-b border-slate-800 px-4 py-2 text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">
         <span>{language}</span>
-        <span>Copiável</span>
+        <button
+          type="button"
+          onClick={() => void handleCopy()}
+          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-slate-700 bg-slate-900 text-slate-200 transition-colors hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
+          aria-label={copied ? "Código copiado" : "Copiar código"}
+          title={copied ? "Copiado" : "Copiar código"}
+        >
+          {copied ? <Check className="h-4 w-4" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
+        </button>
       </div>
       <pre className="overflow-x-auto p-4 text-sm leading-6 text-slate-100"><code>{code}</code></pre>
     </div>
@@ -39,7 +64,7 @@ export function IntegracoesDocumentacao() {
           <div className="max-w-4xl">
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-emerald-700 dark:text-emerald-400">Documentação técnica da integração</p>
             <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950 dark:text-slate-50 sm:text-4xl">Contrato operacional do endpoint público de integrações</h1>
-            <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-700 dark:text-slate-300">Use esta página para integrar sistemas externos ao endpoint real do NexusZAP. O fluxo correto é: selecionar a instância, abrir a seção <strong>Credenciais</strong>, copiar <code className="rounded bg-white/80 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-900/80">instanceId</code>, <code className="rounded bg-white/80 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-900/80">endpointUrl</code> e emitir ou rotacionar o <code className="rounded bg-white/80 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-900/80">secretToken</code> antes de configurar o sistema externo.</p>
+            <p className="mt-4 max-w-3xl text-sm leading-7 text-slate-700 dark:text-slate-300">Use esta página para integrar sistemas externos ao endpoint público do NexusZAP. O fluxo correto é: selecionar a instância, abrir <strong>Credenciais</strong>, copiar <code className="rounded bg-white/80 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-900/80">instanceId</code>, <code className="rounded bg-white/80 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-900/80">endpointUrl</code> e emitir ou rotacionar o <code className="rounded bg-white/80 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-900/80">secretToken</code> antes de configurar o sistema externo.</p>
           </div>
           <div className="flex flex-col gap-3 sm:flex-row lg:flex-col lg:items-stretch">
             <Link to="/integracoes" className={docsButtonClassName}>
@@ -63,14 +88,14 @@ export function IntegracoesDocumentacao() {
               <KeyRound className="h-5 w-5" aria-hidden="true" />
               <p className="text-sm font-semibold uppercase tracking-wide">Credenciais</p>
             </div>
-            <p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-400"><code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">instanceId</code> e <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">secretToken</code> são obtidos na seção <strong>Credenciais</strong> da própria área de integrações. Não dependem de arquivo local nem de acesso ao repositório.</p>
+            <p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-400"><code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">instanceId</code> e <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">secretToken</code> são obtidos na área de credenciais da própria integração.</p>
           </Panel>
           <Panel className="p-5">
             <div className="flex items-center gap-3 text-slate-900 dark:text-slate-50">
-              <BookOpenText className="h-5 w-5" aria-hidden="true" />
+              <ImageUp className="h-5 w-5" aria-hidden="true" />
               <p className="text-sm font-semibold uppercase tracking-wide">Mensageria</p>
             </div>
-            <p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-400">Os templates padrão desta fase trabalham com <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">text</code>, <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">link</code> e <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">document</code>.</p>
+            <p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-400">O backend pode renderizar mensagens <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">text</code>, <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">link</code>, <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">image</code> e <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">document</code>, dependendo do evento e do payload.</p>
           </Panel>
         </div>
       </Panel>
@@ -93,20 +118,20 @@ export function IntegracoesDocumentacao() {
         </aside>
 
         <div className="space-y-6">
-          <Section id="visao-geral" title="Visão geral e pré-requisitos" description="Esta documentação reflete o endpoint real já implementado em /api/integrations/events e separa claramente Credenciais de Documentação.">
+          <Section id="visao-geral" title="Visão geral e pré-requisitos" description="Use estes passos antes de enviar o primeiro evento para o endpoint público.">
             <Panel className="p-5">
               <h2 className="text-base font-semibold text-slate-950 dark:text-slate-50">Antes de integrar</h2>
               <ul className="mt-4 space-y-3 text-sm leading-6 text-slate-600 dark:text-slate-400">
                 <li>Selecione a instância correta na área de integrações.</li>
                 <li>Abra <strong>Credenciais</strong> e copie <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">endpointUrl</code> e <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">instanceId</code>.</li>
                 <li>Emita ou rotacione o <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">secretToken</code> ativo na mesma seção.</li>
-                <li>Garanta que o sistema externo envie <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">POST</code> com <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">Content-Type: application/json</code>.</li>
+                <li>Garanta envio via <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">POST</code> com <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">Content-Type: application/json</code>.</li>
                 <li>Sincronize o relógio do integrador porque o endpoint valida <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">timestamp</code>.</li>
               </ul>
             </Panel>
           </Section>
 
-          <Section id="credenciais" title="Credenciais" description="Os dados de autenticação e autorização operacional são obtidos no próprio painel, sem depender de acesso ao repositório.">
+          <Section id="credenciais" title="Credenciais" description="Autenticação e autorização operacional da chamada.">
             <Panel className="p-5">
               <div className="space-y-4 text-sm leading-6 text-slate-600 dark:text-slate-400">
                 {INTEGRATION_CREDENTIAL_FIELDS.map((field) => (
@@ -147,7 +172,7 @@ export function IntegracoesDocumentacao() {
             </div>
           </Section>
 
-          <Section id="eventos" title="Eventos, payload e regras operacionais" description="O contrato aceita payload variável, mas apenas campos conhecidos entram no contexto normalizado oficial.">
+          <Section id="eventos" title="Eventos, payload e regras operacionais" description="O contrato aceita payload variável, mas apenas campos reconhecidos entram no contexto normalizado oficial.">
             <div className="grid gap-4 xl:grid-cols-3">
               <Panel className="p-5 xl:col-span-2">
                 <h2 className="text-base font-semibold text-slate-950 dark:text-slate-50">Eventos suportados</h2>
@@ -171,31 +196,75 @@ export function IntegracoesDocumentacao() {
                 <p className="mt-4 text-sm leading-6 text-slate-600 dark:text-slate-400">A deduplicação é por credencial, a replay window atual é <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">300000 ms</code> e o skew futuro tolerado é <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">30000 ms</code>.</p>
               </Panel>
             </div>
+
+            <Panel className="mt-4 p-5">
+              <h2 className="text-base font-semibold text-slate-950 dark:text-slate-50">Campos úteis do payload</h2>
+              <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                {INTEGRATION_CONTEXT_FIELDS.map((field) => (
+                  <div key={field.label} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/45">
+                    <p className="text-sm font-semibold text-slate-950 dark:text-slate-50">{field.label}</p>
+                    <p className="mt-2 font-mono text-xs text-slate-700 dark:text-slate-300">{field.paths.join(" | ")}</p>
+                  </div>
+                ))}
+              </div>
+            </Panel>
+          </Section>
+
+          <Section id="renderizacao" title="Renderização e fallback" description="O backend define o formato final da mensagem com base no evento e na presença de contexto suficiente no payload.">
+            <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+              <Panel className="p-5">
+                <h2 className="text-base font-semibold text-slate-950 dark:text-slate-50">Comportamento por evento</h2>
+                <div className="mt-4 space-y-3">
+                  {INTEGRATION_EVENT_BEHAVIORS.map((item) => (
+                    <div key={item.event} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/45">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <code className="rounded bg-white px-2 py-1 font-mono text-xs text-slate-900 dark:bg-slate-900 dark:text-slate-50">{item.event}</code>
+                        <span className="rounded-full border border-slate-200 px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:border-slate-700 dark:text-slate-300">{item.messageType}</span>
+                      </div>
+                      <p className="mt-3 text-sm leading-6 text-slate-600 dark:text-slate-400">{item.summary}</p>
+                      <p className="mt-3 font-mono text-xs text-slate-700 dark:text-slate-300">{item.fields.join(" | ")}</p>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+              <Panel className="p-5">
+                <div className="flex items-center gap-2 text-slate-950 dark:text-slate-50">
+                  <ReceiptText className="h-5 w-5" aria-hidden="true" />
+                  <h2 className="text-base font-semibold">Regras de render</h2>
+                </div>
+                <ul className="mt-4 space-y-3 text-sm leading-6 text-slate-600 dark:text-slate-400">
+                  {INTEGRATION_RENDER_RULES.map((rule) => <li key={rule}>{rule}</li>)}
+                </ul>
+              </Panel>
+            </div>
           </Section>
 
           <Section id="respostas-http" title="Respostas HTTP previsíveis" description="Esses retornos ajudam a diagnosticar rapidamente falhas de contrato, autenticação, janela temporal e dispatch.">
-            <Panel className="overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
-                  <thead className="bg-slate-50 dark:bg-slate-950/45">
-                    <tr>
-                      <th className="px-4 py-3 text-left font-semibold text-slate-900 dark:text-slate-50">HTTP</th>
-                      <th className="px-4 py-3 text-left font-semibold text-slate-900 dark:text-slate-50">Código</th>
-                      <th className="px-4 py-3 text-left font-semibold text-slate-900 dark:text-slate-50">Significado</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                    {INTEGRATION_RESPONSE_CODES.map((item) => (
-                      <tr key={item.code}>
-                        <td className="px-4 py-3 font-mono text-slate-900 dark:text-slate-50">{item.status}</td>
-                        <td className="px-4 py-3 font-mono text-xs text-slate-700 dark:text-slate-300">{item.code}</td>
-                        <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{item.meaning}</td>
+            <div className="space-y-4">
+              <CodeBlock language="json" code={INTEGRATION_SUCCESS_RESPONSE_EXAMPLE} />
+              <Panel className="overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
+                    <thead className="bg-slate-50 dark:bg-slate-950/45">
+                      <tr>
+                        <th className="px-4 py-3 text-left font-semibold text-slate-900 dark:text-slate-50">HTTP</th>
+                        <th className="px-4 py-3 text-left font-semibold text-slate-900 dark:text-slate-50">Código</th>
+                        <th className="px-4 py-3 text-left font-semibold text-slate-900 dark:text-slate-50">Significado</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </Panel>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
+                      {INTEGRATION_RESPONSE_CODES.map((item) => (
+                        <tr key={item.code}>
+                          <td className="px-4 py-3 font-mono text-slate-900 dark:text-slate-50">{item.status}</td>
+                          <td className="px-4 py-3 font-mono text-xs text-slate-700 dark:text-slate-300">{item.code}</td>
+                          <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{item.meaning}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Panel>
+            </div>
           </Section>
 
           <Section id="troubleshooting" title="Troubleshooting técnico" description="Use estes pontos antes de concluir que o endpoint falhou; a maior parte dos erros vem de credencial, instância ou payload incorreto.">
