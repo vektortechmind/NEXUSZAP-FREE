@@ -101,6 +101,7 @@ function createDispatchService(options = {}) {
     assert.equal(result.dispatchLog.providerMessageId, relayedPayloads[0].options.messageId);
     assert.equal(Array.from(store.logs.values())[0].dispatchStatus, INTEGRATION_DISPATCH_STATUS.SENT);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"usedRealCtaButton":true'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"template_cta"'), true);
   }
 
   {
@@ -135,6 +136,23 @@ function createDispatchService(options = {}) {
   }
 
   {
+    const { service, sentPayloads, store } = createDispatchService();
+    const result = await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pix_gerado",
+      dedupKey: "evt-image-success",
+      payload: createBasePayload(),
+    });
+    assert.equal(sentPayloads[0].jid, "5511998765432@s.whatsapp.net");
+    assert.deepEqual(sentPayloads[0].content.image, Buffer.from("image-data"));
+    assert.equal(sentPayloads[0].content.caption, result.template.body);
+    assert.equal(sentPayloads[0].content.contextInfo, undefined);
+    assert.equal(result.dispatchLog.messageType, "image");
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"image_clean"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":null'), true);
+  }
+
+  {
     const { service, sentPayloads, store } = createDispatchService({
       sock: {
         user: { id: "5511911111111@s.whatsapp.net" },
@@ -158,6 +176,7 @@ function createDispatchService(options = {}) {
     assert.equal(sentPayloads[0].content.contextInfo, undefined);
     assert.equal(result.dispatchLog.messageType, "text");
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"buttonFallbackReason":"button_dispatch_failed"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text_fallback_button"'), true);
   }
 
   {
@@ -179,6 +198,7 @@ function createDispatchService(options = {}) {
     assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
     assert.equal(sentPayloads[0].content.contextInfo, undefined);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"buttonFallbackReason":"unsupported_socket_transport"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text_fallback_button"'), true);
   }
 
   {
@@ -222,6 +242,23 @@ function createDispatchService(options = {}) {
     assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
     assert.equal(sentPayloads[0].content.contextInfo, undefined);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"buttonFallbackReason":"unsupported_socket_transport"'), true);
+  }
+
+  {
+    const payload = createBasePayload();
+    payload.order.product.image = "   ";
+    const { service, sentPayloads, store } = createDispatchService();
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pix_gerado",
+      dedupKey: "evt-image-missing",
+      payload,
+    });
+    assert.equal(sentPayloads[0].content.text.includes("PIX"), true);
+    assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
+    assert.equal(sentPayloads[0].content.contextInfo.externalAdReply.title, "Visualizar pedido");
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":"missing_image_url"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text_fallback_image"'), true);
   }
 
   {

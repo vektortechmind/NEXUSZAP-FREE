@@ -43,7 +43,7 @@ export const INTEGRATION_SUPPORTED_EVENTS = [
   "assinatura_em_atraso",
 ] as const;
 
-export const INTEGRATION_SUPPORTED_MESSAGE_TYPES = ["text", "link", "image", "document"] as const;
+export const INTEGRATION_SUPPORTED_MESSAGE_TYPES = ["text", "link", "image", "document", "template"] as const;
 
 export const INTEGRATION_PAYLOAD_FIELDS = [
   { name: "event", description: "Slug do evento suportado pelo catálogo atual." },
@@ -110,18 +110,18 @@ export const INTEGRATION_CONTEXT_FIELDS = [
 export const INTEGRATION_TEMPLATE_FLOW = [
   "O sistema externo envia apenas o evento, a autenticação e o payload operacional. Não existe envio de template livre no request.",
   "O backend normaliza telefone, cliente, produto, links, Pix, boleto e acesso antes de escolher a mensagem padrão do evento.",
-  "Cada evento já possui um template predefinido com tipo final de saída, texto base, caption e, quando aplicável, CTA com externalAdReply.",
+  "Cada evento já possui um template predefinido com tipo final de saída, texto base, caption e, quando aplicável, CTA real ou enriquecimento contextual.",
   "A resposta HTTP 202 significa que o evento foi aceito para dispatch. O envio para o WhatsApp continua no runtime da instância conectada.",
 ] as const;
 
 export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
   {
     event: "pedido_pago",
-    messageType: "image",
+    messageType: "template",
     requiredFields: ["customer.phone", "customer.name ou order.user.name", "order.product.name ou equivalente"],
     optionalFields: ["checkout_link ou checkoutLink", "order.product.image ou cover"],
-    generatedMessage: "Confirmação de pagamento com produto aprovado e CTA de acesso.",
-    fallback: "Sem imagem válida, o runtime envia texto com o mesmo corpo. O CTA só aparece se houver checkoutLink.",
+    generatedMessage: "Confirmação de pagamento com CTA real de acesso por botão nativo quando checkoutLink estiver disponível.",
+    fallback: "Sem checkoutLink, sem relayMessage ou com falha no relay, o runtime envia texto com a mesma mensagem e a URL visível no corpo.",
   },
   {
     event: "pedido_pendente",
@@ -224,8 +224,10 @@ export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
 export const INTEGRATION_RENDER_RULES = [
   "O backend define a mensagem a partir do event e do payload normalizado; a ferramenta externa não escolhe corpo, caption nem tipo final manualmente.",
   "Eventos mapeados como image fazem download da imagem no runtime quando imageUrl for HTTP/HTTPS válida e acessível pelo backend.",
-  "Quando a imagem estiver ausente, inválida ou falhar no download, o runtime troca o envio para texto sem interromper o dispatch.",
-  "Eventos com checkoutLink podem anexar CTA via externalAdReply, mas o texto principal continua sendo renderizado pelo backend.",
+  "Quando a imagem estiver ausente, inválida ou falhar no download, o runtime troca o envio para texto sem interromper o dispatch e registra deliveryPath text_fallback_image.",
+  "pedido_pago usa CTA real por templateMessage.hydratedTemplate com urlButton quando checkoutLink e relayMessage estiverem disponíveis.",
+  "Quando o CTA real não puder ser usado, o runtime envia texto com URL visível no corpo e registra deliveryPath text_fallback_button.",
+  "externalAdReply continua restrito aos fluxos text, document e aos fallbacks textuais dos eventos ricos; ele não é usado no caminho de imagem limpa nem substitui botão real.",
   "Boleto é o caso oficial de document e exige URL válida em boleto.pdf_url ou boleto.pdfUrl.",
 ] as const;
 
@@ -302,7 +304,14 @@ export const INTEGRATION_TROUBLESHOOTING = [
     title: "Imagem não enviada",
     steps: [
       "Confirme se a imagem do produto resolve para URL HTTP/HTTPS acessível pelo backend.",
-      "Se a mídia falhar, o endpoint ainda pode concluir o dispatch em formato textual para eventos do tipo image.",
+      "Se a mídia falhar, o endpoint ainda pode concluir o dispatch em formato textual para eventos do tipo image e registrar deliveryPath text_fallback_image.",
+    ],
+  },
+  {
+    title: "CTA real indisponível",
+    steps: [
+      "No evento pedido_pago, o botão real depende de checkoutLink válido e de relayMessage disponível no runtime da instância.",
+      "Se esse caminho falhar, o backend degrada para texto com URL visível no corpo e registra deliveryPath text_fallback_button.",
     ],
   },
   {

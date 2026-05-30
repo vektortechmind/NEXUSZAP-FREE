@@ -100,6 +100,15 @@ export type IntegrationButtonFallbackReason =
   | "unsupported_socket_transport"
   | "button_dispatch_failed";
 
+export type IntegrationDispatchDeliveryPath =
+  | "template_cta"
+  | "image_clean"
+  | "text_fallback_button"
+  | "text_fallback_image"
+  | "document"
+  | "link"
+  | "text";
+
 export type IntegrationDispatchTransportPayload = AnyMessageContent | proto.IMessage;
 
 export class IntegrationDispatchRuntimeError extends Error {
@@ -377,6 +386,21 @@ function buildButtonFallbackPayload(template: IntegrationRenderedDispatchTemplat
   };
 }
 
+function resolveDeliveryPath(
+  template: IntegrationRenderedDispatchTemplate,
+  content: IntegrationDispatchTransportPayload,
+  imageFallbackReason: IntegrationImageFallbackReason | null,
+  buttonFallbackReason: IntegrationButtonFallbackReason | null,
+): IntegrationDispatchDeliveryPath {
+  if ("templateMessage" in content && content.templateMessage) return "template_cta";
+  if ("image" in content) return "image_clean";
+  if ("document" in content) return "document";
+  if (buttonFallbackReason) return "text_fallback_button";
+  if (imageFallbackReason) return "text_fallback_image";
+  if (template.messageType === "link") return "link";
+  return "text";
+}
+
 function buildContextInfo(template: IntegrationRenderedDispatchTemplate, thumbnail?: Buffer): { externalAdReply: { title: string; body: string; sourceUrl: string; mediaType: 1; thumbnail?: Buffer } } | undefined {
   if (!template.externalAdReply) return undefined;
 
@@ -446,6 +470,7 @@ function buildPayloadSummary(
     eventSlug: template.eventSlug,
     intendedMessageType: template.messageType,
     dispatchedMessageType: resolveDispatchedMessageType(template, content),
+    deliveryPath: resolveDeliveryPath(template, content, imageFallbackReason, buttonFallbackReason),
     title: template.title,
     linkUrl: template.linkUrl,
     documentUrl: template.documentUrl,
