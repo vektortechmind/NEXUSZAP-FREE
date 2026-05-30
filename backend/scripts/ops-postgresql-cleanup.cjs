@@ -82,6 +82,14 @@ assert.ok(
   "install.sh deve verificar status das migrations Prisma"
 );
 assert.ok(
+  read("install.sh").includes("ensure_bootstrap_app_url"),
+  "install.sh deve aplicar bootstrap de APP_URL antes de subir a stack"
+);
+assert.ok(
+  read("install.sh").includes("http://${ip}:3001"),
+  "install.sh deve usar a API publica em :3001 como bootstrap de APP_URL"
+);
+assert.ok(
   read("update.sh").includes("run_backend_migrations_docker"),
   "update.sh deve verificar e aplicar migrations Prisma no fluxo Docker"
 );
@@ -92,6 +100,14 @@ assert.ok(
 assert.ok(
   read("update.sh").includes("prisma migrate status --schema prisma/schema.prisma"),
   "update.sh deve verificar status das migrations Prisma"
+);
+assert.ok(
+  read("update.sh").includes("ensure_bootstrap_app_url"),
+  "update.sh deve corrigir APP_URL ausente em ambientes legados"
+);
+assert.ok(
+  read("update.sh").includes("http://${ip}:3001"),
+  "update.sh deve usar a API publica em :3001 como bootstrap de APP_URL"
 );
 assert.ok(
   /^v\d+\.\d+\.\d+/.test(read("backend/VERSION").trim()),
