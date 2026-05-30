@@ -6,6 +6,7 @@ import { Section } from "../components/ui/Section";
 import {
   INTEGRATION_CONTEXT_FIELDS,
   INTEGRATION_CREDENTIAL_FIELDS,
+  INTEGRATION_CURL_EVENT_EXAMPLES,
   INTEGRATION_CURL_EXAMPLE,
   INTEGRATION_DOCUMENTATION_TOPICS,
   INTEGRATION_ENDPOINT_PATH,
@@ -13,11 +14,14 @@ import {
   INTEGRATION_PAYLOAD_FIELDS,
   INTEGRATION_PHONE_FIELD_PRIORITY,
   INTEGRATION_IMAGE_RESOLUTION_RULES,
+  INTEGRATION_OPERATION_LIMITS,
   INTEGRATION_RENDER_RULES,
   INTEGRATION_TEMPLATE_FLOW,
   INTEGRATION_EVENT_TEMPLATE_MATRIX,
   INTEGRATION_REQUEST_EXAMPLE,
   INTEGRATION_RESPONSE_CODES,
+  INTEGRATION_RESPONSE_FIELDS,
+  INTEGRATION_ERROR_RESPONSE_EXAMPLE,
   INTEGRATION_SUCCESS_RESPONSE_EXAMPLE,
   INTEGRATION_SUPPORTED_EVENTS,
   INTEGRATION_SUPPORTED_MESSAGE_TYPES,
@@ -143,6 +147,7 @@ export function IntegracoesDocumentacao() {
                   <li>Emita ou rotacione o <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">secretToken</code> ativo na mesma seção.</li>
                   <li>Garanta envio via <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">POST</code> com <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">Content-Type: application/json</code>.</li>
                   <li>Sincronize o relógio do integrador porque o endpoint valida <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">timestamp</code>.</li>
+                  <li>Respeite o limite atual de <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">120 requisições por minuto</code> por IP.</li>
                 </ul>
               </Panel>
             </Section>
@@ -177,6 +182,20 @@ export function IntegracoesDocumentacao() {
                   </Panel>
                   <CodeBlock language="json" code={INTEGRATION_REQUEST_EXAMPLE} />
                   <CodeBlock language="bash" code={INTEGRATION_CURL_EXAMPLE} />
+                  <Panel className="p-5">
+                    <h2 className="text-base font-semibold text-slate-950 dark:text-slate-50">cURL por evento</h2>
+                    <div className="mt-4 space-y-5">
+                      {INTEGRATION_CURL_EVENT_EXAMPLES.map((example) => (
+                        <div key={example.title} className="space-y-3">
+                          <div>
+                            <p className="font-mono text-sm font-semibold text-slate-950 dark:text-slate-50">{example.title}</p>
+                            <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-400">{example.description}</p>
+                          </div>
+                          <CodeBlock language="bash" code={example.code} />
+                        </div>
+                      ))}
+                    </div>
+                  </Panel>
                 </div>
                 <Panel className="p-5">
                   <h2 className="text-base font-semibold text-slate-950 dark:text-slate-50">Campos obrigatórios do body</h2>
@@ -218,6 +237,13 @@ export function IntegracoesDocumentacao() {
                   <p className="mt-4 text-sm leading-6 text-slate-600 dark:text-slate-400">A deduplicação é por credencial, a replay window atual é <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">300000 ms</code> e o skew futuro tolerado é <code className="rounded bg-slate-100 px-1.5 py-0.5 font-mono text-xs dark:bg-slate-800">30000 ms</code>.</p>
                 </Panel>
               </div>
+
+              <Panel className="mt-4 p-5">
+                <h2 className="text-base font-semibold text-slate-950 dark:text-slate-50">Limites operacionais</h2>
+                <ul className="mt-4 space-y-3 text-sm leading-6 text-slate-600 dark:text-slate-400">
+                  {INTEGRATION_OPERATION_LIMITS.map((rule) => <li key={rule}>{rule}</li>)}
+                </ul>
+              </Panel>
 
               <Panel className="mt-4 p-5">
                 <h2 className="text-base font-semibold text-slate-950 dark:text-slate-50">Campos úteis do payload</h2>
@@ -288,7 +314,21 @@ export function IntegracoesDocumentacao() {
           {activeTopic === "respostas-http" ? (
             <Section id="respostas-http" title="Respostas HTTP previsíveis" description="Esses retornos ajudam a diagnosticar rapidamente falhas de contrato, autenticação, janela temporal e dispatch.">
               <div className="space-y-4">
-                <CodeBlock language="json" code={INTEGRATION_SUCCESS_RESPONSE_EXAMPLE} />
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <CodeBlock language="json" code={INTEGRATION_SUCCESS_RESPONSE_EXAMPLE} />
+                  <CodeBlock language="json" code={INTEGRATION_ERROR_RESPONSE_EXAMPLE} />
+                </div>
+                <Panel className="p-5">
+                  <h2 className="text-base font-semibold text-slate-950 dark:text-slate-50">Campos da resposta 202</h2>
+                  <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                    {INTEGRATION_RESPONSE_FIELDS.map((field) => (
+                      <div key={field.name} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-950/45">
+                        <p className="font-mono text-sm font-semibold text-slate-950 dark:text-slate-50">{field.name}</p>
+                        <p className="mt-1 text-sm leading-6 text-slate-600 dark:text-slate-400">{field.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                </Panel>
                 <Panel className="overflow-hidden">
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-slate-200 text-sm dark:divide-slate-800">
@@ -334,3 +374,4 @@ export function IntegracoesDocumentacao() {
     </div>
   );
 }
+

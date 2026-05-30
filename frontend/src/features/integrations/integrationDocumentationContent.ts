@@ -235,6 +235,13 @@ export const INTEGRATION_IMAGE_RESOLUTION_RULES = [
   "O arquivo de imagem é baixado apenas no momento do dispatch para compor a mensagem e não faz parte do contrato persistido do request.",
 ] as const;
 
+export const INTEGRATION_OPERATION_LIMITS = [
+  "Rate limit atual: 120 requisições por minuto por IP.",
+  "Replay window padrão: 300000 ms com tolerância futura de 30000 ms.",
+  "dedupKey é obrigatória por credencial e aceita até 180 caracteres.",
+  "Para payload JSON, mantenha o corpo compacto e evite enviar blobs inline grandes; prefira URLs públicas para PDFs e imagens.",
+] as const;
+
 export const INTEGRATION_RESPONSE_CODES = [
   { status: "202", code: "accepted", meaning: "Evento aceito e dispatch operacional iniciado com sucesso." },
   { status: "400", code: "INTEGRATION_CONTRACT_INVALID", meaning: "Headers ou body fora do contrato esperado." },
@@ -251,6 +258,15 @@ export const INTEGRATION_RESPONSE_CODES = [
   { status: "422", code: "INTEGRATION_TEMPLATE_REQUIRED_URL_MISSING", meaning: "O template exigia URL obrigatória, como boleto.pdf_url, e ela não foi fornecida." },
   { status: "422", code: "INTEGRATION_DISPATCH_TEMPLATE_RENDER_ERROR", meaning: "O template do evento não pôde ser renderizado." },
   { status: "500", code: "INTEGRATION_INGRESS_INTERNAL_ERROR", meaning: "Erro interno inesperado no processamento." },
+] as const;
+
+export const INTEGRATION_RESPONSE_FIELDS = [
+  { name: "ingressId", description: "UUID do log de ingresso persistido no recebimento do evento." },
+  { name: "dispatchId", description: "UUID do log operacional do dispatch gerado para a tentativa de envio." },
+  { name: "providerMessageId", description: "Identificador devolvido pelo provedor de mensageria quando o sendMessage conclui com sucesso." },
+  { name: "status", description: "Hoje o valor esperado na aceitação é accepted." },
+  { name: "instanceId", description: "Instância efetivamente autorizada e usada no processamento do evento." },
+  { name: "event", description: "Slug do evento aceito e normalizado pelo catálogo público atual." },
 ] as const;
 
 export const INTEGRATION_TROUBLESHOOTING = [
@@ -327,9 +343,9 @@ export const INTEGRATION_REQUEST_EXAMPLE = `{
   }
 }`;
 
-export const INTEGRATION_CURL_EXAMPLE = `curl -X POST "$ENDPOINT_URL" \
-  -H "Authorization: Bearer $SECRET_TOKEN" \
-  -H "Content-Type: application/json" \
+export const INTEGRATION_CURL_EXAMPLE = `curl -X POST "$ENDPOINT_URL" \\
+  -H "Authorization: Bearer $SECRET_TOKEN" \\
+  -H "Content-Type: application/json" \\
   -d '{
     "event": "pedido_pago",
     "instanceId": "f9eb8d5c-9d2e-4dbf-9b97-1d2f0a4a7a80",
@@ -348,11 +364,178 @@ export const INTEGRATION_CURL_EXAMPLE = `curl -X POST "$ENDPOINT_URL" \
     }
   }'`;
 
+export const INTEGRATION_CURL_EVENT_EXAMPLES = [
+  {
+    title: "pedido_pago",
+    description: "Pagamento aprovado com imagem do produto e CTA de acesso.",
+    code: `curl -X POST "$ENDPOINT_URL" \\
+  -H "Authorization: Bearer $SECRET_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "event": "pedido_pago",
+    "instanceId": "$INSTANCE_ID",
+    "timestamp": "2026-05-30T14:30:00.000Z",
+    "dedupKey": "pedido-123-pago-20260530",
+    "payload": {
+      "customer": { "name": "Maria Silva", "phone": "5511998765432" },
+      "checkoutLink": "https://checkout.exemplo.com/pedido/abc123",
+      "order": {
+        "product": {
+          "name": "Curso Premium",
+          "image": "https://cdn.exemplo.com/produtos/curso-premium.jpg"
+        },
+        "total": "297.00"
+      }
+    }
+  }'`,
+  },
+  {
+    title: "pix_gerado",
+    description: "Pagamento Pix com código copia e cola e imagem opcional do produto.",
+    code: `curl -X POST "$ENDPOINT_URL" \\
+  -H "Authorization: Bearer $SECRET_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "event": "pix_gerado",
+    "instanceId": "$INSTANCE_ID",
+    "timestamp": "2026-05-30T14:35:00.000Z",
+    "dedupKey": "pix-456-gerado-20260530",
+    "payload": {
+      "customer": { "name": "João Lima", "phone": "5511987654321" },
+      "checkoutLink": "https://checkout.exemplo.com/pedido/pix-456",
+      "order": {
+        "product": {
+          "name": "Curso Premium",
+          "image": "https://cdn.exemplo.com/produtos/curso-premium.jpg"
+        },
+        "total": "199.90"
+      },
+      "pix": {
+        "copy_paste": "00020126580014BR.GOV.BCB.PIX0136pix-456-chave-dinamica"
+      }
+    }
+  }'`,
+  },
+  {
+    title: "boleto_gerado",
+    description: "Boleto com PDF obrigatório, valor, vencimento e linha digitável.",
+    code: `curl -X POST "$ENDPOINT_URL" \\
+  -H "Authorization: Bearer $SECRET_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "event": "boleto_gerado",
+    "instanceId": "$INSTANCE_ID",
+    "timestamp": "2026-05-30T15:00:00.000Z",
+    "dedupKey": "boleto-789-gerado-20260530",
+    "payload": {
+      "customer": { "name": "Ana Costa", "phone": "5511999998888" },
+      "order": {
+        "product": { "name": "Mentoria VIP" }
+      },
+      "boleto": {
+        "amount": "149.90",
+        "expire_at": "2026-06-05",
+        "barcode": "23793381286008200009301000012304570660000014990",
+        "pdf_url": "https://cdn.exemplo.com/boletos/boleto-789.pdf"
+      }
+    }
+  }'`,
+  },
+  {
+    title: "envio_acesso",
+    description: "Acesso liberado com dados do aluno e CTA principal baseado em checkoutLink.",
+    code: `curl -X POST "$ENDPOINT_URL" \\
+  -H "Authorization: Bearer $SECRET_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "event": "envio_acesso",
+    "instanceId": "$INSTANCE_ID",
+    "timestamp": "2026-05-30T15:20:00.000Z",
+    "dedupKey": "acesso-321-enviado-20260530",
+    "payload": {
+      "customer": { "name": "Paula Rocha", "phone": "5511977776666" },
+      "checkoutLink": "https://checkout.exemplo.com/aluno/321",
+      "order": {
+        "product": {
+          "name": "Comunidade Premium",
+          "image": "https://cdn.exemplo.com/produtos/comunidade-premium.jpg"
+        }
+      },
+      "access": {
+        "url": "https://portal.exemplo.com/aluno/321",
+        "login": "paula@example.com",
+        "password": "senha-temporaria",
+        "instructions": "Troque a senha no primeiro acesso."
+      }
+    }
+  }'`,
+  },
+  {
+    title: "carrinho_abandonado",
+    description: "Recuperação de carrinho com produto, telefone e link de retomada.",
+    code: `curl -X POST "$ENDPOINT_URL" \\
+  -H "Authorization: Bearer $SECRET_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "event": "carrinho_abandonado",
+    "instanceId": "$INSTANCE_ID",
+    "timestamp": "2026-05-30T16:00:00.000Z",
+    "dedupKey": "carrinho-654-abandonado-20260530",
+    "payload": {
+      "customer": { "name": "Marina Rocha", "phone": "5511966665555" },
+      "checkoutLink": "https://checkout.exemplo.com/retomar/654",
+      "checkout_session": {
+        "product": {
+          "name": "Curso de Fotografia",
+          "thumbnail_url": "https://cdn.exemplo.com/produtos/fotografia.jpg"
+        }
+      }
+    }
+  }'`,
+  },
+  {
+    title: "assinatura_criada",
+    description: "Entrada de assinatura com produto recorrente e próxima cobrança opcional.",
+    code: `curl -X POST "$ENDPOINT_URL" \\
+  -H "Authorization: Bearer $SECRET_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "event": "assinatura_criada",
+    "instanceId": "$INSTANCE_ID",
+    "timestamp": "2026-05-30T16:20:00.000Z",
+    "dedupKey": "assinatura-987-criada-20260530",
+    "payload": {
+      "customer": { "name": "Carlos Souza", "phone": "5511955554444" },
+      "checkoutLink": "https://checkout.exemplo.com/assinaturas/987",
+      "subscription": {
+        "status": "active",
+        "next_billing": "2026-06-30",
+        "product": {
+          "name": "Plano Anual Premium",
+          "image": "https://cdn.exemplo.com/produtos/plano-anual.jpg"
+        }
+      }
+    }
+  }'`,
+  },
+] as const;
+
 export const INTEGRATION_SUCCESS_RESPONSE_EXAMPLE = `{
   "success": true,
   "data": {
+    "ingressId": "8f3b52d5-95d8-45c7-8b75-07b7b71d3b21",
+    "dispatchId": "1d4b23dd-4474-44f9-90c8-0fe2f731ec92",
+    "providerMessageId": "wamid.HBgNNTUxMTk5ODc2NTQzMhUCABIYIDc1QkI2QzY4QzA1QjM4QkYwAA==",
+    "status": "accepted",
     "instanceId": "f9eb8d5c-9d2e-4dbf-9b97-1d2f0a4a7a80",
-    "event": "pedido_pago",
-    "status": "accepted"
+    "event": "pedido_pago"
+  }
+}`;
+
+export const INTEGRATION_ERROR_RESPONSE_EXAMPLE = `{
+  "success": false,
+  "error": {
+    "code": "INTEGRATION_CONTRACT_INVALID",
+    "message": "Payload ou headers inválidos para o contrato de integração."
   }
 }`;
