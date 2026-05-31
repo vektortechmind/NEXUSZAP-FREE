@@ -60,7 +60,7 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
           {copied ? <Check className="h-4 w-4" aria-hidden="true" /> : <Copy className="h-4 w-4" aria-hidden="true" />}
         </button>
       </div>
-      <pre className="overflow-x-auto p-4 text-sm leading-6 text-slate-100"><code>{code}</code></pre>
+      <pre className={`overflow-x-auto p-4 text-sm leading-6 text-slate-100 ${language === "json" ? "whitespace-pre-wrap break-words" : ""}`}><code>{code}</code></pre>
     </div>
   );
 }
@@ -173,7 +173,7 @@ export function IntegracoesDocumentacao() {
 
           {activeTopic === "autenticacao-request" ? (
             <Section id="autenticacao-request" title="Autenticação e request" description="Cada chamada é autenticada por Bearer token e validada contra a instância autorizada pela credencial.">
-              <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+              <div className="grid items-start gap-4 xl:grid-cols-[1.1fr_0.9fr]">
                 <div className="space-y-4">
                   <Panel className="p-5">
                     <h2 className="text-base font-semibold text-slate-950 dark:text-slate-50">Headers obrigatórios</h2>
@@ -264,7 +264,7 @@ export function IntegracoesDocumentacao() {
 
           {activeTopic === "renderizacao" ? (
             <Section id="renderizacao" title="Templates e renderização" description="Os eventos já possuem mensagens predefinidas. A integração externa controla o payload; o backend controla mídia, tipo final, fallback e envio.">
-              <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+              <div className="grid items-start gap-4 xl:grid-cols-[1.1fr_0.9fr]">
                 <Panel className="p-5">
                   <h2 className="text-base font-semibold text-slate-950 dark:text-slate-50">Como os templates funcionam</h2>
                   <ul className="mt-4 space-y-3 text-sm leading-6 text-slate-600 dark:text-slate-400">
@@ -316,7 +316,7 @@ export function IntegracoesDocumentacao() {
 
           {activeTopic === "texto-customizado" ? (
             <Section id="texto-customizado" title="Texto customizado opcional" description="Use esta opção quando a ferramenta externa já monta o texto final que deve aparecer para o cliente, sem alterar a mecânica técnica do envio.">
-              <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+              <div className="grid items-start gap-4 xl:grid-cols-[0.9fr_1.1fr]">
                 <Panel className="p-5">
                   <h2 className="text-base font-semibold text-slate-950 dark:text-slate-50">Contrato permitido</h2>
                   <ul className="mt-4 space-y-3 text-sm leading-6 text-slate-600 dark:text-slate-400">
