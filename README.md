@@ -325,6 +325,7 @@ Regras operacionais importantes:
 - telefones devem vir preferencialmente em E.164 com DDI, por exemplo `+5511998765432` ou `+14155552671`;
 - `202 accepted`, `SENT` e `providerMessageId` indicam aceite/submissao operacional ao runtime/provider, nao entrega, leitura ou visualizacao final no WhatsApp;
 - falhas temporarias de instancia offline ou envio podem entrar em retry operacional quando registradas como retryable.
+- em `boleto_gerado`, `boleto.pdf_url` ou `boleto.pdfUrl` e obrigatorio; o backend baixa/valida o PDF antes do envio, envia `boleto.barcode` como segunda mensagem quando informado e registra `text_fallback_document`/`documentFallbackReason` se o PDF nao estiver acessivel.
 
 Texto customizado opcional:
 

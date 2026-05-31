@@ -170,8 +170,8 @@ export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
     messageType: "document",
     requiredFields: ["customer.phone", "customer.name ou order.user.name", "order.product.name ou equivalente", "boleto.pdf_url ou boleto.pdfUrl"],
     optionalFields: ["boleto.amount", "boleto.expire_at ou expireAt", "boleto.barcode"],
-    generatedMessage: "Envio do boleto em PDF com caption contendo valor, vencimento e linha digitável quando disponíveis.",
-    fallback: "Sem URL válida do PDF, o template falha com erro 422 e o dispatch não é enviado.",
+    generatedMessage: "Envio do boleto em PDF com caption contendo valor e vencimento; quando boleto.barcode existir, o runtime envia uma segunda mensagem textual contendo apenas a linha digitável.",
+    fallback: "Sem boleto.pdf_url/boleto.pdfUrl o template falha com erro 422. Se a URL existir, mas o PDF não estiver acessível no download do backend, o dispatch degrada para texto com link visível e registra documentFallbackReason.",
   },
   {
     event: "carrinho_abandonado",
@@ -232,7 +232,7 @@ export const INTEGRATION_RENDER_RULES = [
   "Quando o sendMessage falhar, a auditoria registra erro sanitizado do provider/socket quando disponível, preservando failureCode estável e sem expor tokens, Authorization, cookies ou stack trace bruto.",
   "Quando a Baileys emitir messages.update para um providerMessageId conhecido, a auditoria registra recibo pós-envio observacional como SUBMITTED, DELIVERED, READ, PLAYED ou FAILED_AFTER_SUBMIT; ausência desse recibo não é falha automática.",
   "No evento pix_gerado, a primeira mensagem fecha com a chamada 'Codigo Pix copia e cola' e, quando pix.copy_paste ou pix.copyPaste estiver disponível, o runtime envia uma segunda mensagem textual contendo apenas o código bruto.",
-  "No evento boleto_gerado, a primeira mensagem envia o PDF/caption e, quando boleto.barcode estiver disponível, o runtime envia uma segunda mensagem textual contendo apenas a linha digitável.",
+  "No evento boleto_gerado, a primeira mensagem envia o PDF/caption com valor e vencimento; quando boleto.barcode estiver disponível, o runtime envia uma segunda mensagem textual contendo apenas a linha digitável.",
   "Para boleto_gerado, o backend baixa/valida boleto.pdf_url antes do envio. Se o PDF não estiver acessível, o dispatch cai para texto com link visível do boleto e registra deliveryPath text_fallback_document com documentFallbackReason.",
   "pedido_pago usa texto com link visível no corpo como caminho oficial e confiável.",
   "pagamento_recusado exibe o checkoutLink no corpo da mensagem e também pode manter o preview do link quando o provider renderizar externalAdReply.",
@@ -240,7 +240,7 @@ export const INTEGRATION_RENDER_RULES = [
   "Quando houver URL aplicável, o runtime mantém o link visível no corpo, caption ou fallback textual da mensagem.",
   "A telemetria do dispatch registra secondaryDispatchStatus para indicar se a segunda mensagem do Pix ou boleto foi enviada, pulada por ausência do código/linha digitável ou falhou isoladamente.",
   "externalAdReply continua restrito aos fluxos text, document e aos fallbacks textuais dos eventos ricos; ele não é usado no caminho de imagem limpa nem substitui botão real.",
-  "Boleto é o caso oficial de document e exige URL pública válida em boleto.pdf_url ou boleto.pdfUrl.",
+  "Boleto é o caso oficial de document e exige URL HTTP/HTTPS em boleto.pdf_url ou boleto.pdfUrl; a URL precisa ser pública e baixável pelo backend para envio como PDF.",
 ] as const;
 
 export const INTEGRATION_CUSTOM_MESSAGE_RULES = [
@@ -413,7 +413,7 @@ export const INTEGRATION_MINIMAL_PAYLOAD_EXAMPLES = [
   },
   {
     event: "boleto_gerado",
-    description: "Boleto gerado; boleto.pdf_url ou boleto.pdfUrl é obrigatório para enviar o documento.",
+    description: "Boleto gerado; boleto.pdf_url ou boleto.pdfUrl é obrigatório, e boleto.barcode permite enviar a linha digitável como segunda mensagem.",
     code: `{
   "event": "boleto_gerado",
   "instanceId": "$INSTANCE_ID",
@@ -619,8 +619,10 @@ export const INTEGRATION_TROUBLESHOOTING = [
   {
     title: "Boleto rejeitado",
     steps: [
-      "Para boleto_gerado, envie boleto.pdf_url ou boleto.pdfUrl com URL pública válida do PDF.",
+      "Para boleto_gerado, envie boleto.pdf_url ou boleto.pdfUrl com URL pública HTTP/HTTPS do PDF.",
       "Sem essa URL, o template falha com erro 422 antes do envio ao WhatsApp.",
+      "Se a URL existir, mas o backend não conseguir baixar o PDF, o dispatch segue como texto com link visível e registra deliveryPath text_fallback_document e documentFallbackReason na auditoria.",
+      "Envie boleto.barcode quando quiser que a linha digitável seja enviada em segunda mensagem textual.",
     ],
   },
   {
@@ -737,7 +739,7 @@ export const INTEGRATION_CURL_EVENT_EXAMPLES = [
   },
   {
     title: "boleto_gerado",
-    description: "Boleto com PDF obrigatório, valor, vencimento e linha digitável.",
+    description: "Boleto com PDF obrigatório, valor, vencimento e linha digitável opcional em segunda mensagem.",
     code: `curl -X POST "$ENDPOINT_URL" \\
   -H "Authorization: Bearer $SECRET_TOKEN" \\
   -H "Content-Type: application/json" \\
