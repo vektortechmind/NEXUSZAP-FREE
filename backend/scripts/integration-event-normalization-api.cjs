@@ -407,8 +407,25 @@ function expectPhoneContext(context, digits) {
         enabled: true,
         text: "Abrir pedido",
         url: "https://checkout.example.com/c/123",
+        buttons: null,
       },
     });
+  }
+
+  {
+    const payload = createBasePayload();
+    payload.message = {
+      cta_url_button: {
+        enabled: true,
+        buttons: [
+          { text: "Acessar area", url: "https://checkout.example.com/acesso" },
+          { text: "Acessar comunidade", url: "https://checkout.example.com/comunidade" },
+        ],
+      },
+    };
+    const context = normalizeIntegrationEventContext("envio_acesso", payload);
+    assert.equal(context.messageOverride.ctaUrlButton.buttons.length, 2);
+    assert.equal(context.messageOverride.ctaUrlButton.buttons[1].text, "Acessar comunidade");
   }
 
   {
