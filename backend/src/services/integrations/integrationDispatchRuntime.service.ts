@@ -2,6 +2,10 @@ import { type AnyMessageContent, type WASocket, type WAMessage } from "@whiskeys
 import { randomUUID } from "crypto";
 import { prisma } from "../../database/prisma";
 import { InstanceManager } from "../../whatsapp/InstanceManager";
+import {
+  sendCtaUrlInteractiveMessage,
+  type SendCtaUrlInteractiveResult,
+} from "../../whatsapp/interactiveSender";
 import { redactSensitiveText, safeErrorMessage } from "../../utils/redaction";
 import {
   type IntegrationNormalizedEventContext,
@@ -146,6 +150,8 @@ export type IntegrationDispatchDeliveryPath =
   | "image_clean"
   | "text_fallback_image"
   | "text_fallback_document"
+  | "interactive_cta_url"
+  | "text_fallback_interactive_cta_url"
   | "document"
   | "link"
   | "text";
@@ -635,6 +641,19 @@ function buildDispatchFailurePayloadSummary(
   };
 }
 
+function getExperimentalCtaUrlConfig(template: IntegrationRenderedDispatchTemplate): { buttonText: string; url: string } | null {
+  const cta = template.context.messageOverride?.ctaUrlButton;
+  if (!cta?.enabled) return null;
+
+  const url = cta.url ?? template.linkUrl ?? template.context.checkoutLink;
+  if (!url) return null;
+
+  return {
+    buttonText: cta.text ?? "Abrir link",
+    url,
+  };
+}
+
 async function lookupWhatsappRecipient(sock: WASocket, recipientJid: string): Promise<IntegrationWhatsappLookupSummary> {
   const lookupSocket = sock as {
     onWhatsApp?: (...jids: string[]) => Promise<Array<{ exists?: boolean; jid?: string } | undefined>>;
@@ -680,6 +699,7 @@ function buildPayloadSummary(
   secondaryDispatchFailureCode: IntegrationSecondaryDispatchFailureCode | null,
   whatsappLookup: IntegrationWhatsappLookupSummary | null,
   recipientJid: string | null = template.context.recipientJid,
+  interactiveResult: SendCtaUrlInteractiveResult | null = null,
 ) {
   const secondaryDispatchStatus: IntegrationSecondaryDispatchStatus = template.followup
     ? secondaryDispatchFailureCode
@@ -700,7 +720,7 @@ function buildPayloadSummary(
     ...buildProviderSendErrorPayloadSummary(null),
     intendedMessageType: template.messageType,
     dispatchedMessageType: resolveDispatchedMessageType(template, content),
-    deliveryPath: resolveDeliveryPath(template, content, imageFallbackReason, documentFallbackReason),
+    deliveryPath: interactiveResult?.deliveryPath ?? resolveDeliveryPath(template, content, imageFallbackReason, documentFallbackReason),
     title: template.title,
     linkUrl: template.linkUrl,
     documentUrl: template.documentUrl,
@@ -711,6 +731,10 @@ function buildPayloadSummary(
     customBodyLength: template.context.messageOverride?.bodyLength ?? null,
     customPixFollowupUsed: Boolean(template.context.messageOverride?.pixFollowupBody),
     customPixFollowupLength: template.context.messageOverride?.pixFollowupBodyLength ?? null,
+    ctaUrlButtonRequested: Boolean(template.context.messageOverride?.ctaUrlButton?.enabled),
+    ctaUrlButtonAttempted: interactiveResult?.summary.attemptedInteractive ?? false,
+    ctaUrlButtonFallbackUsed: interactiveResult?.summary.fallbackUsed ?? false,
+    ctaUrlButtonError: interactiveResult?.interactiveError ?? null,
     hasExternalAdReply: Boolean(template.externalAdReply),
     fallbackWithoutImage: template.messageType === "image" && !imageAsset,
     imageFallbackReason,
@@ -995,8 +1019,20 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
         let providerMessageId: string | null;
         let secondaryProviderMessageId: string | null = null;
         let secondaryDispatchFailureCode: IntegrationSecondaryDispatchFailureCode | null = null;
-        const sentMessage = await sock.sendMessage(effectiveRecipientJid, content);
-        providerMessageId = extractProviderMessageId(sentMessage as WAMessage | null | undefined);
+        let interactiveResult: SendCtaUrlInteractiveResult | null = null;
+        const ctaUrlConfig = getExperimentalCtaUrlConfig(template);
+
+        if (ctaUrlConfig && "text" in content && typeof content.text === "string") {
+          interactiveResult = await sendCtaUrlInteractiveMessage(sock, effectiveRecipientJid, {
+            body: content.text,
+            buttonText: ctaUrlConfig.buttonText,
+            url: ctaUrlConfig.url,
+          }, { fallbackText: content.text });
+          providerMessageId = interactiveResult.providerMessageId ?? interactiveResult.fallbackProviderMessageId ?? null;
+        } else {
+          const sentMessage = await sock.sendMessage(effectiveRecipientJid, content);
+          providerMessageId = extractProviderMessageId(sentMessage as WAMessage | null | undefined);
+        }
 
         const followupPayload = buildFollowupPayload(template);
         if (followupPayload) {
@@ -1019,7 +1055,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
           lastRetryError: null,
           retryLockedAt: null,
           retryExhaustedAt: null,
-          payloadSummary: buildPayloadSummary(template, content, imageAsset, imageFallbackReason, documentAsset, documentFallbackReason, secondaryProviderMessageId, secondaryDispatchFailureCode, whatsappLookup, effectiveRecipientJid),
+          payloadSummary: buildPayloadSummary(template, content, imageAsset, imageFallbackReason, documentAsset, documentFallbackReason, secondaryProviderMessageId, secondaryDispatchFailureCode, whatsappLookup, effectiveRecipientJid, interactiveResult),
         });
 
         return {

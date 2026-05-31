@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { proto } from "@whiskeysockets/baileys";
+import { proto, type MessageRelayOptions } from "@whiskeysockets/baileys";
 import { safeErrorMessage } from "../utils/redaction";
 import {
   buildCtaUrlFallbackText,
@@ -10,7 +10,7 @@ import {
 type SendMessageResult = { key?: { id?: string | null } } | string | void;
 
 export type CtaUrlRelaySocket = {
-  relayMessage?: (jid: string, message: proto.IMessage, options: { messageId?: string; additionalNodes?: unknown[] }) => Promise<string>;
+  relayMessage?: (jid: string, message: proto.IMessage, options: MessageRelayOptions) => Promise<string>;
   sendMessage?: (jid: string, content: { text: string }) => Promise<SendMessageResult>;
 };
 
@@ -112,4 +112,3 @@ export async function sendCtaUrlInteractiveMessage(
     };
   }
 }
-

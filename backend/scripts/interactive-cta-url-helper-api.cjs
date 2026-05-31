@@ -125,11 +125,14 @@ async function assertSenderFallback() {
 
 function assertPublicContractUnchanged() {
   const integrationRoute = read("src/routes/integration.routes.ts");
+  const eventCatalog = read("src/services/integrations/integrationEventCatalog.service.ts");
   const runtimeService = read("src/services/integrations/integrationDispatchRuntime.service.ts");
 
   assert.ok(!integrationRoute.includes("interactivePayloadHelper"), "endpoint publico nao deve importar helper experimental");
   assert.ok(!integrationRoute.includes("interactiveSender"), "endpoint publico nao deve importar sender experimental");
-  assert.ok(!runtimeService.includes("sendCtaUrlInteractiveMessage"), "templates produtivos nao devem usar CTA experimental por padrao");
+  assert.ok(runtimeService.includes("getExperimentalCtaUrlConfig"), "runtime deve manter CTA experimental atras de opt-in explicito");
+  assert.ok(eventCatalog.includes('new Set(["enabled", "text", "url"])'), "contrato publico deve aceitar apenas campos de negocio do botao");
+  assert.ok(!eventCatalog.includes("interactiveMessage"), "contrato publico nao deve aceitar payload tecnico do WhatsApp");
 }
 
 async function main() {
@@ -146,4 +149,3 @@ main().catch((err) => {
   console.error(err);
   process.exit(1);
 });
-
