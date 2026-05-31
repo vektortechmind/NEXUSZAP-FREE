@@ -4,6 +4,11 @@ Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
 ## [1.0.5] - 2026-05-31
 
+### Added
+
+- Templates de integracao agora podem usar botoes nativos internos para acoes ja existentes: `cta_url` em links e `cta_copy` em Pix copia e cola/linha digitavel de boleto.
+- Auditoria de dispatch passou a registrar `interactiveButtonKinds`, `interactiveButtonCount`, caminhos interativos nativos e `skipped_interactive_button` quando a segunda mensagem Pix/Boleto foi substituida por botao.
+
 ### Fixed
 
 - O Update Center não exibe mais os botões `Verificar` e `Atualizar` enquanto um job de atualização remoto está ativo, evitando nova checagem manual durante a instalação/update em andamento.

@@ -19,7 +19,7 @@ O produto esta organizado em cinco frentes operacionais dentro do painel:
 - Base de conhecimento com upload de `PDF`, `DOCX`, `TXT`, `JSON` e imagens.
 - Gestao de agentes com prompt principal, configuracoes de runtime e arquivos por workspace.
 - Endpoint publico de integracoes com autenticacao por `Bearer token`, `instanceId`, `timestamp` e `dedupKey`.
-- Templates operacionais por evento para cobranca, acesso, assinatura, Pix, boleto e recuperacao.
+- Templates operacionais por evento para cobranca, acesso, assinatura, Pix, boleto e recuperacao, com botoes interativos quando houver link ou codigo operacional no payload.
 - Auditoria global de ingressos e dispatches das integracoes.
 - Autenticacao JWT, criptografia de segredos e rate limiting.
 - PostgreSQL como banco oficial.
@@ -325,16 +325,18 @@ Regras operacionais importantes:
 - telefones devem vir preferencialmente em E.164 com DDI, por exemplo `+5511998765432` ou `+14155552671`;
 - `202 accepted`, `SENT` e `providerMessageId` indicam aceite/submissao operacional ao runtime/provider, nao entrega, leitura ou visualizacao final no WhatsApp;
 - falhas temporarias de instancia offline ou envio podem entrar em retry operacional quando registradas como retryable.
-- em `boleto_gerado`, `boleto.pdf_url` ou `boleto.pdfUrl` e obrigatorio; o backend baixa/valida o PDF antes do envio, envia `boleto.barcode` como segunda mensagem quando informado e registra `text_fallback_document`/`documentFallbackReason` se o PDF nao estiver acessivel.
+- quando houver link ou codigo operacional nos templates consolidados, o backend pode renderizar botoes nativos internos: `cta_url` para abrir paginas/boletos e `cta_copy` para copiar Pix ou linha digitavel; a ferramenta externa nao envia payload tecnico de WhatsApp/Baileys;
+- em `pix_gerado`, `pix.copy_paste` ou `pix.copyPaste` pode virar botao de copiar codigo Pix; se o relay interativo for aceito, a segunda mensagem textual do Pix nao e enviada, mas o fallback textual preserva o codigo se houver falha tecnica;
+- em `boleto_gerado`, `boleto.pdf_url` ou `boleto.pdfUrl` e obrigatorio; o backend pode renderizar botao para abrir boleto e `boleto.barcode` pode virar botao de copiar linha digitavel; se o interativo ou o download falhar tecnicamente, o fallback preserva link/codigo visivel e registra o caminho operacional na auditoria.
 
 Texto customizado opcional:
 
 - `payload.message.body` pode substituir o texto visivel/caption do template com texto final ja renderizado pela ferramenta externa;
-- `payload.message.pix_followup_body` pode personalizar a segunda mensagem do Pix, somente no evento `pix_gerado`;
+- `payload.message.pix_followup_body` pode personalizar o fallback/segunda mensagem textual do Pix, somente no evento `pix_gerado`; quando o botao de copiar e aceito, essa segunda mensagem nao e enviada;
 - cada um desses campos aceita string nao vazia com ate `4000` caracteres; esse limite vale apenas para cada texto customizado, nao para o payload inteiro;
 - o texto customizado recebido nao e salvo como template reutilizavel, nao cria template por instancia e nao fica armazenado como conteudo na auditoria;
 - a auditoria registra apenas metadados de uso e tamanho, como `customBodyUsed`, `customBodyLength`, `customPixFollowupUsed` e `customPixFollowupLength`;
-- campos tecnicos em `payload.message`, como `caption`, `messageType`, `providerPayload`, `buttons` ou `relayMessage`, sao rejeitados com `INTEGRATION_CUSTOM_MESSAGE_INVALID`.
+- campos tecnicos em `payload.message`, como `caption`, `messageType`, `providerPayload`, `relayMessage`, `nativeFlow`, `buttons`, `templateMessage` ou `interactiveMessage`, sao rejeitados com `INTEGRATION_CUSTOM_MESSAGE_INVALID`.
 
 ## Credenciais de integracao
 
@@ -376,5 +378,3 @@ Nunca commite:
 - secrets, tokens ou credenciais exportadas do painel
 
 Esses caminhos devem permanecer locais e ja ficam protegidos pelo `.gitignore` quando aplicavel.
-
-
