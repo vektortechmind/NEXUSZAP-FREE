@@ -40,6 +40,12 @@ function DetailField({ label, value, mono = false }: { label: string; value: str
   );
 }
 
+function formatBooleanSignal(value: boolean | null | undefined): string | null {
+  if (value === true) return "Sim";
+  if (value === false) return "Não";
+  return null;
+}
+
 type IntegrationOperationsOverviewProps = {
   overview: IntegrationDashboardResponse;
   refreshing: boolean;
@@ -127,7 +133,9 @@ export function IntegrationOperationsOverview({ overview, refreshing, onRefresh 
                           <DetailField label="Provider ID secundário" value={entry.payloadSummary?.secondaryProviderMessageId} mono />
                           <DetailField label="Falha secundária" value={entry.payloadSummary?.secondaryDispatchFailureCode} />
                           <DetailField label="Lookup WhatsApp" value={entry.payloadSummary?.whatsappLookupStatus} />
+                          <DetailField label="Lookup existe" value={formatBooleanSignal(entry.payloadSummary?.whatsappLookupExists)} />
                           <DetailField label="JID lookup" value={entry.payloadSummary?.whatsappLookupJid} mono />
+                          <DetailField label="Erro lookup" value={entry.payloadSummary?.whatsappLookupError} />
                         </>
                       ) : null}
                     </div>

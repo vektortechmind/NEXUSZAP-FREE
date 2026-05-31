@@ -228,6 +228,7 @@ export const INTEGRATION_RENDER_RULES = [
   "Eventos mapeados como image fazem download da imagem no runtime quando imageUrl for HTTP/HTTPS válida e acessível pelo backend.",
   "Quando a imagem estiver ausente, inválida ou falhar no download, o runtime troca o envio para texto sem interromper o dispatch e registra deliveryPath text_fallback_image.",
   "O status técnico SENT nos logs de dispatch significa que o sendMessage retornou e o provider aceitou a tentativa operacional; não significa entrega confirmada no WhatsApp.",
+  "Antes do envio, quando o socket permitir, o runtime registra um lookup WhatsApp informativo: found, not_found, error ou unavailable. Esse lookup ajuda diagnóstico, mas não bloqueia envio nem confirma entrega/leitura.",
   "No evento pix_gerado, a primeira mensagem fecha com a chamada 'Codigo Pix copia e cola' e, quando pix.copy_paste ou pix.copyPaste estiver disponível, o runtime envia uma segunda mensagem textual contendo apenas o código bruto.",
   "pedido_pago usa texto com link visível no corpo como caminho oficial e confiável.",
   "carrinho_abandonado, assinatura_criada e assinatura_em_atraso mantêm messageType image, mas exibem checkoutLink no corpo/caption quando a URL é informada.",
