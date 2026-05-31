@@ -5,6 +5,7 @@ export const AGENT_SECRET_FIELDS = [
   "groqKey",
   "groqAudioKey",
   "geminiKey",
+  "openaiKey",
   "openrouterKey"
 ] as const;
 

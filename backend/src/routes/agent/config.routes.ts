@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "../../database/prisma";
 import { geminiChat } from "../../ai/gemini";
 import { groqChat, groqPingModels } from "../../ai/groq";
+import { openAiChat } from "../../ai/openai";
 import { openRouterChat } from "../../ai/openrouter";
 import { fetchOpenRouterModelsGrouped } from "../../ai/openrouterModels";
 import { buildAgentConfigUpdateData, sanitizeAgentConfigForResponse } from "../../services/agentConfigSecrets";
@@ -53,6 +54,7 @@ export async function agentConfigRoutes(fastify: FastifyInstance) {
           { provider: "gemini", configured: false, ok: false as const },
           { provider: "groq", configured: false, ok: false as const },
           { provider: "openrouter", configured: false, ok: false as const },
+          { provider: "openai", configured: false, ok: false as const },
           { provider: "groq-audio", configured: false, ok: false as const },
         ],
       });
@@ -64,7 +66,7 @@ export async function agentConfigRoutes(fastify: FastifyInstance) {
     ];
 
     async function test(
-      name: "gemini" | "groq" | "openrouter" | "groq-audio",
+      name: "gemini" | "groq" | "openrouter" | "openai" | "groq-audio",
       key: string | null | undefined
     ) {
       if (!key || !String(key).trim()) {
@@ -75,6 +77,7 @@ export async function agentConfigRoutes(fastify: FastifyInstance) {
         if (name === "gemini") await geminiChat(key, messages);
         if (name === "groq") await groqChat(key, messages);
         if (name === "openrouter") await openRouterChat(key, messages, primaryInstance.openrouterModel);
+        if (name === "openai") await openAiChat(key, messages, primaryInstance.openaiModel);
         if (name === "groq-audio") await groqPingModels(key);
         return {
           provider: name,
@@ -93,10 +96,11 @@ export async function agentConfigRoutes(fastify: FastifyInstance) {
       }
     }
 
-    const [gemini, groq, openrouter, groqAudio] = await Promise.all([
+    const [gemini, groq, openrouter, openai, groqAudio] = await Promise.all([
       test("gemini", primaryInstance.geminiKey ? tryDecryptSecret(primaryInstance.geminiKey) : primaryInstance.geminiKey),
       test("groq", primaryInstance.groqKey ? tryDecryptSecret(primaryInstance.groqKey) : primaryInstance.groqKey),
       test("openrouter", primaryInstance.openrouterKey ? tryDecryptSecret(primaryInstance.openrouterKey) : primaryInstance.openrouterKey),
+      test("openai", primaryInstance.openaiKey ? tryDecryptSecret(primaryInstance.openaiKey) : primaryInstance.openaiKey),
       test(
         "groq-audio",
         primaryInstance.groqAudioKey
@@ -109,7 +113,7 @@ export async function agentConfigRoutes(fastify: FastifyInstance) {
 
     return reply.send({
       preferredChatProvider: primaryInstance.chatProvider ?? null,
-      results: [gemini, groq, openrouter, groqAudio],
+      results: [gemini, groq, openrouter, openai, groqAudio],
     });
   });
 

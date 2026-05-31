@@ -3,6 +3,7 @@ import {
   loadRuntimeConfigSource,
   resolveChatProvider,
   resolveMemoryLimit,
+  resolveOpenAiModel,
   resolveOpenRouterModel,
   resolveRawSecrets,
 } from "../services/runtimeConfig.service";
@@ -12,6 +13,7 @@ import { groqChat, groqWhisper } from "./groq";
 import { isChatProviderId, type ChatProviderId } from "./chatRuntime";
 import { normalizeMessagesForChatApi } from "./systemPrompt";
 import type { ChatMessage } from "./systemPrompt";
+import { openAiChat } from "./openai";
 import { openRouterChat } from "./openrouter";
 import { sanitizeBotResponse } from "./promptGuard";
 
@@ -21,6 +23,8 @@ type EffectiveInstanceKeys = {
   chatProvider: string | null;
   groqKey: string | null | undefined;
   geminiKey: string | null | undefined;
+  openaiKey: string | null | undefined;
+  openaiModel: string | null;
   openrouterKey: string | null | undefined;
   openrouterModel: string | null;
   groqAudioKey: string | null | undefined;
@@ -42,7 +46,7 @@ const CHAT_FAILURE_MESSAGE_FOR_END_USER =
 function logFailureForAdmin(noKeysConfigured: boolean, lastError: unknown) {
   if (noKeysConfigured) {
     console.error(
-      "[askChat] ADMIN: nenhuma chave de IA configurada (Groq / Gemini / OpenRouter). Defina em Proteções & IA Global ou por instância."
+      "[askChat] ADMIN: nenhuma chave de IA configurada (Groq / Gemini / OpenRouter / OpenAI). Defina em Proteções & IA Global ou por instância."
     );
     return;
   }
@@ -66,7 +70,7 @@ function decryptNullableSecret(value: string | null | undefined) {
 }
 
 function buildProviderSequence(selectedProvider: string | null | undefined) {
-  const base: ChatProviderId[] = ["groq", "gemini", "openrouter"];
+  const base: ChatProviderId[] = ["groq", "gemini", "openrouter", "openai"];
   if (!isChatProviderId(selectedProvider)) return base;
   return [selectedProvider, ...base.filter((provider) => provider !== selectedProvider)];
 }
@@ -79,6 +83,8 @@ export async function getKeys(instanceId?: string): Promise<EffectiveInstanceKey
     chatProvider: resolveChatProvider(source),
     groqKey: decryptNullableSecret(secrets.groqKey),
     geminiKey: decryptNullableSecret(secrets.geminiKey),
+    openaiKey: decryptNullableSecret(secrets.openaiKey),
+    openaiModel: resolveOpenAiModel(source),
     openrouterKey: decryptNullableSecret(secrets.openrouterKey),
     openrouterModel: resolveOpenRouterModel(source),
     groqAudioKey: decryptNullableSecret(secrets.groqAudioKey),
@@ -114,6 +120,10 @@ export async function askChat(instanceId: string, messages: unknown[]) {
     openrouter: {
       key: keys.openrouterKey,
       fn: (k, msgs) => openRouterChat(k, msgs, keys.openrouterModel),
+    },
+    openai: {
+      key: keys.openaiKey,
+      fn: (k, msgs) => openAiChat(k, msgs, keys.openaiModel),
     },
   };
 

@@ -58,6 +58,8 @@ export function Apis() {
         geminiKey: null,
         groqKey: null,
         groqAudioKey: null,
+        openaiKey: null,
+        openaiModel: data.openaiModel ?? null,
         openrouterKey: null,
         openrouterModel: data.openrouterModel ?? null,
       });
@@ -257,6 +259,18 @@ export function Apis() {
                     <Check className="mr-2 h-4 w-4" aria-hidden="true" />
                     {cfg.chatProvider === selectedMeta.id ? "Provedor preferencial" : "Definir como preferencial"}
                   </Button>
+                )}
+
+                {selectedMeta.id === "openai" && (
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    <span className="mb-1.5 block">Modelo OpenAI</span>
+                    <input
+                      value={cfg.openaiModel ?? ""}
+                      onChange={(event) => setCfg({ ...cfg, openaiModel: event.target.value === "" ? null : event.target.value })}
+                      placeholder="Padrão interno: gpt-5"
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 font-mono text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                    />
+                  </label>
                 )}
 
                 {selectedHealth?.error && (

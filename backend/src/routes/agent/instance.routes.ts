@@ -33,7 +33,7 @@ export async function agentInstanceRoutes(fastify: FastifyInstance) {
       orderBy: { slot: "asc" },
       include: {
         agent: {
-          select: { id: true, name: true, chatProvider: true, openrouterModel: true, memoryLimit: true },
+          select: { id: true, name: true, chatProvider: true, openaiModel: true, openrouterModel: true, memoryLimit: true },
         },
       },
     });
@@ -74,7 +74,7 @@ export async function agentInstanceRoutes(fastify: FastifyInstance) {
       where: { id: instanceId },
       include: {
         agent: {
-          select: { id: true, name: true, chatProvider: true, openrouterModel: true, memoryLimit: true },
+          select: { id: true, name: true, chatProvider: true, openaiModel: true, openrouterModel: true, memoryLimit: true },
         },
       },
     });
@@ -101,12 +101,13 @@ export async function agentInstanceRoutes(fastify: FastifyInstance) {
           ...(body.name !== undefined ? { name: body.name } : {}),
           ...(body.aiWhatsappEnabled !== undefined ? { aiWhatsappEnabled: body.aiWhatsappEnabled } : {}),
           ...(body.chatProvider !== undefined ? { chatProvider: isChatProviderId(body.chatProvider) ? body.chatProvider : null } : {}),
+          ...(body.openaiModel !== undefined ? { openaiModel: body.openaiModel } : {}),
           ...(body.openrouterModel !== undefined ? { openrouterModel: body.openrouterModel } : {}),
           ...(body.memoryLimit !== undefined ? { memoryLimit: normalizeMemoryLimit(body.memoryLimit) } : {}),
         },
         include: {
           agent: {
-            select: { id: true, name: true, chatProvider: true, openrouterModel: true, memoryLimit: true },
+            select: { id: true, name: true, chatProvider: true, openaiModel: true, openrouterModel: true, memoryLimit: true },
           },
         },
       });

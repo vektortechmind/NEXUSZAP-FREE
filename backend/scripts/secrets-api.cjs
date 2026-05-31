@@ -38,6 +38,8 @@ function baseAgent(overrides = {}) {
     groqKey: null,
     groqAudioKey: null,
     geminiKey: null,
+    openaiKey: null,
+    openaiModel: null,
     openrouterKey: null,
     openrouterModel: null,
     createdAt: now,
@@ -72,12 +74,14 @@ async function main() {
     name: "Novo nome",
     groqKey: "gsk_new_secret",
     geminiKey: "",
+    openaiKey: "sk_openai_secret",
     openrouterKey: undefined,
   });
   assert.equal(updateData.name, "Novo nome");
   assert.equal(typeof updateData.groqKey, "string");
   assert.notEqual(updateData.groqKey, "gsk_new_secret");
   assert.equal(decryptSecret(updateData.groqKey), "gsk_new_secret");
+  assert.equal(decryptSecret(updateData.openaiKey), "sk_openai_secret");
   assert.equal(Object.prototype.hasOwnProperty.call(updateData, "geminiKey"), false);
   assert.equal(Object.prototype.hasOwnProperty.call(updateData, "openrouterKey"), false);
 

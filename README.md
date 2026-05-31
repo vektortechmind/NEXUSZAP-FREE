@@ -1,4 +1,4 @@
-# NexusZAP - Chatbot com IA v1.0.3
+# NexusZAP - Chatbot com IA v1.0.4
 
 NexusZAP e uma plataforma de automacao para WhatsApp e Telegram com IA, base de conhecimento, painel administrativo e endpoint publico de integracoes para sistemas externos.
 
@@ -10,12 +10,12 @@ O produto esta organizado em cinco frentes operacionais dentro do painel:
 - `Instancias`: gestao de conexoes WhatsApp e Telegram, QR Code, status e acoes operacionais.
 - `Integracoes`: credenciais, auditoria global e documentacao publica do endpoint `/api/integrations/events`.
 - `Agente IA`: configuracao de runtime, prompt principal, arquivos de conhecimento e workspace por agente.
-- `Configuracoes`: chaves, providers e recursos de sistema, incluindo OpenRouter quando houver chave configurada.
+- `Configuracoes`: chaves, providers e recursos de sistema, incluindo modelos OpenRouter/OpenAI quando houver chave configurada.
 
 ## Recursos principais
 
 - Automacao para `WhatsApp` e `Telegram` com painel unico.
-- Runtime de IA com `Gemini`, `Groq` e `OpenRouter`.
+- Runtime de IA com `Gemini`, `Groq`, `OpenRouter` e `OpenAI`.
 - Base de conhecimento com upload de `PDF`, `DOCX`, `TXT`, `JSON` e imagens.
 - Gestao de agentes com prompt principal, configuracoes de runtime e arquivos por workspace.
 - Endpoint publico de integracoes com autenticacao por `Bearer token`, `instanceId`, `timestamp` e `dedupKey`.
@@ -253,7 +253,7 @@ Permite:
 - criar agentes para WhatsApp e Telegram;
 - definir nome e prompt principal;
 - ajustar provider e memoria do runtime;
-- configurar modelo OpenRouter quando selecionado;
+- configurar modelo OpenRouter ou OpenAI quando selecionado;
 - enviar arquivos de conhecimento;
 - manter workspace separado por agente.
 

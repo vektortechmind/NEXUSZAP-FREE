@@ -68,6 +68,7 @@ export async function agentWorkspaceRoutes(fastify: FastifyInstance) {
         chatProvider: body.chatProvider === undefined
           ? undefined
           : (isChatProviderId(body.chatProvider) ? body.chatProvider : null),
+        openaiModel: body.openaiModel,
         openrouterModel: body.openrouterModel,
         memoryLimit: body.memoryLimit !== undefined ? normalizeMemoryLimit(body.memoryLimit) : undefined,
       });

@@ -163,6 +163,7 @@ export function useAgentWorkspace(addToast: (message: string, tone?: "success" |
         instanceStatus: agentRes.data.instanceStatus,
         runtime: {
           chatProvider: agentRes.data.chatProvider ?? "",
+          openaiModel: agentRes.data.openaiModel ?? "",
           openrouterModel: agentRes.data.openrouterModel ?? "",
           memoryLimit: agentRes.data.memoryLimit ?? runtimeDefaultMemory,
           providerFallback: false,
@@ -261,6 +262,7 @@ export function useAgentWorkspace(addToast: (message: string, tone?: "success" |
         name: editor.name.trim(),
         systemPrompt: editor.systemPrompt,
         chatProvider: editor.runtime.chatProvider || null,
+        openaiModel: editor.runtime.chatProvider === "openai" ? editor.runtime.openaiModel || null : null,
         openrouterModel: editor.runtime.chatProvider === "openrouter" ? editor.runtime.openrouterModel || null : null,
         memoryLimit: editor.runtime.memoryLimit,
         audioTranscriptionEnabled: editor.audioTranscriptionEnabled,

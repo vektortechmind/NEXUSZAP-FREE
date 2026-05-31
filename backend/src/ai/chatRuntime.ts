@@ -1,6 +1,7 @@
+import { defaultOpenAiModelId } from "./openai";
 import { defaultOpenRouterModelId } from "./openrouter";
 
-export const CHAT_PROVIDER_IDS = ["groq", "gemini", "openrouter"] as const;
+export const CHAT_PROVIDER_IDS = ["groq", "gemini", "openrouter", "openai"] as const;
 
 export type ChatProviderId = (typeof CHAT_PROVIDER_IDS)[number];
 
@@ -21,6 +22,12 @@ export const CHAT_PROVIDER_OPTIONS: Array<{
     supportsModel: true,
     defaultModel: defaultOpenRouterModelId(),
   },
+  {
+    id: "openai",
+    label: "OpenAI",
+    supportsModel: true,
+    defaultModel: defaultOpenAiModelId(),
+  },
 ];
 
 export function isChatProviderId(value: unknown): value is ChatProviderId {
@@ -38,18 +45,27 @@ export function normalizeOpenRouterModel(model: string | null | undefined): stri
   return trimmed || defaultOpenRouterModelId();
 }
 
+export function normalizeOpenAiModel(model: string | null | undefined): string {
+  const trimmed = typeof model === "string" ? model.trim() : "";
+  return trimmed || defaultOpenAiModelId();
+}
+
 export function describeRuntimeFallback(input: {
   chatProvider: string | null | undefined;
+  openaiModel: string | null | undefined;
   openrouterModel: string | null | undefined;
 }) {
   const providerSelected = isChatProviderId(input.chatProvider);
   const providerFallback = !providerSelected;
-  const modelFallback = input.chatProvider === "openrouter" && !input.openrouterModel?.trim();
+  const modelFallback =
+    (input.chatProvider === "openrouter" && !input.openrouterModel?.trim()) ||
+    (input.chatProvider === "openai" && !input.openaiModel?.trim());
+  const defaultModel = input.chatProvider === "openai" ? defaultOpenAiModelId() : defaultOpenRouterModelId();
 
   return {
     providerFallback,
     modelFallback,
-    providerFallbackLabel: providerFallback ? "Fallback automático: Groq -> Gemini -> OpenRouter" : null,
-    modelFallbackLabel: modelFallback ? `Fallback de modelo: ${defaultOpenRouterModelId()}` : null,
+    providerFallbackLabel: providerFallback ? "Fallback automático: Groq -> Gemini -> OpenRouter -> OpenAI" : null,
+    modelFallbackLabel: modelFallback ? `Fallback de modelo: ${defaultModel}` : null,
   };
 }
