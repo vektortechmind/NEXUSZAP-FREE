@@ -3,10 +3,27 @@
 const path = require("path");
 
 require("dotenv").config({ path: path.join(__dirname, "..", ".env") });
-require("ts-node/register");
 
-const { InstanceManager } = require("../src/whatsapp/InstanceManager.ts");
-const { sendCtaUrlInteractiveMessage } = require("../src/whatsapp/interactiveSender.ts");
+function loadRuntimeModules() {
+  try {
+    require("ts-node/register");
+    return {
+      InstanceManager: require("../src/whatsapp/InstanceManager.ts").InstanceManager,
+      sendCtaUrlInteractiveMessage: require("../src/whatsapp/interactiveSender.ts").sendCtaUrlInteractiveMessage,
+    };
+  } catch (error) {
+    if (error?.code !== "MODULE_NOT_FOUND" || !String(error.message || "").includes("ts-node/register")) {
+      throw error;
+    }
+
+    return {
+      InstanceManager: require("/app/dist/whatsapp/InstanceManager.js").InstanceManager,
+      sendCtaUrlInteractiveMessage: require("/app/dist/whatsapp/interactiveSender.js").sendCtaUrlInteractiveMessage,
+    };
+  }
+}
+
+const { InstanceManager, sendCtaUrlInteractiveMessage } = loadRuntimeModules();
 
 function readArg(name) {
   const prefix = `--${name}=`;
@@ -83,4 +100,3 @@ main().catch((err) => {
   console.error(JSON.stringify({ ok: false, error: err?.message || "Falha no teste real de CTA URL." }, null, 2));
   process.exit(1);
 });
-
