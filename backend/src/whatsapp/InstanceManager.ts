@@ -8,6 +8,7 @@ import { Boom } from "@hapi/boom";
 import NodeCache from "node-cache";
 import P from "pino";
 import { prisma } from "../database/prisma";
+import { integrationDispatchReceiptService } from "../services/integrations/integrationDispatchReceipt.service";
 import { getOrCreatePrimaryInstance, getPrimaryInstance, listInstances } from "../services/instances/instance.service";
 import { safeLogError } from "../utils/redaction";
 import { clearLabelsForInstance, getLabelsCacheDiagnostics, onInstanceLabelEdit } from "./labelsCache";
@@ -67,6 +68,16 @@ export class InstanceManager {
     runtime.sock = sock;
     sock.ev.on("creds.update", saveCreds);
     sock.ev.on("labels.edit", (label) => onInstanceLabelEdit(instanceId, label));
+
+    sock.ev.on("messages.update", async (updates) => {
+      for (const update of updates) {
+        try {
+          await integrationDispatchReceiptService.recordBaileysMessageUpdate(update);
+        } catch (err) {
+          console.error("[Baileys] Falha ao processar recibo de dispatch:", safeLogError(err));
+        }
+      }
+    });
 
     sock.ev.on("connection.update", async (update) => {
       const { connection, lastDisconnect, qr } = update;
@@ -232,6 +243,7 @@ export class InstanceManager {
     if (runtime.sock) {
       try {
         runtime.sock.ev.removeAllListeners("messages.upsert");
+        runtime.sock.ev.removeAllListeners("messages.update");
         runtime.sock.ev.removeAllListeners("connection.update");
         await runtime.sock.logout();
       } catch (err) {

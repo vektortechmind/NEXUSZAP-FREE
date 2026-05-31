@@ -139,6 +139,11 @@ export function IntegrationOperationsOverview({ overview, refreshing, onRefresh 
                           <DetailField label="Erro provider" value={entry.payloadSummary?.providerSendErrorMessage} />
                           <DetailField label="Código provider" value={entry.payloadSummary?.providerSendErrorCode} mono />
                           <DetailField label="Tipo provider" value={entry.payloadSummary?.providerSendErrorType} />
+                          <DetailField label="Recibo pós-envio" value={entry.payloadSummary?.deliveryReceiptStatus} />
+                          <DetailField label="Recibo observado em" value={entry.payloadSummary?.deliveryReceiptObservedAt ? formatDateTime(entry.payloadSummary.deliveryReceiptObservedAt) : null} />
+                          <DetailField label="Status provider recibo" value={entry.payloadSummary?.deliveryReceiptProviderStatus} />
+                          <DetailField label="Origem recibo" value={entry.payloadSummary?.deliveryReceiptSource} />
+                          <DetailField label="JID recibo" value={entry.payloadSummary?.deliveryReceiptRemoteJid} mono />
                         </>
                       ) : null}
                     </div>

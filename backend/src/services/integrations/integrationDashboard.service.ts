@@ -54,6 +54,11 @@ export type IntegrationDashboardDispatchSummary = {
   providerSendErrorCode: string | null;
   providerSendErrorType: string | null;
   providerSendErrorMessage: string | null;
+  deliveryReceiptStatus: string | null;
+  deliveryReceiptObservedAt: string | null;
+  deliveryReceiptSource: string | null;
+  deliveryReceiptProviderStatus: string | null;
+  deliveryReceiptRemoteJid: string | null;
 };
 
 export type IntegrationDashboardDispatchRecord = {
@@ -253,6 +258,11 @@ function parseDispatchSummary(payloadSummaryJson: string | null): IntegrationDas
     providerSendErrorCode: null,
     providerSendErrorType: null,
     providerSendErrorMessage: null,
+    deliveryReceiptStatus: null,
+    deliveryReceiptObservedAt: null,
+    deliveryReceiptSource: null,
+    deliveryReceiptProviderStatus: null,
+    deliveryReceiptRemoteJid: null,
   };
 
   if (!payloadSummaryJson) return empty;
@@ -276,6 +286,11 @@ function parseDispatchSummary(payloadSummaryJson: string | null): IntegrationDas
       providerSendErrorCode: asStringOrNull(parsed.providerSendErrorCode),
       providerSendErrorType: asStringOrNull(parsed.providerSendErrorType),
       providerSendErrorMessage: asStringOrNull(parsed.providerSendErrorMessage),
+      deliveryReceiptStatus: asStringOrNull(parsed.deliveryReceiptStatus),
+      deliveryReceiptObservedAt: asStringOrNull(parsed.deliveryReceiptObservedAt),
+      deliveryReceiptSource: asStringOrNull(parsed.deliveryReceiptSource),
+      deliveryReceiptProviderStatus: asStringOrNull(parsed.deliveryReceiptProviderStatus),
+      deliveryReceiptRemoteJid: asStringOrNull(parsed.deliveryReceiptRemoteJid),
     };
   } catch {
     return empty;
