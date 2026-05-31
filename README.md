@@ -331,6 +331,8 @@ Texto customizado opcional:
 - `payload.message.body` pode substituir o texto visivel/caption do template com texto final ja renderizado pela ferramenta externa;
 - `payload.message.pix_followup_body` pode personalizar a segunda mensagem do Pix, somente no evento `pix_gerado`;
 - cada um desses campos aceita string nao vazia com ate `4000` caracteres; esse limite vale apenas para cada texto customizado, nao para o payload inteiro;
+- o texto customizado recebido nao e salvo como template reutilizavel, nao cria template por instancia e nao fica armazenado como conteudo na auditoria;
+- a auditoria registra apenas metadados de uso e tamanho, como `customBodyUsed`, `customBodyLength`, `customPixFollowupUsed` e `customPixFollowupLength`;
 - campos tecnicos em `payload.message`, como `caption`, `messageType`, `providerPayload`, `buttons` ou `relayMessage`, sao rejeitados com `INTEGRATION_CUSTOM_MESSAGE_INVALID`.
 
 ## Credenciais de integracao
