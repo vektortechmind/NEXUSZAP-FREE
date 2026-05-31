@@ -21,6 +21,8 @@ export type IntegrationDispatchPayloadSummary = {
   intendedMessageType: string | null;
   dispatchedMessageType: string | null;
   deliveryPath: string | null;
+  interactiveButtonKinds: string[];
+  interactiveButtonCount: number;
   documentUrl: string | null;
   documentFallbackReason: string | null;
   secondaryDispatchStatus: string | null;

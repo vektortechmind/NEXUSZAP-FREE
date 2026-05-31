@@ -4,21 +4,43 @@ import { safeErrorMessage } from "../utils/redaction";
 import {
   buildCtaUrlFallbackText,
   buildCtaUrlInteractivePayload,
+  buildNativeInteractiveFallbackText,
+  buildNativeInteractivePayload,
   type CtaUrlInteractiveInput,
+  type NativeInteractiveInput,
 } from "./interactivePayloadHelper";
 
 type SendMessageResult = { key?: { id?: string | null } } | string | void;
 
-export type CtaUrlRelaySocket = {
+export type NativeInteractiveRelaySocket = {
   relayMessage?: (jid: string, message: proto.IMessage, options: MessageRelayOptions) => Promise<string>;
   sendMessage?: (jid: string, content: { text: string }) => Promise<SendMessageResult>;
 };
 
-export type SendCtaUrlInteractiveOptions = {
+export type CtaUrlRelaySocket = NativeInteractiveRelaySocket;
+
+export type SendNativeInteractiveOptions = {
   enabled?: boolean;
   messageId?: string;
   fallbackText?: string;
   sendFallbackAfterInteractiveSuccess?: boolean;
+};
+
+export type SendCtaUrlInteractiveOptions = SendNativeInteractiveOptions;
+
+export type SendNativeInteractiveResult = {
+  deliveryPath: "interactive_native" | "text_fallback_interactive_native";
+  providerMessageId?: string;
+  fallbackProviderMessageId?: string;
+  interactiveError?: string;
+  summary: {
+    interactiveKind: "native_flow";
+    interactiveButtonKinds: Array<"cta_url" | "cta_copy">;
+    interactiveButtonCount: number;
+    attemptedInteractive: boolean;
+    fallbackUsed: boolean;
+    hasAdditionalNodes: boolean;
+  };
 };
 
 export type SendCtaUrlInteractiveResult = {
@@ -28,6 +50,8 @@ export type SendCtaUrlInteractiveResult = {
   interactiveError?: string;
   summary: {
     interactiveKind: "cta_url";
+    interactiveButtonKinds: Array<"cta_url">;
+    interactiveButtonCount: number;
     attemptedInteractive: boolean;
     fallbackUsed: boolean;
     hasAdditionalNodes: boolean;
@@ -44,35 +68,36 @@ function extractMessageId(result: SendMessageResult): string | undefined {
 }
 
 async function sendFallbackText(
-  sock: CtaUrlRelaySocket,
+  sock: NativeInteractiveRelaySocket,
   jid: string,
-  input: CtaUrlInteractiveInput,
-  fallbackText?: string
+  text: string,
 ): Promise<string | undefined> {
   if (typeof sock.sendMessage !== "function") {
     throw new Error("Socket nao suporta sendMessage para fallback textual.");
   }
-  const text = fallbackText?.trim() || buildCtaUrlFallbackText(input);
   const sent = await sock.sendMessage(jid, { text });
   return extractMessageId(sent);
 }
 
-export async function sendCtaUrlInteractiveMessage(
-  sock: CtaUrlRelaySocket,
+export async function sendNativeInteractiveMessage(
+  sock: NativeInteractiveRelaySocket,
   jid: string,
-  input: CtaUrlInteractiveInput,
-  options: SendCtaUrlInteractiveOptions = {}
-): Promise<SendCtaUrlInteractiveResult> {
-  const payload = buildCtaUrlInteractivePayload(input);
+  input: NativeInteractiveInput,
+  options: SendNativeInteractiveOptions = {},
+): Promise<SendNativeInteractiveResult> {
+  const payload = buildNativeInteractivePayload(input);
   const messageId = options.messageId || randomUUID().replace(/-/g, "").slice(0, 20).toUpperCase();
+  const fallbackText = options.fallbackText?.trim() || buildNativeInteractiveFallbackText(input);
 
   if (options.enabled === false || typeof sock.relayMessage !== "function") {
-    const fallbackProviderMessageId = await sendFallbackText(sock, jid, input, options.fallbackText);
+    const fallbackProviderMessageId = await sendFallbackText(sock, jid, fallbackText);
     return {
-      deliveryPath: "text_fallback_interactive_cta_url",
+      deliveryPath: "text_fallback_interactive_native",
       fallbackProviderMessageId,
       summary: {
-        interactiveKind: "cta_url",
+        interactiveKind: "native_flow",
+        interactiveButtonKinds: payload.summary.buttonKinds,
+        interactiveButtonCount: payload.summary.buttonCount,
         attemptedInteractive: false,
         fallbackUsed: true,
         hasAdditionalNodes: false,
@@ -89,13 +114,96 @@ export async function sendCtaUrlInteractiveMessage(
     });
 
     if (options.sendFallbackAfterInteractiveSuccess) {
-      const fallbackProviderMessageId = await sendFallbackText(sock, jid, input, options.fallbackText);
+      const fallbackProviderMessageId = await sendFallbackText(sock, jid, fallbackText);
+      return {
+        deliveryPath: "text_fallback_interactive_native",
+        providerMessageId: providerMessageId || messageId,
+        fallbackProviderMessageId,
+        summary: {
+          interactiveKind: "native_flow",
+          interactiveButtonKinds: payload.summary.buttonKinds,
+          interactiveButtonCount: payload.summary.buttonCount,
+          attemptedInteractive: true,
+          fallbackUsed: true,
+          hasAdditionalNodes: true,
+        },
+      };
+    }
+
+    return {
+      deliveryPath: "interactive_native",
+      providerMessageId: providerMessageId || messageId,
+      summary: {
+        interactiveKind: "native_flow",
+        interactiveButtonKinds: payload.summary.buttonKinds,
+        interactiveButtonCount: payload.summary.buttonCount,
+        attemptedInteractive: true,
+        fallbackUsed: false,
+        hasAdditionalNodes: true,
+      },
+    };
+  } catch (error) {
+    const fallbackProviderMessageId = await sendFallbackText(sock, jid, fallbackText);
+    return {
+      deliveryPath: "text_fallback_interactive_native",
+      fallbackProviderMessageId,
+      interactiveError: safeErrorMessage(error, "Falha ao enviar mensagem interativa nativa."),
+      summary: {
+        interactiveKind: "native_flow",
+        interactiveButtonKinds: payload.summary.buttonKinds,
+        interactiveButtonCount: payload.summary.buttonCount,
+        attemptedInteractive: true,
+        fallbackUsed: true,
+        hasAdditionalNodes: true,
+      },
+    };
+  }
+}
+
+export async function sendCtaUrlInteractiveMessage(
+  sock: CtaUrlRelaySocket,
+  jid: string,
+  input: CtaUrlInteractiveInput,
+  options: SendCtaUrlInteractiveOptions = {},
+): Promise<SendCtaUrlInteractiveResult> {
+  const payload = buildCtaUrlInteractivePayload(input);
+  const messageId = options.messageId || randomUUID().replace(/-/g, "").slice(0, 20).toUpperCase();
+  const fallbackText = options.fallbackText?.trim() || buildCtaUrlFallbackText(input);
+
+  if (options.enabled === false || typeof sock.relayMessage !== "function") {
+    const fallbackProviderMessageId = await sendFallbackText(sock, jid, fallbackText);
+    return {
+      deliveryPath: "text_fallback_interactive_cta_url",
+      fallbackProviderMessageId,
+      summary: {
+        interactiveKind: "cta_url",
+        interactiveButtonKinds: ["cta_url"],
+        interactiveButtonCount: payload.summary.buttonCount,
+        attemptedInteractive: false,
+        fallbackUsed: true,
+        hasAdditionalNodes: false,
+      },
+    };
+  }
+
+  try {
+    // Payload shape adapted from MIT-licensed native flow/additionalNodes patterns in itsliaaa/baileys.
+    const message = proto.Message.create(payload.message);
+    const providerMessageId = await sock.relayMessage(jid, message, {
+      messageId,
+      additionalNodes: payload.additionalNodes,
+    });
+
+    if (options.sendFallbackAfterInteractiveSuccess) {
+      const fallbackProviderMessageId = await sendFallbackText(sock, jid, fallbackText);
       return {
         deliveryPath: "text_fallback_interactive_cta_url",
         providerMessageId: providerMessageId || messageId,
         fallbackProviderMessageId,
         summary: {
           interactiveKind: "cta_url",
+          interactiveButtonKinds: ["cta_url"],
+          interactiveButtonCount: payload.summary.buttonCount,
           attemptedInteractive: true,
           fallbackUsed: true,
           hasAdditionalNodes: true,
@@ -108,19 +216,23 @@ export async function sendCtaUrlInteractiveMessage(
       providerMessageId: providerMessageId || messageId,
       summary: {
         interactiveKind: "cta_url",
+        interactiveButtonKinds: ["cta_url"],
+        interactiveButtonCount: payload.summary.buttonCount,
         attemptedInteractive: true,
         fallbackUsed: false,
         hasAdditionalNodes: true,
       },
     };
   } catch (error) {
-    const fallbackProviderMessageId = await sendFallbackText(sock, jid, input, options.fallbackText);
+    const fallbackProviderMessageId = await sendFallbackText(sock, jid, fallbackText);
     return {
       deliveryPath: "text_fallback_interactive_cta_url",
       fallbackProviderMessageId,
       interactiveError: safeErrorMessage(error, "Falha ao enviar CTA URL interativo."),
       summary: {
         interactiveKind: "cta_url",
+        interactiveButtonKinds: ["cta_url"],
+        interactiveButtonCount: payload.summary.buttonCount,
         attemptedInteractive: true,
         fallbackUsed: true,
         hasAdditionalNodes: true,

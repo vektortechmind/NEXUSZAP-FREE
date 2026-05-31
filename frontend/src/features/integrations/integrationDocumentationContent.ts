@@ -112,7 +112,7 @@ export const INTEGRATION_CONTEXT_FIELDS = [
 export const INTEGRATION_TEMPLATE_FLOW = [
   "O sistema externo envia apenas o evento, a autenticação e o payload operacional. Não existe envio de template livre no request.",
   "O backend normaliza telefone, cliente, produto, links, Pix, boleto e acesso antes de escolher a mensagem padrão do evento.",
-  "Cada evento já possui um template predefinido com tipo final de saída, texto base, caption e, quando aplicável, links textuais ou enriquecimento contextual.",
+  "Cada evento já possui um template predefinido com tipo final de saída, texto base, caption e, quando aplicável, botões montados pelo backend a partir de links ou códigos existentes no payload.",
   "A resposta HTTP 202 significa que o evento foi aceito para processamento e que o runtime tentou submeter a mensagem ao provider. Isso não é recibo de entrega, leitura ou confirmação do aparelho final.",
 ] as const;
 
@@ -122,7 +122,7 @@ export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
     messageType: "text",
     requiredFields: ["customer.phone", "customer.name ou order.user.name", "order.product.name ou equivalente"],
     optionalFields: ["checkout_link ou checkoutLink", "order.product.image ou cover"],
-    generatedMessage: "Confirmação de pagamento em texto com link visível no corpo da mensagem quando checkoutLink existir.",
+    generatedMessage: "Confirmação de pagamento; quando checkoutLink existir, o backend pode trocar o link visível por botão CTA URL para acessar o produto.",
     fallback: "Sem checkoutLink, o texto continua sendo enviado sem link complementar.",
   },
   {
@@ -138,7 +138,7 @@ export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
     messageType: "text",
     requiredFields: ["customer.phone", "customer.name ou order.user.name", "order.product.name ou equivalente"],
     optionalFields: ["checkout_link ou checkoutLink"],
-    generatedMessage: "Mensagem de recusa com orientação para nova tentativa.",
+    generatedMessage: "Mensagem de recusa com orientação para nova tentativa; quando checkoutLink existir, o backend pode renderizar botão CTA URL TENTAR NOVAMENTE.",
     fallback: "Sem checkoutLink, o texto continua sendo enviado, mas sem URL de retomada.",
   },
   {
@@ -162,23 +162,23 @@ export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
     messageType: "image",
     requiredFields: ["customer.phone", "customer.name ou order.user.name", "order.product.name ou equivalente"],
     optionalFields: ["pix.copy_paste ou pix.copyPaste", "order.total ou amount equivalente", "checkout_link ou checkoutLink", "order.product.image ou cover"],
-    generatedMessage: "Primeira mensagem com instrução de pagamento Pix, valor e a chamada 'Codigo Pix copia e cola' no fechamento; quando houver pix.copy_paste, o runtime envia uma segunda mensagem textual contendo apenas o código bruto.",
-    fallback: "Sem imagem válida, a primeira mensagem degrada para texto. Sem Pix copia e cola, o segundo envio é pulado e a primeira mensagem segue normalmente.",
+    generatedMessage: "Mensagem com instrução de pagamento Pix e valor; quando houver pix.copy_paste, o backend pode renderizar botão de copiar código Pix em vez da segunda mensagem textual.",
+    fallback: "Se o envio interativo falhar tecnicamente, o fallback textual preserva o Pix copia e cola como segunda mensagem. Sem Pix copia e cola, a ação de copiar é pulada.",
   },
   {
     event: "boleto_gerado",
     messageType: "document",
     requiredFields: ["customer.phone", "customer.name ou order.user.name", "order.product.name ou equivalente", "boleto.pdf_url ou boleto.pdfUrl"],
     optionalFields: ["boleto.amount", "boleto.expire_at ou expireAt", "boleto.barcode"],
-    generatedMessage: "Envio do boleto em PDF com caption contendo valor e vencimento; quando boleto.barcode existir, o runtime envia uma segunda mensagem textual contendo apenas a linha digitável.",
-    fallback: "Sem boleto.pdf_url/boleto.pdfUrl o template falha com erro 422. Se a URL existir, mas o PDF não estiver acessível no download do backend, o dispatch degrada para texto com link visível e registra documentFallbackReason.",
+    generatedMessage: "Boleto com valor e vencimento; quando boleto.pdf_url existir, o backend pode renderizar botão ABRIR BOLETO e, quando boleto.barcode existir, botão para copiar a linha digitável.",
+    fallback: "Sem boleto.pdf_url/boleto.pdfUrl o template falha com erro 422. Se o interativo ou o download do PDF falhar tecnicamente, o dispatch preserva texto com link visível e linha digitável quando informada.",
   },
   {
     event: "carrinho_abandonado",
     messageType: "image",
     requiredFields: ["customer.phone", "customer.name ou order.user.name", "order.product.name ou equivalente"],
     optionalFields: ["checkout_link ou checkoutLink", "order.product.image ou cover"],
-    generatedMessage: "Recuperação de carrinho com link de retomada visível no corpo/caption quando checkoutLink existir.",
+    generatedMessage: "Recuperação de carrinho; quando checkoutLink existir, o backend pode renderizar botão CTA URL FINALIZAR COMPRA.",
     fallback: "Sem imagem válida, o runtime envia texto preservando o link visível quando informado. Sem checkoutLink, a mensagem segue sem URL de retomada.",
   },
   {
@@ -186,7 +186,7 @@ export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
     messageType: "image",
     requiredFields: ["customer.phone", "customer.name ou order.user.name", "order.product.name ou equivalente"],
     optionalFields: ["access.url", "access.login", "access.email", "access.password", "access.instructions", "checkout_link ou checkoutLink", "order.product.image ou cover"],
-    generatedMessage: "Aviso de acesso liberado com dados do aluno no corpo e links textuais separados para acesso principal e link complementar quando disponíveis.",
+    generatedMessage: "Aviso de acesso liberado com dados do aluno no corpo; quando access.url existir, o backend pode renderizar botão CTA URL para a área de membros.",
     fallback: "Sem imagem válida, o runtime envia texto mantendo os dados normalizados de acesso e os links visíveis no corpo.",
   },
   {
@@ -194,7 +194,7 @@ export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
     messageType: "image",
     requiredFields: ["customer.phone", "customer.name ou subscription.user.name", "subscription.product.name ou equivalente"],
     optionalFields: ["checkout_link ou checkoutLink", "subscription.product.image"],
-    generatedMessage: "Boas-vindas para assinatura criada com link de acesso visível no corpo/caption quando checkoutLink existir.",
+    generatedMessage: "Boas-vindas para assinatura criada; quando checkoutLink existir, o backend pode renderizar botão CTA URL ACESSAR ASSINATURA.",
     fallback: "Sem imagem válida, o runtime envia texto preservando o link visível quando informado. Sem checkoutLink, a mensagem segue sem URL de acesso.",
   },
   {
@@ -218,7 +218,7 @@ export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
     messageType: "image",
     requiredFields: ["customer.phone", "customer.name ou subscription.user.name", "subscription.product.name ou equivalente"],
     optionalFields: ["checkout_link ou checkoutLink", "subscription.product.image"],
-    generatedMessage: "Lembrete de atraso com link de regularização visível no corpo/caption quando checkoutLink existir.",
+    generatedMessage: "Lembrete de atraso; quando checkoutLink existir, o backend pode renderizar botão CTA URL REGULARIZAR.",
     fallback: "Sem imagem válida, o runtime envia texto preservando o link visível quando informado. Sem checkoutLink, a mensagem segue sem URL de regularização.",
   },
 ] as const;
@@ -231,14 +231,14 @@ export const INTEGRATION_RENDER_RULES = [
   "Antes do envio, quando o socket permitir, o runtime registra um lookup WhatsApp informativo: found, not_found, error ou unavailable. Esse lookup ajuda diagnóstico, mas não bloqueia envio nem confirma entrega/leitura.",
   "Quando o sendMessage falhar, a auditoria registra erro sanitizado do provider/socket quando disponível, preservando failureCode estável e sem expor tokens, Authorization, cookies ou stack trace bruto.",
   "Quando a Baileys emitir messages.update para um providerMessageId conhecido, a auditoria registra recibo pós-envio observacional como SUBMITTED, DELIVERED, READ, PLAYED ou FAILED_AFTER_SUBMIT; ausência desse recibo não é falha automática.",
-  "No evento pix_gerado, a primeira mensagem fecha com a chamada 'Codigo Pix copia e cola' e, quando pix.copy_paste ou pix.copyPaste estiver disponível, o runtime envia uma segunda mensagem textual contendo apenas o código bruto.",
-  "No evento boleto_gerado, a primeira mensagem envia o PDF/caption com valor e vencimento; quando boleto.barcode estiver disponível, o runtime envia uma segunda mensagem textual contendo apenas a linha digitável.",
+  "No evento pix_gerado, quando pix.copy_paste ou pix.copyPaste estiver disponível, o runtime tenta usar botão de copiar código Pix. Se o relay interativo for aceito, a segunda mensagem textual do Pix não é enviada.",
+  "No evento boleto_gerado, quando boleto.pdf_url existir, o runtime tenta usar botão para abrir boleto; quando boleto.barcode existir, tenta usar botão para copiar a linha digitável. Se o relay interativo for aceito, a segunda mensagem textual da linha digitável não é enviada.",
   "Para boleto_gerado, o backend baixa/valida boleto.pdf_url antes do envio. Se o PDF não estiver acessível, o dispatch cai para texto com link visível do boleto e registra deliveryPath text_fallback_document com documentFallbackReason.",
   "pedido_pago usa texto com link visível no corpo como caminho oficial e confiável.",
   "pagamento_recusado exibe o checkoutLink no corpo da mensagem e também pode manter o preview do link quando o provider renderizar externalAdReply.",
   "carrinho_abandonado, assinatura_criada e assinatura_em_atraso mantêm messageType image, mas exibem checkoutLink no corpo/caption quando a URL é informada.",
-  "Quando houver URL aplicável, o runtime mantém o link visível no corpo, caption ou fallback textual da mensagem.",
-  "A telemetria do dispatch registra secondaryDispatchStatus para indicar se a segunda mensagem do Pix ou boleto foi enviada, pulada por ausência do código/linha digitável ou falhou isoladamente.",
+  "Quando houver URL aplicável nos eventos com ação consolidada, o runtime pode renderizar botão CTA URL. Em falha técnica do interativo, o fallback textual mantém o link visível.",
+  "A telemetria do dispatch registra deliveryPath, interactiveButtonKinds, interactiveButtonCount e secondaryDispatchStatus para diferenciar interativo aceito, fallback textual e segunda mensagem Pix/boleto.",
   "externalAdReply continua restrito aos fluxos text, document e aos fallbacks textuais dos eventos ricos; ele não é usado no caminho de imagem limpa nem substitui botão real.",
   "Boleto é o caso oficial de document e exige URL HTTP/HTTPS em boleto.pdf_url ou boleto.pdfUrl; a URL precisa ser pública e baixável pelo backend para envio como PDF.",
 ] as const;
@@ -249,8 +249,8 @@ export const INTEGRATION_CUSTOM_MESSAGE_RULES = [
   "O backend não processa placeholders como {{nome}}; envie o texto final já renderizado pela ferramenta externa.",
   "Em eventos image, payload.message.body substitui o corpo visível e também vira a caption da imagem. Se a imagem falhar, o mesmo texto segue no fallback textual.",
   "Em boleto_gerado, o texto customizado substitui o body/caption visível, mas não altera document.url, fileName ou mimetype do PDF.",
-  "payload.message.pix_followup_body só é aceito em pix_gerado e personaliza apenas a segunda mensagem textual do Pix copia e cola.",
-  "Campos técnicos dentro de payload.message são rejeitados. Não envie caption, messageType, providerPayload, relayMessage, buttons, templateMessage ou interactiveMessage.",
+  "payload.message.pix_followup_body só é aceito em pix_gerado e personaliza apenas o fallback/segunda mensagem textual do Pix; quando o botão de copiar é aceito, essa segunda mensagem não é enviada.",
+  "Campos técnicos dentro de payload.message são rejeitados. Não envie caption, messageType, providerPayload, relayMessage, nativeFlow, buttons, templateMessage ou interactiveMessage.",
   "O conteúdo customizado não é salvo nos summaries de auditoria; o painel registra apenas flags e tamanhos, como customBodyUsed e customBodyLength.",
 ] as const;
 
@@ -605,7 +605,7 @@ export const INTEGRATION_TROUBLESHOOTING = [
     title: "Segunda mensagem do Pix não saiu",
     steps: [
       "Confirme se payload.pix.copy_paste ou payload.pix.copyPaste foi enviado com valor textual válido.",
-      "Revise a auditoria do dispatch para secondaryDispatchStatus: sent, skipped_missing_pix_code ou failed_send.",
+      "Revise a auditoria do dispatch para secondaryDispatchStatus: sent, skipped_missing_pix_code, skipped_interactive_button ou failed_send.",
     ],
   },
   {
@@ -630,7 +630,7 @@ export const INTEGRATION_TROUBLESHOOTING = [
     steps: [
       "Use apenas payload.message.body e, no evento pix_gerado, payload.message.pix_followup_body.",
       "Garanta que os valores sejam strings não vazias com até 4000 caracteres cada; esse limite vale apenas para cada texto customizado.",
-      "Não envie campos técnicos em payload.message, como caption, messageType, providerPayload, buttons ou relayMessage.",
+      "Não envie campos técnicos em payload.message, como caption, messageType, providerPayload, relayMessage, nativeFlow, buttons, templateMessage ou interactiveMessage.",
     ],
   },
   {
@@ -712,7 +712,7 @@ export const INTEGRATION_CURL_EVENT_EXAMPLES = [
   },
   {
     title: "pix_gerado",
-    description: "Pagamento Pix com primeira mensagem principal e segunda mensagem dedicada ao código copia e cola quando disponível.",
+    description: "Pagamento Pix com botão de copiar quando pix.copy_paste estiver disponível; fallback textual preserva o código em falha técnica.",
     code: `curl -X POST "$ENDPOINT_URL" \\
   -H "Authorization: Bearer $SECRET_TOKEN" \\
   -H "Content-Type: application/json" \\
@@ -739,7 +739,7 @@ export const INTEGRATION_CURL_EVENT_EXAMPLES = [
   },
   {
     title: "boleto_gerado",
-    description: "Boleto com PDF obrigatório, valor, vencimento e linha digitável opcional em segunda mensagem.",
+    description: "Boleto com PDF obrigatório e botões para abrir boleto/copiar linha digitável quando os campos existirem.",
     code: `curl -X POST "$ENDPOINT_URL" \\
   -H "Authorization: Bearer $SECRET_TOKEN" \\
   -H "Content-Type: application/json" \\
@@ -885,4 +885,3 @@ export const INTEGRATION_ERROR_RESPONSE_EXAMPLE = `{
     "message": "Payload ou headers inválidos para o contrato de integração."
   }
 }`;
-

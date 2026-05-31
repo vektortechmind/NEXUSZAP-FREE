@@ -44,6 +44,8 @@ export type IntegrationDashboardDispatchSummary = {
   intendedMessageType: string | null;
   dispatchedMessageType: string | null;
   deliveryPath: string | null;
+  interactiveButtonKinds: string[];
+  interactiveButtonCount: number;
   documentUrl: string | null;
   documentFallbackReason: string | null;
   secondaryDispatchStatus: string | null;
@@ -250,6 +252,8 @@ function parseDispatchSummary(payloadSummaryJson: string | null): IntegrationDas
     intendedMessageType: null,
     dispatchedMessageType: null,
     deliveryPath: null,
+    interactiveButtonKinds: [],
+    interactiveButtonCount: 0,
     documentUrl: null,
     documentFallbackReason: null,
     secondaryDispatchStatus: null,
@@ -280,6 +284,8 @@ function parseDispatchSummary(payloadSummaryJson: string | null): IntegrationDas
       intendedMessageType: asStringOrNull(parsed.intendedMessageType),
       dispatchedMessageType: asStringOrNull(parsed.dispatchedMessageType),
       deliveryPath: asStringOrNull(parsed.deliveryPath),
+      interactiveButtonKinds: Array.isArray(parsed.interactiveButtonKinds) ? parsed.interactiveButtonKinds.filter((item): item is string => typeof item === "string") : [],
+      interactiveButtonCount: typeof parsed.interactiveButtonCount === "number" && Number.isFinite(parsed.interactiveButtonCount) ? parsed.interactiveButtonCount : 0,
       documentUrl: asStringOrNull(parsed.documentUrl),
       documentFallbackReason: asStringOrNull(parsed.documentFallbackReason),
       secondaryDispatchStatus: asStringOrNull(parsed.secondaryDispatchStatus),

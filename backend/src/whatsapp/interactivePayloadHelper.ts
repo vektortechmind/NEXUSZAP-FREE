@@ -14,6 +14,16 @@ export type CtaUrlInteractiveInput = {
   useWebview?: boolean;
 };
 
+export type NativeInteractiveButton =
+  | { kind: "cta_url"; text: string; url: string; useWebview?: boolean }
+  | { kind: "cta_copy"; text: string; copyCode: string };
+
+export type NativeInteractiveInput = {
+  body: string;
+  buttons: NativeInteractiveButton[];
+  footer?: string | null;
+};
+
 export type CtaUrlInteractivePayload = {
   message: {
     interactiveMessage: {
@@ -38,15 +48,50 @@ export type CtaUrlInteractivePayload = {
   };
 };
 
+export type NativeInteractivePayload = {
+  message: {
+    interactiveMessage: {
+      body: { text: string };
+      footer?: { text: string };
+      nativeFlowMessage: {
+        buttons: Array<{
+          name: "cta_url" | "cta_copy";
+          buttonParamsJson: string;
+        }>;
+        messageParamsJson: string;
+      };
+    };
+  };
+  additionalNodes: BinaryNode[];
+  summary: {
+    deliveryPath: "interactive_native";
+    interactiveKind: "native_flow";
+    buttonKinds: Array<"cta_url" | "cta_copy">;
+    buttonCount: number;
+    hasAdditionalNodes: true;
+    reference: "itsliaaa/baileys";
+  };
+};
+
 const CTA_INPUT_KEYS = new Set(["body", "buttonText", "url", "buttons", "footer", "useWebview"]);
+const NATIVE_INPUT_KEYS = new Set(["body", "buttons", "footer"]);
 const MAX_BODY_LENGTH = 4000;
 const MAX_BUTTON_TEXT_LENGTH = 60;
 const MAX_FOOTER_LENGTH = 300;
+const MAX_COPY_CODE_LENGTH = 4000;
 
 function assertAllowedKeys(input: Record<string, unknown>) {
   for (const key of Object.keys(input)) {
     if (!CTA_INPUT_KEYS.has(key)) {
       throw new Error(`Campo nao permitido para CTA URL: ${key}`);
+    }
+  }
+}
+
+function assertNativeAllowedKeys(input: Record<string, unknown>) {
+  for (const key of Object.keys(input)) {
+    if (!NATIVE_INPUT_KEYS.has(key)) {
+      throw new Error(`Campo nao permitido para mensagem interativa nativa: ${key}`);
     }
   }
 }
@@ -83,6 +128,10 @@ function normalizeHttpUrl(value: unknown): string {
   return parsed.toString();
 }
 
+function normalizeCopyCode(value: unknown, field: string): string {
+  return normalizeText(value, field, MAX_COPY_CODE_LENGTH);
+}
+
 function normalizeButtons(rawInput: CtaUrlInteractiveInput): Array<{ text: string; url: string; useWebview?: boolean }> {
   const rawButtons = rawInput.buttons?.length
     ? rawInput.buttons
@@ -98,6 +147,34 @@ function normalizeButtons(rawInput: CtaUrlInteractiveInput): Array<{ text: strin
     url: normalizeHttpUrl(button.url),
     useWebview: button.useWebview === true,
   }));
+}
+
+function normalizeNativeButtons(rawButtons: NativeInteractiveButton[]): NativeInteractiveButton[] {
+  if (!Array.isArray(rawButtons) || rawButtons.length === 0) {
+    throw new Error("Ao menos um botao interativo e obrigatorio.");
+  }
+  if (rawButtons.length > 3) throw new Error("Mensagem interativa aceita no maximo 3 botoes.");
+
+  return rawButtons.map((button, index) => {
+    if (button.kind === "cta_url") {
+      return {
+        kind: "cta_url",
+        text: normalizeText(button.text, `buttons.${index}.text`, MAX_BUTTON_TEXT_LENGTH),
+        url: normalizeHttpUrl(button.url),
+        useWebview: button.useWebview === true,
+      };
+    }
+
+    if (button.kind === "cta_copy") {
+      return {
+        kind: "cta_copy",
+        text: normalizeText(button.text, `buttons.${index}.text`, MAX_BUTTON_TEXT_LENGTH),
+        copyCode: normalizeCopyCode(button.copyCode, `buttons.${index}.copyCode`),
+      };
+    }
+
+    throw new Error(`buttons.${index}.kind deve ser cta_url ou cta_copy.`);
+  });
 }
 
 function buildBizAdditionalNode(now = Date.now()): BinaryNode {
@@ -137,30 +214,40 @@ function buildBizAdditionalNode(now = Date.now()): BinaryNode {
   };
 }
 
-export function buildCtaUrlInteractivePayload(rawInput: CtaUrlInteractiveInput): CtaUrlInteractivePayload {
-  assertAllowedKeys(rawInput as Record<string, unknown>);
+export function buildNativeInteractivePayload(rawInput: NativeInteractiveInput): NativeInteractivePayload {
+  assertNativeAllowedKeys(rawInput as Record<string, unknown>);
 
   const body = normalizeText(rawInput.body, "body", MAX_BODY_LENGTH);
-  const buttons = normalizeButtons(rawInput);
+  const buttons = normalizeNativeButtons(rawInput.buttons);
   const footer = normalizeOptionalText(rawInput.footer, "footer", MAX_FOOTER_LENGTH);
 
-  const interactiveMessage: CtaUrlInteractivePayload["message"]["interactiveMessage"] = {
+  const interactiveMessage: NativeInteractivePayload["message"]["interactiveMessage"] = {
     body: { text: body },
     nativeFlowMessage: {
       buttons: buttons.map((button) => {
-        const buttonParams: Record<string, unknown> = {
-          display_text: button.text,
-          url: button.url,
-          merchant_url: button.url,
-        };
+        if (button.kind === "cta_url") {
+          const buttonParams: Record<string, unknown> = {
+            display_text: button.text,
+            url: button.url,
+            merchant_url: button.url,
+          };
 
-        if (button.useWebview) {
-          buttonParams.webview_interaction = true;
+          if (button.useWebview) {
+            buttonParams.webview_interaction = true;
+          }
+
+          return {
+            name: "cta_url",
+            buttonParamsJson: JSON.stringify(buttonParams),
+          };
         }
 
         return {
-          name: "cta_url",
-          buttonParamsJson: JSON.stringify(buttonParams),
+          name: "cta_copy",
+          buttonParamsJson: JSON.stringify({
+            display_text: button.text,
+            copy_code: button.copyCode,
+          }),
         };
       }),
       messageParamsJson: JSON.stringify({}),
@@ -175,6 +262,32 @@ export function buildCtaUrlInteractivePayload(rawInput: CtaUrlInteractiveInput):
     message: { interactiveMessage },
     additionalNodes: [buildBizAdditionalNode()],
     summary: {
+      deliveryPath: "interactive_native",
+      interactiveKind: "native_flow",
+      buttonKinds: buttons.map((button) => button.kind),
+      buttonCount: buttons.length,
+      hasAdditionalNodes: true,
+      reference: "itsliaaa/baileys",
+    },
+  };
+}
+
+export function buildCtaUrlInteractivePayload(rawInput: CtaUrlInteractiveInput): CtaUrlInteractivePayload {
+  assertAllowedKeys(rawInput as Record<string, unknown>);
+
+  const body = normalizeText(rawInput.body, "body", MAX_BODY_LENGTH);
+  const buttons = normalizeButtons(rawInput);
+  const footer = normalizeOptionalText(rawInput.footer, "footer", MAX_FOOTER_LENGTH);
+  const nativePayload = buildNativeInteractivePayload({
+    body,
+    buttons: buttons.map((button) => ({ kind: "cta_url", ...button })),
+    footer,
+  });
+
+  return {
+    message: nativePayload.message as CtaUrlInteractivePayload["message"],
+    additionalNodes: nativePayload.additionalNodes,
+    summary: {
       deliveryPath: "interactive_cta_url",
       interactiveKind: "cta_url",
       buttonCount: buttons.length,
@@ -182,6 +295,15 @@ export function buildCtaUrlInteractivePayload(rawInput: CtaUrlInteractiveInput):
       reference: "itsliaaa/baileys",
     },
   };
+}
+
+export function buildNativeInteractiveFallbackText(input: NativeInteractiveInput): string {
+  const body = normalizeText(input.body, "body", MAX_BODY_LENGTH);
+  const buttons = normalizeNativeButtons(input.buttons);
+  const fallbackLines = buttons
+    .map((button) => button.kind === "cta_url" ? button.url : button.copyCode)
+    .filter((value) => !body.includes(value));
+  return [body, ...fallbackLines].join("\n\n");
 }
 
 export function buildCtaUrlFallbackText(input: CtaUrlInteractiveInput): string {

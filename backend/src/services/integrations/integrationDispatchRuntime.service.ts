@@ -4,7 +4,9 @@ import { prisma } from "../../database/prisma";
 import { InstanceManager } from "../../whatsapp/InstanceManager";
 import {
   sendCtaUrlInteractiveMessage,
+  sendNativeInteractiveMessage,
   type SendCtaUrlInteractiveResult,
+  type SendNativeInteractiveResult,
 } from "../../whatsapp/interactiveSender";
 import { redactSensitiveText, safeErrorMessage } from "../../utils/redaction";
 import {
@@ -17,6 +19,7 @@ import {
   IntegrationDispatchTemplateRenderError,
   renderIntegrationDispatchTemplateFromContext,
 } from "./integrationDispatchTemplate.service";
+import type { NativeInteractiveButton } from "../../whatsapp/interactivePayloadHelper";
 
 export const INTEGRATION_DISPATCH_STATUS = {
   PENDING_RUNTIME: "PENDING_RUNTIME",
@@ -141,6 +144,7 @@ export type IntegrationDocumentFallbackReason =
 export type IntegrationSecondaryDispatchStatus =
   | "not_applicable"
   | "skipped_missing_pix_code"
+  | "skipped_interactive_button"
   | "sent"
   | "failed_send";
 
@@ -152,6 +156,8 @@ export type IntegrationDispatchDeliveryPath =
   | "text_fallback_document"
   | "interactive_cta_url"
   | "text_fallback_interactive_cta_url"
+  | "interactive_native"
+  | "text_fallback_interactive_native"
   | "document"
   | "link"
   | "text";
@@ -655,6 +661,120 @@ function getExperimentalCtaUrlConfig(template: IntegrationRenderedDispatchTempla
   };
 }
 
+type RuntimeNativeInteractiveConfig = {
+  body: string;
+  buttons: NativeInteractiveButton[];
+  fallbackText: string;
+  automatic: boolean;
+};
+
+function pushUrlButton(buttons: NativeInteractiveButton[], text: string, url: string | null | undefined) {
+  if (!url || !isHttpUrl(url) || buttons.length >= 3) return;
+  if (buttons.some((button) => button.kind === "cta_url" && button.url === url)) return;
+  buttons.push({ kind: "cta_url", text, url });
+}
+
+function pushCopyButton(buttons: NativeInteractiveButton[], text: string, copyCode: string | null | undefined) {
+  const normalized = copyCode?.trim();
+  if (!normalized || buttons.length >= 3) return;
+  buttons.push({ kind: "cta_copy", text, copyCode: normalized });
+}
+
+function accessContextUrl(context: IntegrationNormalizedEventContext): string | null {
+  const access = context.access && typeof context.access === "object" ? context.access as Record<string, unknown> : null;
+  const url = typeof access?.url === "string" ? access.url.trim() : null;
+  return url && isHttpUrl(url) ? url : null;
+}
+
+function stripInteractiveActionValues(body: string, buttons: NativeInteractiveButton[]): string {
+  let next = body;
+  for (const button of buttons) {
+    const value = button.kind === "cta_url" ? button.url : button.copyCode;
+    const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    next = next
+      .replace(new RegExp(`\\n?[^\\n]*\\n${escaped}`, "g"), "")
+      .replace(new RegExp(escaped, "g"), "");
+  }
+  return next.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim() || body.trim();
+}
+
+function buildInteractiveFallbackText(template: IntegrationRenderedDispatchTemplate, content: IntegrationDispatchTransportPayload): string {
+  if ("text" in content && typeof content.text === "string" && content.text.trim()) return content.text;
+  if (template.messageType === "document") return buildDocumentFallbackBody(template);
+  if (template.messageType === "image") return buildImageFallbackBody(template);
+  return template.body;
+}
+
+function getAutomaticNativeInteractiveButtons(template: IntegrationRenderedDispatchTemplate): NativeInteractiveButton[] {
+  const buttons: NativeInteractiveButton[] = [];
+
+  switch (template.eventSlug) {
+    case "envio_acesso":
+      pushUrlButton(buttons, "ACESSAR AREA", accessContextUrl(template.context));
+      pushUrlButton(buttons, "ACESSAR COMUNIDADE", template.context.checkoutLink && template.context.checkoutLink !== accessContextUrl(template.context) ? template.context.checkoutLink : null);
+      break;
+    case "pedido_pago":
+      pushUrlButton(buttons, "ACESSAR PRODUTO", template.linkUrl ?? template.context.checkoutLink);
+      break;
+    case "pix_gerado":
+      pushUrlButton(buttons, "ABRIR CHECKOUT", template.linkUrl ?? template.context.checkoutLink);
+      pushCopyButton(buttons, "COPIAR CODIGO PIX", template.context.pixCopyPaste);
+      break;
+    case "boleto_gerado":
+      pushUrlButton(buttons, "ABRIR BOLETO", template.documentUrl ?? template.context.boletoUrl);
+      pushCopyButton(buttons, "COPIAR BOLETO", template.context.boletoBarcode);
+      pushUrlButton(buttons, "ABRIR CHECKOUT", template.context.checkoutLink && template.context.checkoutLink !== template.documentUrl ? template.context.checkoutLink : null);
+      break;
+    case "pagamento_recusado":
+      pushUrlButton(buttons, "TENTAR NOVAMENTE", template.linkUrl ?? template.context.checkoutLink);
+      break;
+    case "carrinho_abandonado":
+      pushUrlButton(buttons, "FINALIZAR COMPRA", template.linkUrl ?? template.context.checkoutLink);
+      break;
+    case "assinatura_criada":
+      pushUrlButton(buttons, "ACESSAR ASSINATURA", template.linkUrl ?? template.context.checkoutLink);
+      break;
+    case "assinatura_em_atraso":
+      pushUrlButton(buttons, "REGULARIZAR", template.linkUrl ?? template.context.checkoutLink);
+      break;
+  }
+
+  return buttons;
+}
+
+function getRuntimeNativeInteractiveConfig(
+  template: IntegrationRenderedDispatchTemplate,
+  content: IntegrationDispatchTransportPayload,
+): RuntimeNativeInteractiveConfig | null {
+  const ctaUrlConfig = getExperimentalCtaUrlConfig(template);
+  const fallbackText = buildInteractiveFallbackText(template, content);
+
+  if (ctaUrlConfig && "text" in content && typeof content.text === "string") {
+    return {
+      body: content.text,
+      buttons: ctaUrlConfig.buttons.map((button) => ({ kind: "cta_url", ...button })),
+      fallbackText: content.text,
+      automatic: false,
+    };
+  }
+
+  const buttons = getAutomaticNativeInteractiveButtons(template);
+  if (buttons.length === 0) return null;
+
+  return {
+    body: stripInteractiveActionValues(template.body, buttons),
+    buttons,
+    fallbackText,
+    automatic: true,
+  };
+}
+
+function shouldSkipFollowupAfterInteractive(template: IntegrationRenderedDispatchTemplate, interactiveResult: SendNativeInteractiveResult | SendCtaUrlInteractiveResult | null): boolean {
+  if (!interactiveResult || interactiveResult.summary.fallbackUsed) return false;
+  if (template.eventSlug !== "pix_gerado" && template.eventSlug !== "boleto_gerado") return false;
+  return interactiveResult.summary.interactiveButtonKinds.some((kind) => kind === "cta_copy");
+}
+
 async function lookupWhatsappRecipient(sock: WASocket, recipientJid: string): Promise<IntegrationWhatsappLookupSummary> {
   const lookupSocket = sock as {
     onWhatsApp?: (...jids: string[]) => Promise<Array<{ exists?: boolean; jid?: string } | undefined>>;
@@ -700,14 +820,16 @@ function buildPayloadSummary(
   secondaryDispatchFailureCode: IntegrationSecondaryDispatchFailureCode | null,
   whatsappLookup: IntegrationWhatsappLookupSummary | null,
   recipientJid: string | null = template.context.recipientJid,
-  interactiveResult: SendCtaUrlInteractiveResult | null = null,
+  interactiveResult: SendCtaUrlInteractiveResult | SendNativeInteractiveResult | null = null,
 ) {
   const secondaryDispatchStatus: IntegrationSecondaryDispatchStatus = template.followup
-    ? secondaryDispatchFailureCode
-      ? "failed_send"
-      : secondaryProviderMessageId
-        ? "sent"
-        : "failed_send"
+    ? shouldSkipFollowupAfterInteractive(template, interactiveResult)
+      ? "skipped_interactive_button"
+      : secondaryDispatchFailureCode
+        ? "failed_send"
+        : secondaryProviderMessageId
+          ? "sent"
+          : "failed_send"
     : template.eventSlug === "pix_gerado"
       ? "skipped_missing_pix_code"
       : "not_applicable";
@@ -736,6 +858,8 @@ function buildPayloadSummary(
     ctaUrlButtonAttempted: interactiveResult?.summary.attemptedInteractive ?? false,
     ctaUrlButtonFallbackUsed: interactiveResult?.summary.fallbackUsed ?? false,
     ctaUrlButtonError: interactiveResult?.interactiveError ?? null,
+    interactiveButtonKinds: interactiveResult?.summary.interactiveButtonKinds ?? [],
+    interactiveButtonCount: interactiveResult?.summary.interactiveButtonCount ?? 0,
     hasExternalAdReply: Boolean(template.externalAdReply),
     fallbackWithoutImage: template.messageType === "image" && !imageAsset,
     imageFallbackReason,
@@ -1020,21 +1144,31 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
         let providerMessageId: string | null;
         let secondaryProviderMessageId: string | null = null;
         let secondaryDispatchFailureCode: IntegrationSecondaryDispatchFailureCode | null = null;
-        let interactiveResult: SendCtaUrlInteractiveResult | null = null;
-        const ctaUrlConfig = getExperimentalCtaUrlConfig(template);
+        let interactiveResult: SendCtaUrlInteractiveResult | SendNativeInteractiveResult | null = null;
+        const nativeInteractiveConfig = getRuntimeNativeInteractiveConfig(template, content);
 
-        if (ctaUrlConfig && "text" in content && typeof content.text === "string") {
-          interactiveResult = await sendCtaUrlInteractiveMessage(sock, effectiveRecipientJid, {
-            body: content.text,
-            buttons: ctaUrlConfig.buttons,
-          }, { fallbackText: content.text });
+        if (nativeInteractiveConfig) {
+          if (nativeInteractiveConfig.automatic) {
+            interactiveResult = await sendNativeInteractiveMessage(sock, effectiveRecipientJid, {
+              body: nativeInteractiveConfig.body,
+              buttons: nativeInteractiveConfig.buttons,
+            }, { fallbackText: nativeInteractiveConfig.fallbackText });
+          } else {
+            const urlButtons = nativeInteractiveConfig.buttons
+              .filter((button): button is Extract<NativeInteractiveButton, { kind: "cta_url" }> => button.kind === "cta_url")
+              .map((button) => ({ text: button.text, url: button.url, useWebview: button.useWebview }));
+            interactiveResult = await sendCtaUrlInteractiveMessage(sock, effectiveRecipientJid, {
+              body: nativeInteractiveConfig.body,
+              buttons: urlButtons,
+            }, { fallbackText: nativeInteractiveConfig.fallbackText });
+          }
           providerMessageId = interactiveResult.providerMessageId ?? interactiveResult.fallbackProviderMessageId ?? null;
         } else {
           const sentMessage = await sock.sendMessage(effectiveRecipientJid, content);
           providerMessageId = extractProviderMessageId(sentMessage as WAMessage | null | undefined);
         }
 
-        const followupPayload = buildFollowupPayload(template);
+        const followupPayload = shouldSkipFollowupAfterInteractive(template, interactiveResult) ? null : buildFollowupPayload(template);
         if (followupPayload) {
           try {
             const followupMessage = await sock.sendMessage(effectiveRecipientJid, followupPayload);

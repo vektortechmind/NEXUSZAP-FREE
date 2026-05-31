@@ -31,6 +31,10 @@ export function formatDispatchDeliveryPath(value: string | null | undefined): st
       return "Botão CTA URL experimental";
     case "text_fallback_interactive_cta_url":
       return "Texto por fallback de botão CTA";
+    case "interactive_native":
+      return "Botões interativos";
+    case "text_fallback_interactive_native":
+      return "Texto por fallback de botões";
     case "document":
       return "Documento";
     case "link":
@@ -50,6 +54,8 @@ export function formatSecondaryDispatchStatus(value: string | null | undefined):
       return "Falha na segunda mensagem";
     case "skipped_missing_pix_code":
       return "Pulada por ausência do Pix copia e cola";
+    case "skipped_interactive_button":
+      return "Substituída por botão interativo";
     case "not_applicable":
       return "Não aplicável";
     default:
