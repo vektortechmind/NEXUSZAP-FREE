@@ -80,6 +80,7 @@ export function UpdateSection() {
   }, [checkUpdate, status]);
 
   const job = status?.job ?? null;
+  const updateInProgress = Boolean(job?.active || running);
   const jobTone = job?.status === "success" ? "success" : job?.status === "failed" ? "danger" : "warning";
   const jobLabel = job?.status === "queued"
     ? "Na fila"
@@ -105,15 +106,24 @@ export function UpdateSection() {
       description="Status e execução do update remoto."
       actions={status ? (
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm" onClick={() => void checkUpdate()} disabled={loading} loading={loading}>
-            <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
-            Verificar
-          </Button>
-          {status?.hasUpdate && (
-            <Button size="sm" onClick={() => void applyUpdate()} disabled={loading || running || Boolean(job?.active)} loading={running && Boolean(job?.active)}>
-              <TerminalSquare className="mr-2 h-4 w-4" aria-hidden="true" />
-              Atualizar
-            </Button>
+          {updateInProgress ? (
+            <span className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/25 dark:text-amber-200">
+              <RefreshCw className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+              Atualização em andamento
+            </span>
+          ) : (
+            <>
+              <Button variant="secondary" size="sm" onClick={() => void checkUpdate()} disabled={loading} loading={loading}>
+                <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+                Verificar
+              </Button>
+              {status?.hasUpdate && (
+                <Button size="sm" onClick={() => void applyUpdate()} disabled={loading}>
+                  <TerminalSquare className="mr-2 h-4 w-4" aria-hidden="true" />
+                  Atualizar
+                </Button>
+              )}
+            </>
           )}
         </div>
       ) : undefined}
