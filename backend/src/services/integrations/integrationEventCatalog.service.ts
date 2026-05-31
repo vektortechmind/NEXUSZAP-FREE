@@ -17,6 +17,8 @@ export const SUPPORTED_INTEGRATION_EVENT_SLUGS = [
 export type SupportedIntegrationEventSlug = typeof SUPPORTED_INTEGRATION_EVENT_SLUGS[number];
 
 type IntegrationPayload = Record<string, unknown>;
+
+export const INTEGRATION_CUSTOM_MESSAGE_MAX_LENGTH = 4000;
 type IntegrationProductSource = Record<string, unknown> | null;
 
 export type IntegrationNormalizedCustomer = {
@@ -47,6 +49,13 @@ export type IntegrationNormalizedBoleto = {
 
 export type IntegrationNormalizedAccess = Record<string, unknown> | null;
 
+export type IntegrationNormalizedMessageOverride = {
+  body: string | null;
+  pixFollowupBody: string | null;
+  bodyLength: number | null;
+  pixFollowupBodyLength: number | null;
+} | null;
+
 export type IntegrationExtractedContext = {
   name: string | null;
   email: string | null;
@@ -73,8 +82,19 @@ export type IntegrationNormalizedEventContext = IntegrationExtractedContext & {
   pix: IntegrationNormalizedPix;
   boleto: IntegrationNormalizedBoleto;
   access: IntegrationNormalizedAccess;
+  messageOverride: IntegrationNormalizedMessageOverride;
   raw: IntegrationPayload;
 };
+
+export class InvalidIntegrationCustomMessageError extends Error {
+  statusCode = 422;
+  code = "INTEGRATION_CUSTOM_MESSAGE_INVALID";
+
+  constructor(message: string) {
+    super(message);
+    this.name = "INTEGRATION_CUSTOM_MESSAGE_INVALID";
+  }
+}
 
 export class UnsupportedIntegrationEventError extends Error {
   statusCode = 400;
@@ -293,6 +313,63 @@ function normalizeBoleto(eventSlug: SupportedIntegrationEventSlug, payload: Inte
   return normalized.amount || normalized.expireAt || normalized.barcode || normalized.pdfUrl ? normalized : null;
 }
 
+function normalizeCustomMessageText(value: unknown, fieldName: string): string {
+  if (typeof value !== "string") {
+    throw new InvalidIntegrationCustomMessageError(`${fieldName} deve ser string.`);
+  }
+
+  const normalized = value
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{4,}/g, "\n\n\n")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+
+  if (!normalized) {
+    throw new InvalidIntegrationCustomMessageError(`${fieldName} nao pode ser vazio.`);
+  }
+
+  if (normalized.length > INTEGRATION_CUSTOM_MESSAGE_MAX_LENGTH) {
+    throw new InvalidIntegrationCustomMessageError(`${fieldName} excede o limite de ${INTEGRATION_CUSTOM_MESSAGE_MAX_LENGTH} caracteres.`);
+  }
+
+  for (const token of ["undefined", "null", "[object Object]"]) {
+    if (normalized.includes(token)) {
+      throw new InvalidIntegrationCustomMessageError(`${fieldName} contem texto invalido.`);
+    }
+  }
+
+  return normalized;
+}
+
+function normalizeMessageOverride(eventSlug: SupportedIntegrationEventSlug, payload: IntegrationPayload): IntegrationNormalizedMessageOverride {
+  const message = asRecord(payload.message);
+  if (!message) return null;
+
+  const allowedFields = new Set(["body", "pix_followup_body"]);
+  for (const field of Object.keys(message)) {
+    if (!allowedFields.has(field)) {
+      throw new InvalidIntegrationCustomMessageError(`Campo message.${field} nao e aceito no contrato de integracao.`);
+    }
+  }
+
+  const hasBody = Object.prototype.hasOwnProperty.call(message, "body");
+  const hasPixFollowupBody = Object.prototype.hasOwnProperty.call(message, "pix_followup_body");
+
+  if (hasPixFollowupBody && eventSlug !== "pix_gerado") {
+    throw new InvalidIntegrationCustomMessageError("message.pix_followup_body so e aceito para o evento pix_gerado.");
+  }
+
+  const body = hasBody ? normalizeCustomMessageText(message.body, "message.body") : null;
+  const pixFollowupBody = hasPixFollowupBody ? normalizeCustomMessageText(message.pix_followup_body, "message.pix_followup_body") : null;
+
+  return body || pixFollowupBody ? {
+    body,
+    pixFollowupBody,
+    bodyLength: body?.length ?? null,
+    pixFollowupBodyLength: pixFollowupBody?.length ?? null,
+  } : null;
+}
+
 function normalizeAccess(eventSlug: SupportedIntegrationEventSlug, payload: IntegrationPayload): IntegrationNormalizedAccess {
   if (eventSlug !== "envio_acesso") return null;
   const access = asRecord(payload.access);
@@ -388,6 +465,7 @@ export function normalizeIntegrationEventContext(eventSlug: string, payload: Int
   const pix = normalizePix(eventSlug, payload);
   const boleto = normalizeBoleto(eventSlug, payload);
   const access = normalizeAccess(eventSlug, payload);
+  const messageOverride = normalizeMessageOverride(eventSlug, payload);
   const extracted = extractContext(eventSlug, payload);
 
   return {
@@ -399,6 +477,7 @@ export function normalizeIntegrationEventContext(eventSlug: string, payload: Int
     pix,
     boleto,
     access,
+    messageOverride,
     raw: payload,
     ...extracted,
   };
@@ -415,4 +494,3 @@ export function createIntegrationEventCatalogService() {
 }
 
 export const integrationEventCatalogService = createIntegrationEventCatalogService();
-

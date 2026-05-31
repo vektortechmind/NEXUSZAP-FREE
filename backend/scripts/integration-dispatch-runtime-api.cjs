@@ -170,6 +170,23 @@ function createDispatchService(options = {}) {
   }
 
   {
+    const payload = createBasePayload();
+    payload.message = { body: "Texto externo aprovado para pedido pago" };
+    const { service, sentPayloads, store } = createDispatchService();
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pedido_pago",
+      dedupKey: "evt-custom-body",
+      payload,
+    });
+    const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
+    assert.equal(sentPayloads[0].content.text.includes("Texto externo aprovado para pedido pago"), true);
+    assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
+    assert.equal(summary.includes('"customBodyUsed":true'), true);
+    assert.equal(summary.includes('"customBodyLength":39'), true);
+    assert.equal(summary.includes("Texto externo aprovado"), false);
+  }
+  {
     const { service, sentPayloads } = createDispatchService();
     await service.dispatchEvent({
       instanceId: "instance-a",
@@ -224,6 +241,27 @@ function createDispatchService(options = {}) {
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"secondaryDispatchKind":"pix_copy_paste_text"'), true);
   }
 
+  {
+    const payload = createBasePayload();
+    payload.message = {
+      body: "Mensagem principal Pix externa",
+      pix_followup_body: "Segunda mensagem Pix externa",
+    };
+    const { service, sentPayloads, store } = createDispatchService();
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pix_gerado",
+      dedupKey: "evt-custom-pix",
+      payload,
+    });
+    const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
+    assert.equal(sentPayloads[0].content.caption, "Mensagem principal Pix externa");
+    assert.equal(sentPayloads[1].content.text, "Segunda mensagem Pix externa");
+    assert.equal(summary.includes('"customBodyUsed":true'), true);
+    assert.equal(summary.includes('"customPixFollowupUsed":true'), true);
+    assert.equal(summary.includes('"customPixFollowupLength":28'), true);
+    assert.equal(summary.includes("Segunda mensagem Pix externa"), false);
+  }
   {
     const { service, sentPayloads, store } = createDispatchService({
       sock: {

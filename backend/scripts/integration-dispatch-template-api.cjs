@@ -239,6 +239,51 @@ function assertNoRawLeak(template) {
   }
 
   {
+    const payload = payloadForEvent("pedido_pendente");
+    payload.message = { body: "Texto final externo para pedido pendente" };
+    const rendered = renderIntegrationDispatchTemplate("pedido_pendente", payload);
+    assert.equal(rendered.messageType, "text");
+    assert.equal(rendered.body, "Texto final externo para pedido pendente");
+    assert.equal(rendered.caption, null);
+  }
+
+  {
+    const payload = payloadForEvent("pix_gerado");
+    payload.message = {
+      body: "Texto externo principal do Pix",
+      pix_followup_body: "Texto externo da segunda mensagem Pix",
+    };
+    const rendered = renderIntegrationDispatchTemplate("pix_gerado", payload);
+    assert.equal(rendered.messageType, "image");
+    assert.equal(rendered.body, "Texto externo principal do Pix");
+    assert.equal(rendered.caption, "Texto externo principal do Pix");
+    assert.equal(rendered.followup.body, "Texto externo da segunda mensagem Pix");
+    assert.equal(rendered.linkUrl, "https://checkout.example.com/c/123");
+  }
+
+  for (const invalidMessage of [
+    { body: "   " },
+    { body: ["texto"] },
+    { body: "Texto com [object Object] invalido" },
+    { caption: "caption nao suportada" },
+  ]) {
+    const payload = payloadForEvent("pedido_pendente");
+    payload.message = invalidMessage;
+    assert.throws(
+      () => renderIntegrationDispatchTemplate("pedido_pendente", payload),
+      (error) => error.code === "INTEGRATION_CUSTOM_MESSAGE_INVALID",
+    );
+  }
+
+  {
+    const payload = payloadForEvent("pedido_pendente");
+    payload.message = { pix_followup_body: "nao pode" };
+    assert.throws(
+      () => renderIntegrationDispatchTemplate("pedido_pendente", payload),
+      (error) => error.code === "INTEGRATION_CUSTOM_MESSAGE_INVALID",
+    );
+  }
+  {
     const payload = payloadForEvent("boleto_gerado");
     delete payload.boleto.pdf_url;
     assert.throws(

@@ -192,6 +192,27 @@ function visibleActionLink(label: string, linkUrl: string | null): string | null
   return `↗ *${label}*\n${linkUrl}`;
 }
 
+function applyMessageOverride(
+  template: IntegrationRenderedDispatchTemplate,
+  context: IntegrationNormalizedEventContext,
+): IntegrationRenderedDispatchTemplate {
+  const override = context.messageOverride;
+  if (!override) return template;
+
+  const body = override.body ? assertRenderedText(override.body, context.eventSlug) : template.body;
+  const caption = override.body && template.caption !== null ? body : template.caption;
+  const followup = template.followup && override.pixFollowupBody
+    ? { ...template.followup, body: assertRenderedText(override.pixFollowupBody, context.eventSlug) }
+    : template.followup;
+
+  return {
+    ...template,
+    body,
+    caption,
+    followup,
+  };
+}
+
 function renderTextTemplate(
   context: IntegrationNormalizedEventContext,
   title: string,
@@ -309,7 +330,7 @@ function createPixCopyPasteFollowup(context: IntegrationNormalizedEventContext):
   };
 }
 
-export function renderIntegrationDispatchTemplateFromContext(
+function renderDefaultIntegrationDispatchTemplateFromContext(
   context: IntegrationNormalizedEventContext,
 ): IntegrationRenderedDispatchTemplate {
   const customer = customerLabel(context);
@@ -455,6 +476,12 @@ export function renderIntegrationDispatchTemplateFromContext(
   }
 }
 
+export function renderIntegrationDispatchTemplateFromContext(
+  context: IntegrationNormalizedEventContext,
+): IntegrationRenderedDispatchTemplate {
+  return applyMessageOverride(renderDefaultIntegrationDispatchTemplateFromContext(context), context);
+}
+
 export function renderIntegrationDispatchTemplate(eventSlug: string, payload: IntegrationPayload): IntegrationRenderedDispatchTemplate {
   return renderIntegrationDispatchTemplateFromContext(normalizeIntegrationEventContext(eventSlug, payload));
 }
@@ -467,4 +494,3 @@ export function createIntegrationDispatchTemplateService() {
 }
 
 export const integrationDispatchTemplateService = createIntegrationDispatchTemplateService();
-
