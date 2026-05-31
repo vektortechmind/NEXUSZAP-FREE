@@ -23,6 +23,7 @@ const {
   IntegrationDispatchInstanceOfflineError,
   IntegrationDispatchRecipientMissingError,
   IntegrationDispatchSendFailedError,
+  DEFAULT_INTEGRATION_DISPATCH_RETRY_MAX_ATTEMPTS,
 } = require("../src/services/integrations/integrationDispatchRuntime.service.ts");
 
 function createBasePayload() {
@@ -463,7 +464,12 @@ function createDispatchService(options = {}) {
       }),
       (error) => error instanceof IntegrationDispatchInstanceOfflineError,
     );
-    assert.equal(Array.from(store.logs.values())[0].dispatchStatus, INTEGRATION_DISPATCH_STATUS.FAILED_INSTANCE_OFFLINE);
+    const log = Array.from(store.logs.values())[0];
+    assert.equal(log.dispatchStatus, INTEGRATION_DISPATCH_STATUS.FAILED_INSTANCE_OFFLINE);
+    assert.equal(log.retryable, true);
+    assert.equal(log.retryAttemptCount, 1);
+    assert.equal(log.lastRetryError, "INTEGRATION_DISPATCH_INSTANCE_OFFLINE");
+    assert.equal(log.nextRetryAt instanceof Date, true);
   }
 
   {
@@ -480,7 +486,10 @@ function createDispatchService(options = {}) {
       }),
       (error) => error instanceof IntegrationDispatchRecipientMissingError,
     );
-    assert.equal(Array.from(store.logs.values())[0].dispatchStatus, INTEGRATION_DISPATCH_STATUS.FAILED_RECIPIENT_MISSING);
+    const log = Array.from(store.logs.values())[0];
+    assert.equal(log.dispatchStatus, INTEGRATION_DISPATCH_STATUS.FAILED_RECIPIENT_MISSING);
+    assert.equal(log.retryable, false);
+    assert.equal(log.nextRetryAt, null);
   }
 
   {
@@ -499,7 +508,70 @@ function createDispatchService(options = {}) {
       }),
       (error) => error instanceof IntegrationDispatchSendFailedError,
     );
-    assert.equal(Array.from(store.logs.values())[0].dispatchStatus, INTEGRATION_DISPATCH_STATUS.FAILED_SEND);
+    const log = Array.from(store.logs.values())[0];
+    assert.equal(log.dispatchStatus, INTEGRATION_DISPATCH_STATUS.FAILED_SEND);
+    assert.equal(log.retryable, true);
+    assert.equal(log.retryAttemptCount, 1);
+  }
+
+  {
+    const { service, store } = createDispatchService();
+    const initialLog = await store.createLog({
+      ingressLogId: "ingress-retry-success",
+      credentialId: "credential-a",
+      instanceId: "instance-a",
+      eventSlug: "pedido_pago",
+      dedupKey: "dedup-retry-success",
+      recipientJid: "5511999999999@s.whatsapp.net",
+      dispatchStatus: INTEGRATION_DISPATCH_STATUS.FAILED_INSTANCE_OFFLINE,
+      retryable: true,
+      retryAttemptCount: 1,
+      nextRetryAt: new Date(0),
+    });
+    const result = await service.retryDispatch({
+      dispatchLog: initialLog,
+      payload: createBasePayload(),
+    });
+    assert.equal(result.dispatchLog.id, initialLog.id);
+    assert.equal(result.dispatchLog.dispatchStatus, INTEGRATION_DISPATCH_STATUS.SENT);
+    assert.equal(result.dispatchLog.retryable, false);
+    assert.equal(result.dispatchLog.retryAttemptCount, 2);
+    assert.equal(result.dispatchLog.nextRetryAt, null);
+    assert.equal(store.logs.size, 1);
+  }
+
+  {
+    const { service, store } = createDispatchService({
+      sock: {
+        async sendMessage() {
+          throw new Error("send failed");
+        },
+      },
+    });
+    const initialLog = await store.createLog({
+      ingressLogId: "ingress-exhausted",
+      credentialId: "credential-a",
+      instanceId: "instance-a",
+      eventSlug: "pedido_pago",
+      dedupKey: "dedup-exhausted",
+      recipientJid: "5511999999999@s.whatsapp.net",
+      dispatchStatus: INTEGRATION_DISPATCH_STATUS.FAILED_SEND,
+      retryable: true,
+      retryAttemptCount: DEFAULT_INTEGRATION_DISPATCH_RETRY_MAX_ATTEMPTS - 1,
+      nextRetryAt: new Date(0),
+    });
+    await assert.rejects(
+      () => service.retryDispatch({
+        dispatchLog: initialLog,
+        payload: createBasePayload(),
+      }),
+      (error) => error instanceof IntegrationDispatchSendFailedError,
+    );
+    const log = store.logs.get(initialLog.id);
+    assert.equal(log.dispatchStatus, INTEGRATION_DISPATCH_STATUS.FAILED_SEND);
+    assert.equal(log.retryable, false);
+    assert.equal(log.retryAttemptCount, DEFAULT_INTEGRATION_DISPATCH_RETRY_MAX_ATTEMPTS);
+    assert.equal(log.retryExhaustedAt instanceof Date, true);
   }
 
   console.log("integration-dispatch-runtime-api: OK");

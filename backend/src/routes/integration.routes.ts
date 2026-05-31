@@ -20,6 +20,7 @@ import {
 } from "../services/integrations/integrationEventCatalog.service";
 import {
   IntegrationDispatchRuntimeError,
+  isRetryableIntegrationDispatchError,
   integrationDispatchRuntimeService,
 } from "../services/integrations/integrationDispatchRuntime.service";
 import { redactSensitiveText, safeLogError } from "../utils/redaction";
@@ -262,6 +263,23 @@ export function createIntegrationRoutes(deps: IntegrationRouteDeps = {}) {
         });
       } catch (error) {
         const mapped = authFailureMessage(error as Error);
+        if (isRetryableIntegrationDispatchError(error)) {
+          fastify.log.warn({ ingress: requestSummary(request), err: safeLogError(error) }, "integration dispatch queued for retry after temporary failure");
+          return reply.status(202).send({
+            success: true,
+            data: {
+              ingressId: ingressLog.id,
+              dispatchId: error.dispatchLogId,
+              providerMessageId: null,
+              status: "accepted",
+              dispatchStatus: error.dispatchStatus,
+              retryQueued: true,
+              instanceId: body.instanceId,
+              event: body.event,
+            },
+          });
+        }
+
         await ingressService.updateLog(ingressLog.id, {
           status: INTEGRATION_INGRESS_STATUS.ERROR,
           failureCode: mapped.code,

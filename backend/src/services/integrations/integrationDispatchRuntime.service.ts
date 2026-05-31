@@ -40,6 +40,12 @@ export type IntegrationDispatchLogRecord = {
   failureCode: string | null;
   providerMessageId: string | null;
   payloadSummaryJson: string | null;
+  retryable: boolean;
+  retryAttemptCount: number;
+  nextRetryAt: Date | null;
+  lastRetryError: string | null;
+  retryLockedAt: Date | null;
+  retryExhaustedAt: Date | null;
   createdAt: Date;
   processedAt: Date | null;
 };
@@ -56,6 +62,12 @@ export type PersistIntegrationDispatchLogInput = {
   failureCode?: string | null;
   providerMessageId?: string | null;
   payloadSummary?: unknown;
+  retryable?: boolean;
+  retryAttemptCount?: number;
+  nextRetryAt?: Date | null;
+  lastRetryError?: string | null;
+  retryLockedAt?: Date | null;
+  retryExhaustedAt?: Date | null;
   processedAt?: Date | null;
 };
 
@@ -72,6 +84,12 @@ export interface IntegrationDispatchStore {
     failureCode?: string | null;
     providerMessageId?: string | null;
     payloadSummaryJson?: string | null;
+    retryable?: boolean;
+    retryAttemptCount?: number;
+    nextRetryAt?: Date | null;
+    lastRetryError?: string | null;
+    retryLockedAt?: Date | null;
+    retryExhaustedAt?: Date | null;
     processedAt?: Date | null;
   }): Promise<IntegrationDispatchLogRecord>;
   updateLog(id: string, input: {
@@ -81,9 +99,18 @@ export interface IntegrationDispatchStore {
     failureCode?: string | null;
     providerMessageId?: string | null;
     payloadSummaryJson?: string | null;
+    retryable?: boolean;
+    retryAttemptCount?: number;
+    nextRetryAt?: Date | null;
+    lastRetryError?: string | null;
+    retryLockedAt?: Date | null;
+    retryExhaustedAt?: Date | null;
     processedAt?: Date | null;
   }): Promise<IntegrationDispatchLogRecord>;
 }
+
+export const DEFAULT_INTEGRATION_DISPATCH_RETRY_MAX_ATTEMPTS = 3;
+export const DEFAULT_INTEGRATION_DISPATCH_RETRY_BACKOFF_MS = [30_000, 120_000, 600_000] as const;
 
 export type IntegrationDownloadedImageAsset = {
   buffer: Buffer;
@@ -117,6 +144,7 @@ export class IntegrationDispatchRuntimeError extends Error {
   statusCode: number;
   code: string;
   dispatchStatus: IntegrationDispatchStatus;
+  dispatchLogId: string | null;
 
   constructor(message: string, statusCode: number, code: string, dispatchStatus: IntegrationDispatchStatus) {
     super(message);
@@ -124,6 +152,7 @@ export class IntegrationDispatchRuntimeError extends Error {
     this.statusCode = statusCode;
     this.code = code;
     this.dispatchStatus = dispatchStatus;
+    this.dispatchLogId = null;
   }
 }
 
@@ -173,11 +202,23 @@ function toDispatchLogRecord(record: {
   failureCode: string | null;
   providerMessageId: string | null;
   payloadSummaryJson: string | null;
+  retryable?: boolean;
+  retryAttemptCount?: number;
+  nextRetryAt?: Date | null;
+  lastRetryError?: string | null;
+  retryLockedAt?: Date | null;
+  retryExhaustedAt?: Date | null;
   createdAt: Date;
   processedAt: Date | null;
 }): IntegrationDispatchLogRecord {
   return {
     ...record,
+    retryable: record.retryable ?? false,
+    retryAttemptCount: record.retryAttemptCount ?? 0,
+    nextRetryAt: record.nextRetryAt ?? null,
+    lastRetryError: record.lastRetryError ?? null,
+    retryLockedAt: record.retryLockedAt ?? null,
+    retryExhaustedAt: record.retryExhaustedAt ?? null,
     processedAt: record.processedAt ?? null,
   };
 }
@@ -205,6 +246,12 @@ export function createPrismaIntegrationDispatchStore(db: PrismaIntegrationDispat
           failureCode: input.failureCode ?? null,
           providerMessageId: input.providerMessageId ?? null,
           payloadSummaryJson: input.payloadSummaryJson ?? null,
+          retryable: input.retryable ?? false,
+          retryAttemptCount: input.retryAttemptCount ?? 0,
+          nextRetryAt: input.nextRetryAt ?? null,
+          lastRetryError: input.lastRetryError ?? null,
+          retryLockedAt: input.retryLockedAt ?? null,
+          retryExhaustedAt: input.retryExhaustedAt ?? null,
           processedAt: input.processedAt ?? null,
         },
       });
@@ -220,6 +267,12 @@ export function createPrismaIntegrationDispatchStore(db: PrismaIntegrationDispat
           failureCode: input.failureCode,
           providerMessageId: input.providerMessageId,
           payloadSummaryJson: input.payloadSummaryJson,
+          retryable: input.retryable,
+          retryAttemptCount: input.retryAttemptCount,
+          nextRetryAt: input.nextRetryAt,
+          lastRetryError: input.lastRetryError,
+          retryLockedAt: input.retryLockedAt,
+          retryExhaustedAt: input.retryExhaustedAt,
           processedAt: input.processedAt ?? new Date(),
         },
       });
@@ -247,6 +300,12 @@ export function createInMemoryIntegrationDispatchStore(seed?: { logs?: Integrati
         failureCode: input.failureCode ?? null,
         providerMessageId: input.providerMessageId ?? null,
         payloadSummaryJson: input.payloadSummaryJson ?? null,
+        retryable: input.retryable ?? false,
+        retryAttemptCount: input.retryAttemptCount ?? 0,
+        nextRetryAt: input.nextRetryAt ?? null,
+        lastRetryError: input.lastRetryError ?? null,
+        retryLockedAt: input.retryLockedAt ?? null,
+        retryExhaustedAt: input.retryExhaustedAt ?? null,
         createdAt: now,
         processedAt: input.processedAt ?? now,
       };
@@ -266,6 +325,12 @@ export function createInMemoryIntegrationDispatchStore(seed?: { logs?: Integrati
         failureCode: input.failureCode === undefined ? current.failureCode : input.failureCode,
         providerMessageId: input.providerMessageId === undefined ? current.providerMessageId : input.providerMessageId,
         payloadSummaryJson: input.payloadSummaryJson === undefined ? current.payloadSummaryJson : input.payloadSummaryJson,
+        retryable: input.retryable === undefined ? current.retryable : input.retryable,
+        retryAttemptCount: input.retryAttemptCount === undefined ? current.retryAttemptCount : input.retryAttemptCount,
+        nextRetryAt: input.nextRetryAt === undefined ? current.nextRetryAt : input.nextRetryAt,
+        lastRetryError: input.lastRetryError === undefined ? current.lastRetryError : input.lastRetryError,
+        retryLockedAt: input.retryLockedAt === undefined ? current.retryLockedAt : input.retryLockedAt,
+        retryExhaustedAt: input.retryExhaustedAt === undefined ? current.retryExhaustedAt : input.retryExhaustedAt,
         processedAt: input.processedAt ?? new Date(),
       };
       logs.set(id, record);
@@ -289,6 +354,12 @@ export function createIntegrationDispatchLogService(store: IntegrationDispatchSt
         failureCode: input.failureCode ?? null,
         providerMessageId: input.providerMessageId ?? null,
         payloadSummaryJson: serializePayloadSummary(input.payloadSummary),
+        retryable: input.retryable ?? false,
+        retryAttemptCount: input.retryAttemptCount ?? 0,
+        nextRetryAt: input.nextRetryAt ?? null,
+        lastRetryError: input.lastRetryError ?? null,
+        retryLockedAt: input.retryLockedAt ?? null,
+        retryExhaustedAt: input.retryExhaustedAt ?? null,
         processedAt: input.processedAt ?? new Date(),
       });
     },
@@ -299,6 +370,12 @@ export function createIntegrationDispatchLogService(store: IntegrationDispatchSt
       failureCode?: string | null;
       providerMessageId?: string | null;
       payloadSummary?: unknown;
+      retryable?: boolean;
+      retryAttemptCount?: number;
+      nextRetryAt?: Date | null;
+      lastRetryError?: string | null;
+      retryLockedAt?: Date | null;
+      retryExhaustedAt?: Date | null;
       processedAt?: Date | null;
     }) {
       return store.updateLog(id, {
@@ -308,6 +385,12 @@ export function createIntegrationDispatchLogService(store: IntegrationDispatchSt
         failureCode: input.failureCode,
         providerMessageId: input.providerMessageId,
         payloadSummaryJson: input.payloadSummary === undefined ? undefined : serializePayloadSummary(input.payloadSummary),
+        retryable: input.retryable,
+        retryAttemptCount: input.retryAttemptCount,
+        nextRetryAt: input.nextRetryAt,
+        lastRetryError: input.lastRetryError,
+        retryLockedAt: input.retryLockedAt,
+        retryExhaustedAt: input.retryExhaustedAt,
         processedAt: input.processedAt ?? new Date(),
       });
     },
@@ -553,6 +636,46 @@ function resolveDispatchedMessageType(
   return "text";
 }
 
+function isRetryableDispatchRuntimeError(error: IntegrationDispatchRuntimeError): boolean {
+  return error.dispatchStatus === INTEGRATION_DISPATCH_STATUS.FAILED_INSTANCE_OFFLINE
+    || error.dispatchStatus === INTEGRATION_DISPATCH_STATUS.FAILED_SEND;
+}
+
+export function isRetryableIntegrationDispatchError(error: unknown): error is IntegrationDispatchRuntimeError {
+  return error instanceof IntegrationDispatchRuntimeError && isRetryableDispatchRuntimeError(error);
+}
+
+function resolveRetryState(error: IntegrationDispatchRuntimeError, attemptCount: number, now: Date) {
+  if (!isRetryableDispatchRuntimeError(error)) {
+    return {
+      retryable: false,
+      nextRetryAt: null,
+      lastRetryError: null,
+      retryLockedAt: null,
+      retryExhaustedAt: null,
+    };
+  }
+
+  if (attemptCount >= DEFAULT_INTEGRATION_DISPATCH_RETRY_MAX_ATTEMPTS) {
+    return {
+      retryable: false,
+      nextRetryAt: null,
+      lastRetryError: error.code,
+      retryLockedAt: null,
+      retryExhaustedAt: now,
+    };
+  }
+
+  const delayMs = DEFAULT_INTEGRATION_DISPATCH_RETRY_BACKOFF_MS[Math.min(attemptCount - 1, DEFAULT_INTEGRATION_DISPATCH_RETRY_BACKOFF_MS.length - 1)];
+  return {
+    retryable: true,
+    nextRetryAt: new Date(now.getTime() + delayMs),
+    lastRetryError: error.code,
+    retryLockedAt: null,
+    retryExhaustedAt: null,
+  };
+}
+
 export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatchServiceDeps = {}) {
   const eventCatalogService = deps.eventCatalogService ?? integrationEventCatalogServiceBridge;
   const templateService = deps.templateService ?? integrationDispatchTemplateServiceBridge;
@@ -560,6 +683,147 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
   const instanceLookup = deps.instanceLookup ?? (async (instanceId: string) => prisma.instance.findUnique({ where: { id: instanceId }, select: { id: true, status: true } }));
   const socketLookup = deps.socketLookup ?? ((instanceId: string) => InstanceManager.get(instanceId));
   const imageDownloader = deps.imageDownloader ?? downloadIntegrationImageAsset;
+
+  async function executeDispatch(input: {
+    dispatchLog: IntegrationDispatchLogRecord;
+    instanceId: string;
+    eventSlug: string;
+    payload: Record<string, unknown>;
+    attemptCount: number;
+  }) {
+    const context = eventCatalogService.normalizeEventContext(input.eventSlug, input.payload) as IntegrationNormalizedEventContext;
+
+    try {
+      if (!context.recipientJid) {
+        throw new IntegrationDispatchRecipientMissingError(context.eventSlug);
+      }
+
+      const instance = await instanceLookup(input.instanceId);
+      if (!instance) {
+        throw new IntegrationDispatchInstanceNotFoundError(input.instanceId);
+      }
+
+      const sock = socketLookup(input.instanceId);
+      if (instance.status !== "CONNECTED" || !sock) {
+        throw new IntegrationDispatchInstanceOfflineError(input.instanceId);
+      }
+
+      let template: IntegrationRenderedDispatchTemplate;
+      try {
+        template = templateService.renderTemplateFromContext(context);
+      } catch (error) {
+        if (error instanceof IntegrationDispatchTemplateRenderError) {
+          throw toTemplateRenderRuntimeError(error);
+        }
+        throw error;
+      }
+
+      let imageAsset: IntegrationDownloadedImageAsset | null = null;
+      let imageFallbackReason: IntegrationImageFallbackReason | null = null;
+      const shouldUseTextLinkPath = shouldUseTextLinkDispatch(template);
+
+      if (template.messageType === "image" && !shouldUseTextLinkPath) {
+        if (!template.imageUrl) {
+          imageFallbackReason = "missing_image_url";
+        } else if (!isHttpUrl(template.imageUrl)) {
+          imageFallbackReason = "invalid_image_url";
+        } else {
+          try {
+            imageAsset = await imageDownloader(template.imageUrl);
+          } catch {
+            imageFallbackReason = "image_download_failed";
+          }
+        }
+      }
+
+      const content = shouldUseTextLinkPath
+        ? buildTextLinkPayload(template)
+        : buildBaileysDispatchPayload(template, {
+          imageBuffer: imageAsset?.buffer ?? null,
+          imageMimeType: imageAsset?.mimeType ?? null,
+        });
+
+      try {
+        let providerMessageId: string | null;
+        let secondaryProviderMessageId: string | null = null;
+        let secondaryDispatchFailureCode: IntegrationSecondaryDispatchFailureCode | null = null;
+        const sentMessage = await sock.sendMessage(context.recipientJid, content);
+        providerMessageId = extractProviderMessageId(sentMessage as WAMessage | null | undefined);
+
+        const followupPayload = buildFollowupPayload(template);
+        if (followupPayload) {
+          try {
+            const followupMessage = await sock.sendMessage(context.recipientJid, followupPayload);
+            secondaryProviderMessageId = extractProviderMessageId(followupMessage as WAMessage | null | undefined);
+          } catch {
+            secondaryDispatchFailureCode = "send_failed";
+          }
+        }
+
+        const finalLog = await logService.updateLog(input.dispatchLog.id, {
+          recipientJid: context.recipientJid,
+          messageType: resolveDispatchedMessageType(template, content),
+          dispatchStatus: INTEGRATION_DISPATCH_STATUS.SENT,
+          failureCode: null,
+          providerMessageId,
+          retryable: false,
+          nextRetryAt: null,
+          lastRetryError: null,
+          retryLockedAt: null,
+          retryExhaustedAt: null,
+          payloadSummary: buildPayloadSummary(template, content, imageAsset, imageFallbackReason, secondaryProviderMessageId, secondaryDispatchFailureCode),
+        });
+
+        return {
+          context,
+          template,
+          content,
+          providerMessageId,
+          secondaryProviderMessageId,
+          dispatchLog: finalLog,
+        };
+      } catch {
+        throw new IntegrationDispatchSendFailedError(context.eventSlug);
+      }
+    } catch (error) {
+      if (error instanceof IntegrationDispatchRuntimeError) {
+        error.dispatchLogId = input.dispatchLog.id;
+        const retryState = resolveRetryState(error, input.attemptCount, new Date());
+        await logService.updateLog(input.dispatchLog.id, {
+          recipientJid: context.recipientJid,
+          dispatchStatus: error.dispatchStatus,
+          failureCode: error.code,
+          retryable: retryState.retryable,
+          retryAttemptCount: input.attemptCount,
+          nextRetryAt: retryState.nextRetryAt,
+          lastRetryError: retryState.lastRetryError,
+          retryLockedAt: retryState.retryLockedAt,
+          retryExhaustedAt: retryState.retryExhaustedAt,
+        });
+        throw error;
+      }
+
+      const runtimeError = new IntegrationDispatchRuntimeError(
+        "Erro interno ao executar dispatch de integração.",
+        500,
+        "INTEGRATION_DISPATCH_RUNTIME_ERROR",
+        INTEGRATION_DISPATCH_STATUS.ERROR,
+      );
+      const retryState = resolveRetryState(runtimeError, input.attemptCount, new Date());
+      await logService.updateLog(input.dispatchLog.id, {
+        recipientJid: context.recipientJid,
+        dispatchStatus: INTEGRATION_DISPATCH_STATUS.ERROR,
+        failureCode: runtimeError.code,
+        retryable: retryState.retryable,
+        retryAttemptCount: input.attemptCount,
+        nextRetryAt: retryState.nextRetryAt,
+        lastRetryError: retryState.lastRetryError,
+        retryLockedAt: retryState.retryLockedAt,
+        retryExhaustedAt: retryState.retryExhaustedAt,
+      });
+      throw error;
+    }
+  }
 
   return {
     buildBaileysPayload: buildBaileysDispatchPayload,
@@ -580,113 +844,48 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
         dedupKey: input.dedupKey ?? null,
         recipientJid: context.recipientJid,
         dispatchStatus: INTEGRATION_DISPATCH_STATUS.PENDING_RUNTIME,
+        retryAttemptCount: 1,
         payloadSummary: { eventSlug: input.eventSlug },
       });
 
-      try {
-        if (!context.recipientJid) {
-          throw new IntegrationDispatchRecipientMissingError(context.eventSlug);
-        }
-
-        const instance = await instanceLookup(input.instanceId);
-        if (!instance) {
-          throw new IntegrationDispatchInstanceNotFoundError(input.instanceId);
-        }
-
-        const sock = socketLookup(input.instanceId);
-        if (instance.status !== "CONNECTED" || !sock) {
-          throw new IntegrationDispatchInstanceOfflineError(input.instanceId);
-        }
-
-        let template: IntegrationRenderedDispatchTemplate;
-        try {
-          template = templateService.renderTemplateFromContext(context);
-        } catch (error) {
-          if (error instanceof IntegrationDispatchTemplateRenderError) {
-            throw toTemplateRenderRuntimeError(error);
-          }
-          throw error;
-        }
-
-        let imageAsset: IntegrationDownloadedImageAsset | null = null;
-        let imageFallbackReason: IntegrationImageFallbackReason | null = null;
-        const shouldUseTextLinkPath = shouldUseTextLinkDispatch(template);
-
-        if (template.messageType === "image" && !shouldUseTextLinkPath) {
-          if (!template.imageUrl) {
-            imageFallbackReason = "missing_image_url";
-          } else if (!isHttpUrl(template.imageUrl)) {
-            imageFallbackReason = "invalid_image_url";
-          } else {
-            try {
-              imageAsset = await imageDownloader(template.imageUrl);
-            } catch {
-              imageFallbackReason = "image_download_failed";
-            }
-          }
-        }
-
-        const content = shouldUseTextLinkPath
-          ? buildTextLinkPayload(template)
-          : buildBaileysDispatchPayload(template, {
-            imageBuffer: imageAsset?.buffer ?? null,
-            imageMimeType: imageAsset?.mimeType ?? null,
-          });
-
-        try {
-          let providerMessageId: string | null;
-          let secondaryProviderMessageId: string | null = null;
-          let secondaryDispatchFailureCode: IntegrationSecondaryDispatchFailureCode | null = null;
-          const sentMessage = await sock.sendMessage(context.recipientJid, content);
-          providerMessageId = extractProviderMessageId(sentMessage as WAMessage | null | undefined);
-
-          const followupPayload = buildFollowupPayload(template);
-          if (followupPayload) {
-            try {
-              const followupMessage = await sock.sendMessage(context.recipientJid, followupPayload);
-              secondaryProviderMessageId = extractProviderMessageId(followupMessage as WAMessage | null | undefined);
-            } catch {
-              secondaryDispatchFailureCode = "send_failed";
-            }
-          }
-
-          const finalLog = await logService.updateLog(dispatchLog.id, {
-            recipientJid: context.recipientJid,
-            messageType: resolveDispatchedMessageType(template, content),
-            dispatchStatus: INTEGRATION_DISPATCH_STATUS.SENT,
-            failureCode: null,
-            providerMessageId,
-            payloadSummary: buildPayloadSummary(template, content, imageAsset, imageFallbackReason, secondaryProviderMessageId, secondaryDispatchFailureCode),
-          });
-
-          return {
-            context,
-            template,
-            content,
-            providerMessageId,
-            secondaryProviderMessageId,
-            dispatchLog: finalLog,
-          };
-        } catch {
-          throw new IntegrationDispatchSendFailedError(context.eventSlug);
-        }
-      } catch (error) {
-        if (error instanceof IntegrationDispatchRuntimeError) {
-          await logService.updateLog(dispatchLog.id, {
-            recipientJid: context.recipientJid,
-            dispatchStatus: error.dispatchStatus,
-            failureCode: error.code,
-          });
-          throw error;
-        }
-
-        await logService.updateLog(dispatchLog.id, {
-          recipientJid: context.recipientJid,
-          dispatchStatus: INTEGRATION_DISPATCH_STATUS.ERROR,
-          failureCode: "INTEGRATION_DISPATCH_RUNTIME_ERROR",
-        });
-        throw error;
+      return executeDispatch({
+        dispatchLog,
+        instanceId: input.instanceId,
+        eventSlug: input.eventSlug,
+        payload: input.payload,
+        attemptCount: 1,
+      });
+    },
+    async retryDispatch(input: {
+      dispatchLog: IntegrationDispatchLogRecord;
+      payload: Record<string, unknown>;
+    }) {
+      if (!input.dispatchLog.instanceId || !input.dispatchLog.eventSlug) {
+        throw new IntegrationDispatchRuntimeError(
+          "Dispatch de integração sem instanceId/eventSlug para retry.",
+          422,
+          "INTEGRATION_DISPATCH_RETRY_CONTEXT_INVALID",
+          INTEGRATION_DISPATCH_STATUS.ERROR,
+        );
       }
+
+      const attemptCount = input.dispatchLog.retryAttemptCount + 1;
+      const pendingLog = await logService.updateLog(input.dispatchLog.id, {
+        dispatchStatus: INTEGRATION_DISPATCH_STATUS.PENDING_RUNTIME,
+        failureCode: null,
+        providerMessageId: null,
+        retryAttemptCount: attemptCount,
+        nextRetryAt: null,
+        retryLockedAt: new Date(),
+      });
+
+      return executeDispatch({
+        dispatchLog: pendingLog,
+        instanceId: input.dispatchLog.instanceId,
+        eventSlug: input.dispatchLog.eventSlug,
+        payload: input.payload,
+        attemptCount,
+      });
     },
   };
 }

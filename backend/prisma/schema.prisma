@@ -212,11 +212,19 @@ model IntegrationDispatchLog {
   failureCode      String?
   providerMessageId String?
   payloadSummaryJson String?
+  retryable        Boolean                   @default(false)
+  retryAttemptCount Int                      @default(0)
+  nextRetryAt      DateTime?
+  lastRetryError   String?
+  retryLockedAt    DateTime?
+  retryExhaustedAt DateTime?
   createdAt        DateTime                  @default(now())
   processedAt      DateTime?
 
   @@index([instanceId, createdAt])
   @@index([dispatchStatus, createdAt])
+  @@index([retryable, nextRetryAt])
+  @@index([retryLockedAt])
   @@index([eventSlug, createdAt])
   @@index([dedupKey])
   @@index([ingressLogId])

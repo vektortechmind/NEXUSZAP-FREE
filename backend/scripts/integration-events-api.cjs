@@ -25,6 +25,7 @@ const {
   createIntegrationIngressService,
 } = require("../src/services/integrations/integrationIngress.service.ts");
 const {
+  IntegrationDispatchInstanceOfflineError,
   IntegrationDispatchRecipientMissingError,
 } = require("../src/services/integrations/integrationDispatchRuntime.service.ts");
 const { integrationEventCatalogService } = require("../src/services/integrations/integrationEventCatalog.service.ts");
@@ -303,6 +304,34 @@ function validPayload(overrides = {}) {
     const stored = Array.from(logStore.logs.values())[0];
     assert.equal(stored.status, INTEGRATION_INGRESS_STATUS.ERROR);
     assert.equal(stored.failureCode, "INTEGRATION_DISPATCH_RECIPIENT_MISSING");
+    await app.close();
+  }
+
+  {
+    const { app, logStore } = createApp(async () => ({
+      credential: { id: "cred-dispatch-retry" },
+      requestTimestamp: new Date("2026-05-29T14:00:00.000Z"),
+    }), async () => {
+      const error = new IntegrationDispatchInstanceOfflineError("instance-a");
+      error.dispatchLogId = "dispatch-retry-1";
+      throw error;
+    });
+    await app.ready();
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/integrations/events",
+      headers: { authorization: "Bearer valid-token" },
+      payload: validPayload({ dedupKey: "evt-dispatch-retry" }),
+    });
+    assert.equal(response.statusCode, 202, response.body);
+    const parsed = JSON.parse(response.body);
+    assert.equal(parsed.success, true);
+    assert.equal(parsed.data.dispatchId, "dispatch-retry-1");
+    assert.equal(parsed.data.retryQueued, true);
+    assert.equal(parsed.data.dispatchStatus, "FAILED_INSTANCE_OFFLINE");
+    const stored = Array.from(logStore.logs.values())[0];
+    assert.equal(stored.status, INTEGRATION_INGRESS_STATUS.ACCEPTED);
+    assert.equal(stored.failureCode, null);
     await app.close();
   }
 
