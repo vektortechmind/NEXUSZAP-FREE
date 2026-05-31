@@ -90,6 +90,8 @@ export type IntegrationDownloadedImageAsset = {
   mimeType: string | null;
 };
 
+export const DEFAULT_INTEGRATION_IMAGE_FETCH_TIMEOUT_MS = 10_000;
+
 export type IntegrationImageFallbackReason =
   | "missing_image_url"
   | "invalid_image_url"
@@ -496,16 +498,33 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-export async function downloadIntegrationImageAsset(imageUrl: string): Promise<IntegrationDownloadedImageAsset> {
+export async function downloadIntegrationImageAsset(
+  imageUrl: string,
+  options: { timeoutMs?: number } = {},
+): Promise<IntegrationDownloadedImageAsset> {
   if (!isHttpUrl(imageUrl)) {
     throw new Error("Invalid integration image URL");
   }
 
-  const response = await fetch(imageUrl, {
-    headers: {
-      Accept: "image/*,*/*;q=0.8",
-    },
-  });
+  const timeoutMs = options.timeoutMs ?? DEFAULT_INTEGRATION_IMAGE_FETCH_TIMEOUT_MS;
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new Error("Integration image fetch timeout must be a positive number");
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
+
+  try {
+    response = await fetch(imageUrl, {
+      headers: {
+        Accept: "image/*,*/*;q=0.8",
+      },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) {
     throw new Error(`Image download failed with status ${response.status}`);
