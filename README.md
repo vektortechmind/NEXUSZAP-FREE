@@ -378,3 +378,16 @@ Nunca commite:
 - secrets, tokens ou credenciais exportadas do painel
 
 Esses caminhos devem permanecer locais e ja ficam protegidos pelo `.gitignore` quando aplicavel.
+
+## Licenca
+
+Este projeto usa a [NexusZAP Source-Available License](./LICENSE.md).
+
+Resumo pratico:
+
+- voce pode usar o sistema para uso proprio, interno ou comercial dentro da sua operacao;
+- voce pode modificar o codigo para sua propria operacao;
+- agencias e equipes tecnicas podem operar/customizar o sistema para atender clientes sem entregar o codigo;
+- voce nao pode vender, revender, sublicenciar, publicar, redistribuir, empacotar, vender fork, vender imagem Docker, oferecer white-label ou transformar o codigo em produto concorrente sem autorizacao comercial por escrito.
+
+Esta licenca nao e uma licenca open source OSI, porque restringe venda e redistribuicao do codigo.
