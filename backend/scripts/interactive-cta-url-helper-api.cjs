@@ -16,8 +16,10 @@ const path = require("path");
 const {
   buildCtaUrlFallbackText,
   buildCtaUrlInteractivePayload,
+  buildNativeInteractiveFallbackText,
+  buildNativeInteractivePayload,
 } = require("../src/whatsapp/interactivePayloadHelper.ts");
-const { sendCtaUrlInteractiveMessage } = require("../src/whatsapp/interactiveSender.ts");
+const { sendCtaUrlInteractiveMessage, sendNativeInteractiveMessage } = require("../src/whatsapp/interactiveSender.ts");
 
 const baseInput = {
   body: "Pedido pago com sucesso. Acesse o checkout pelo botao abaixo.",
@@ -84,11 +86,44 @@ function assertMultipleCtaButtons() {
   assert.strictEqual(JSON.parse(buttons[1].buttonParamsJson).display_text, "Acessar comunidade");
 }
 
+function assertNativeButtons() {
+  const copyPayload = buildNativeInteractivePayload({
+    body: "Pix gerado. Use o botao para copiar.",
+    buttons: [{ kind: "cta_copy", text: "Copiar Pix", copyCode: "000201PIX-CODE" }],
+  });
+  const copyButton = copyPayload.message.interactiveMessage.nativeFlowMessage.buttons[0];
+  assert.strictEqual(copyButton.name, "cta_copy");
+  assert.strictEqual(JSON.parse(copyButton.buttonParamsJson).copy_code, "000201PIX-CODE");
+  assert.deepStrictEqual(copyPayload.summary.buttonKinds, ["cta_copy"]);
+
+  const mixedPayload = buildNativeInteractivePayload({
+    body: "Boleto gerado.",
+    buttons: [
+      { kind: "cta_url", text: "Abrir boleto", url: "https://cdn.example.com/boleto.pdf" },
+      { kind: "cta_copy", text: "Copiar boleto", copyCode: "23793381286008200009301000012304570660000014990" },
+    ],
+  });
+  const buttons = mixedPayload.message.interactiveMessage.nativeFlowMessage.buttons;
+  assert.strictEqual(buttons.length, 2);
+  assert.strictEqual(buttons[0].name, "cta_url");
+  assert.strictEqual(buttons[1].name, "cta_copy");
+  assert.deepStrictEqual(mixedPayload.summary.buttonKinds, ["cta_url", "cta_copy"]);
+  assert.strictEqual(buildNativeInteractiveFallbackText({
+    body: "Boleto gerado.",
+    buttons: [
+      { kind: "cta_url", text: "Abrir boleto", url: "https://cdn.example.com/boleto.pdf" },
+      { kind: "cta_copy", text: "Copiar boleto", copyCode: "23793381286008200009301000012304570660000014990" },
+    ],
+  }), "Boleto gerado.\n\nhttps://cdn.example.com/boleto.pdf\n\n23793381286008200009301000012304570660000014990");
+}
+
 function assertValidation() {
   assert.throws(() => buildCtaUrlInteractivePayload({ ...baseInput, body: " " }), /body e obrigatorio/);
   assert.throws(() => buildCtaUrlInteractivePayload({ ...baseInput, buttonText: "" }), /Ao menos um botao CTA URL/);
   assert.throws(() => buildCtaUrlInteractivePayload({ ...baseInput, url: "ftp://example.com" }), /http ou https/);
   assert.throws(() => buildCtaUrlInteractivePayload({ ...baseInput, rawPayload: {} }), /Campo nao permitido/);
+  assert.throws(() => buildNativeInteractivePayload({ body: baseInput.body, buttons: [{ kind: "cta_copy", text: "Copiar", copyCode: " " }] }), /copyCode e obrigatorio/);
+  assert.throws(() => buildNativeInteractivePayload({ body: baseInput.body, buttons: [{ kind: "cta_url", text: "FTP", url: "ftp://example.com" }] }), /http ou https/);
   assert.strictEqual(buildCtaUrlFallbackText(baseInput), `${baseInput.body}\n\n${baseInput.url}`);
 }
 
@@ -115,6 +150,30 @@ async function assertSenderRelay() {
   assert.strictEqual(calls.length, 1);
   assert.strictEqual(calls[0].options.messageId, "CTAURLTESTID");
   assert.strictEqual(calls[0].options.additionalNodes[0].tag, "biz");
+}
+
+async function assertNativeSenderRelay() {
+  const calls = [];
+  const sock = {
+    async relayMessage(jid, message, options) {
+      calls.push({ jid, message, options });
+      return "provider-native-id";
+    },
+    async sendMessage() {
+      throw new Error("fallback nao deveria ser usado");
+    },
+  };
+
+  const result = await sendNativeInteractiveMessage(sock, "5511999999999@s.whatsapp.net", {
+    body: "Pix gerado.",
+    buttons: [{ kind: "cta_copy", text: "Copiar Pix", copyCode: "000201PIX-CODE" }],
+  });
+
+  assert.strictEqual(result.deliveryPath, "interactive_native");
+  assert.strictEqual(result.providerMessageId, "provider-native-id");
+  assert.deepStrictEqual(result.summary.interactiveButtonKinds, ["cta_copy"]);
+  assert.strictEqual(result.summary.interactiveButtonCount, 1);
+  assert.strictEqual(calls.length, 1);
 }
 
 async function assertSenderFallback() {
@@ -146,7 +205,7 @@ function assertPublicContractUnchanged() {
 
   assert.ok(!integrationRoute.includes("interactivePayloadHelper"), "endpoint publico nao deve importar helper experimental");
   assert.ok(!integrationRoute.includes("interactiveSender"), "endpoint publico nao deve importar sender experimental");
-  assert.ok(runtimeService.includes("getExperimentalCtaUrlConfig"), "runtime deve manter CTA experimental atras de opt-in explicito");
+  assert.ok(runtimeService.includes("getRuntimeNativeInteractiveConfig"), "runtime deve montar botoes nativos internamente");
   assert.ok(eventCatalog.includes('new Set(["enabled", "text", "url", "buttons"])'), "contrato publico deve aceitar apenas campos de negocio do botao");
   assert.ok(!eventCatalog.includes("interactiveMessage"), "contrato publico nao deve aceitar payload tecnico do WhatsApp");
 }
@@ -155,8 +214,10 @@ async function main() {
   assertBuilderShape();
   assertAdditionalNodesShape();
   assertMultipleCtaButtons();
+  assertNativeButtons();
   assertValidation();
   await assertSenderRelay();
+  await assertNativeSenderRelay();
   await assertSenderFallback();
   assertPublicContractUnchanged();
   console.log("interactive-cta-url-helper-api: ok");

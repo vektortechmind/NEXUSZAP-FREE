@@ -181,7 +181,7 @@ function createDispatchService(options = {}) {
     assert.equal(result.dispatchLog.messageType, "text");
     assert.equal(result.dispatchLog.providerMessageId, "wamid.link-only");
     assert.equal(Array.from(store.logs.values())[0].dispatchStatus, INTEGRATION_DISPATCH_STATUS.SENT);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text_fallback_interactive_native"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"rawPhone":"(11) 99876-5432"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"normalizedPhone":"5511998765432"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"recipientJid":"5511998765432@s.whatsapp.net"'), true);
@@ -458,8 +458,7 @@ function createDispatchService(options = {}) {
     });
     assert.equal(sentPayloads[0].content.text.includes("Tente novamente"), true);
     assert.equal(sentPayloads[0].content.text.includes("↗ *Tentar novamente*\nhttps://checkout.example.com/c/123"), true);
-    assert.equal(sentPayloads[0].content.contextInfo.externalAdReply.title, "Tentar novamente");
-    assert.equal(sentPayloads[0].content.contextInfo.externalAdReply.sourceUrl, "https://checkout.example.com/c/123");
+    assert.equal(sentPayloads[0].content.contextInfo, undefined);
   }
 
   {
@@ -470,17 +469,11 @@ function createDispatchService(options = {}) {
       dedupKey: "evt-doc",
       payload: createBasePayload(),
     });
-    assert.deepEqual(sentPayloads[0].content, {
-      document: Buffer.from("document-data"),
-      mimetype: "application/pdf",
-      fileName: "boleto.pdf",
-      caption: sentPayloads[0].content.caption,
-      contextInfo: sentPayloads[0].content.contextInfo,
-    });
-    assert.equal(sentPayloads[0].content.caption.includes("34191.79001"), false);
-    assert.equal(sentPayloads[0].content.caption.includes("Linha digitável"), true);
+    assert.equal(sentPayloads[0].content.text.includes("Abrir boleto"), true);
+    assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/boleto.pdf"), true);
     assert.equal(sentPayloads[1].content.text, "123456");
-    assert.equal(sentPayloads[0].content.contextInfo.externalAdReply.title, "Baixar boleto");
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text_fallback_interactive_native"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"interactiveButtonKinds":["cta_url","cta_copy","cta_url"]'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"secondaryDispatchStatus":"sent"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"secondaryDispatchKind":"boleto_barcode_text"'), true);
   }
@@ -501,7 +494,7 @@ function createDispatchService(options = {}) {
     assert.equal(sentPayloads[0].content.text.includes("Abrir boleto"), true);
     assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/boleto.pdf"), true);
     assert.equal(sentPayloads[1].content.text, "123456");
-    assert.equal(summary.includes('"deliveryPath":"text_fallback_document"'), true);
+    assert.equal(summary.includes('"deliveryPath":"text_fallback_interactive_native"'), true);
     assert.equal(summary.includes('"documentFallbackReason":"document_download_failed"'), true);
     assert.equal(summary.includes('"secondaryDispatchStatus":"sent"'), true);
   }
@@ -515,14 +508,14 @@ function createDispatchService(options = {}) {
       payload: createBasePayload(),
     });
     assert.equal(sentPayloads[0].jid, "5511998765432@s.whatsapp.net");
-    assert.deepEqual(sentPayloads[0].content.image, Buffer.from("image-data"));
-    assert.equal(sentPayloads[0].content.caption, result.template.body);
+    assert.equal(sentPayloads[0].content.text.includes("PIX"), true);
+    assert.equal(sentPayloads[0].content.text.includes("Codigo Pix copia e cola"), true);
+    assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
     assert.equal(sentPayloads[0].content.contextInfo, undefined);
-    assert.equal(sentPayloads[0].content.caption.includes("Codigo Pix copia e cola"), true);
-    assert.equal(sentPayloads[0].content.caption.includes("logo abaixo"), true);
     assert.equal(sentPayloads[1].content.text, "000201PIX-COPIA-COLA");
     assert.equal(result.dispatchLog.messageType, "image");
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"image_clean"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text_fallback_interactive_native"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"interactiveButtonKinds":["cta_url","cta_copy"]'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"normalizedPhone":"5511998765432"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":null'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"secondaryDispatchStatus":"sent"'), true);
@@ -544,7 +537,8 @@ function createDispatchService(options = {}) {
       payload,
     });
     const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
-    assert.equal(sentPayloads[0].content.caption, "Mensagem principal Pix externa");
+    assert.equal(sentPayloads[0].content.text.includes("Mensagem principal Pix externa"), true);
+    assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
     assert.equal(sentPayloads[1].content.text, "Segunda mensagem Pix externa");
     assert.equal(summary.includes('"customBodyUsed":true'), true);
     assert.equal(summary.includes('"customPixFollowupUsed":true'), true);
@@ -591,7 +585,7 @@ function createDispatchService(options = {}) {
     });
     assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
     assert.equal(sentPayloads[0].content.contextInfo, undefined);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text_fallback_interactive_native"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":null'), true);
   }
 
@@ -612,7 +606,7 @@ function createDispatchService(options = {}) {
     assert.equal(sentPayloads[0].content.text.includes("PIX"), true);
     assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":"image_download_failed"'), true);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text_fallback_image"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text_fallback_interactive_native"'), true);
   }
 
   {
@@ -629,10 +623,10 @@ function createDispatchService(options = {}) {
     assert.equal(sentPayloads[0].content.text.includes("Codigo Pix copia e cola"), true);
     assert.equal(sentPayloads[0].content.text.includes("logo abaixo"), true);
     assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
-    assert.equal(sentPayloads[0].content.contextInfo.externalAdReply.title, "Visualizar pedido");
+    assert.equal(sentPayloads[0].content.contextInfo, undefined);
     assert.equal(sentPayloads[1].content.text, "000201PIX-COPIA-COLA");
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":"missing_image_url"'), true);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text_fallback_image"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text_fallback_interactive_native"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"secondaryDispatchStatus":"sent"'), true);
   }
 
@@ -647,7 +641,7 @@ function createDispatchService(options = {}) {
       payload,
     });
     assert.equal(sentPayloads.length, 1);
-    assert.equal(sentPayloads[0].content.caption.includes("Codigo Pix"), false);
+    assert.equal((sentPayloads[0].content.caption ?? sentPayloads[0].content.text).includes("Codigo Pix"), false);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"secondaryDispatchStatus":"skipped_missing_pix_code"'), true);
   }
 
@@ -969,6 +963,103 @@ function createDispatchService(options = {}) {
     assert.equal(log.retryExhaustedAt instanceof Date, true);
   }
 
+
+  {
+    const relayCalls = [];
+    const sentPayloads = [];
+    const { service, store } = createDispatchService({
+      sentPayloads,
+      sock: {
+        async relayMessage(jid, message, options) {
+          relayCalls.push({ jid, message, options });
+          return "wamid.pix-native";
+        },
+        async sendMessage(jid, content) {
+          sentPayloads.push({ jid, content });
+          return { key: { id: "wamid.pix-fallback" } };
+        },
+      },
+    });
+    const result = await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pix_gerado",
+      dedupKey: "evt-pix-native-accepted",
+      payload: createBasePayload(),
+    });
+    const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
+    const buttons = relayCalls[0].message.interactiveMessage.nativeFlowMessage.buttons;
+    assert.equal(relayCalls.length, 1);
+    assert.equal(sentPayloads.length, 0);
+    assert.equal(buttons.some((button) => button.name === "cta_copy"), true);
+    assert.equal(JSON.stringify(relayCalls[0].message).includes("000201PIX-COPIA-COLA"), true);
+    assert.equal(result.dispatchLog.providerMessageId, "wamid.pix-native");
+    assert.equal(summary.includes('"deliveryPath":"interactive_native"'), true);
+    assert.equal(summary.includes('"interactiveButtonKinds":["cta_url","cta_copy"]'), true);
+    assert.equal(summary.includes('"secondaryDispatchStatus":"skipped_interactive_button"'), true);
+  }
+
+  {
+    const relayCalls = [];
+    const sentPayloads = [];
+    const { service, store } = createDispatchService({
+      sentPayloads,
+      sock: {
+        async relayMessage(jid, message, options) {
+          relayCalls.push({ jid, message, options });
+          return "wamid.boleto-native";
+        },
+        async sendMessage(jid, content) {
+          sentPayloads.push({ jid, content });
+          return { key: { id: "wamid.boleto-fallback" } };
+        },
+      },
+    });
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "boleto_gerado",
+      dedupKey: "evt-boleto-native-accepted",
+      payload: createBasePayload(),
+    });
+    const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
+    const buttons = relayCalls[0].message.interactiveMessage.nativeFlowMessage.buttons;
+    assert.equal(relayCalls.length, 1);
+    assert.equal(sentPayloads.length, 0);
+    assert.equal(buttons.filter((button) => button.name === "cta_url").length >= 1, true);
+    assert.equal(buttons.some((button) => button.name === "cta_copy"), true);
+    assert.equal(summary.includes('"deliveryPath":"interactive_native"'), true);
+    assert.equal(summary.includes('"interactiveButtonKinds":["cta_url","cta_copy","cta_url"]'), true);
+    assert.equal(summary.includes('"secondaryDispatchStatus":"skipped_interactive_button"'), true);
+  }
+
+  {
+    const payload = createBasePayload();
+    const relayCalls = [];
+    const sentPayloads = [];
+    const { service, store } = createDispatchService({
+      sentPayloads,
+      sock: {
+        async relayMessage(jid, message, options) {
+          relayCalls.push({ jid, message, options });
+          return "wamid.out-scope-native";
+        },
+        async sendMessage(jid, content) {
+          sentPayloads.push({ jid, content });
+          return { key: { id: "wamid.out-scope-text" } };
+        },
+      },
+    });
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pedido_pendente",
+      dedupKey: "evt-out-scope-no-buttons",
+      payload,
+    });
+    const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
+    assert.equal(relayCalls.length, 0);
+    assert.equal(sentPayloads.length, 1);
+    assert.equal(summary.includes('"deliveryPath":"text"'), true);
+    assert.equal(summary.includes('"interactiveButtonCount":0'), true);
+  }
   console.log("integration-dispatch-runtime-api: OK");
 })().catch((error) => {
   console.error("integration-dispatch-runtime-api:", error);
