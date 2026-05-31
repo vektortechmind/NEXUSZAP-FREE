@@ -89,7 +89,9 @@ export class InstanceManager {
             data: { status: "RECONNECTING" },
           });
           setTimeout(() => {
-            void this.start(instanceId, onQr);
+            this.start(instanceId, onQr).catch((err) => {
+              console.error(`[Baileys] Falha ao reconectar instância ${instanceId}:`, safeLogError(err));
+            });
           }, 5000);
           return;
         }

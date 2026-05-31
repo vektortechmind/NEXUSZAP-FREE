@@ -42,6 +42,19 @@ function assertTelegramManagerContracts() {
   assert.ok(source.includes('import { getTelegramInstance } from "../services/instance.service";'), "manager Telegram deve usar instancia dedicada");
   assert.ok(source.includes("if (!instance) return;"), "manager Telegram deve abortar quando nao houver instancia persistida");
   assert.ok(!source.includes("getOrCreatePrimaryInstance"), "manager Telegram nao deve bootstrapar instancias WhatsApp");
+  assert.ok(!source.includes("void bot.launch();"), "manager Telegram nao deve disparar launch sem tratamento");
+  assert.ok(source.includes("await bot.launch();"), "manager Telegram deve aguardar launch antes de marcar started");
+  assert.ok(source.indexOf("await bot.launch();") < source.indexOf("this.started = true;"), "started deve ser marcado somente apos launch resolver");
+  assert.ok(source.includes("Falha ao iniciar bot com polling"), "falha de launch deve gerar log claro");
+  assert.ok(source.includes("this.started = false;"), "falha de launch deve limpar estado started");
+}
+
+function assertWhatsAppManagerContracts() {
+  const source = read("src/whatsapp/InstanceManager.ts");
+
+  assert.ok(!source.includes("void this.start(instanceId, onQr);"), "reconnect WhatsApp nao deve disparar start sem tratamento");
+  assert.ok(source.includes("this.start(instanceId, onQr).catch"), "reconnect WhatsApp deve capturar rejeicao de start");
+  assert.ok(source.includes("Falha ao reconectar instância"), "falha de reconnect WhatsApp deve gerar log claro");
 }
 
 function assertProviderFallbackIsolationContracts() {
@@ -80,6 +93,7 @@ function assertFrontendContracts() {
 assertInstanceServiceContracts();
 assertAgentRoutesContracts();
 assertTelegramManagerContracts();
+assertWhatsAppManagerContracts();
 assertProviderFallbackIsolationContracts();
 assertFrontendContracts();
 

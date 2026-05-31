@@ -211,9 +211,21 @@ export class TelegramBotManager {
       console.error("[Telegram] polling_error:", safeLogError(err));
     });
 
-    void bot.launch();
-    this.started = true;
-    console.log("[Telegram] Bot iniciado com polling para instância:", instanceId);
+    try {
+      await bot.launch();
+      this.started = true;
+      console.log("[Telegram] Bot iniciado com polling para instância:", instanceId);
+    } catch (err) {
+      console.error("[Telegram] Falha ao iniciar bot com polling:", safeLogError(err));
+      if (this.bot === bot) {
+        this.bot = null;
+        this.started = false;
+        this.botLabel = null;
+        this.currentInstanceId = null;
+        this.currentToken = null;
+      }
+      throw err;
+    }
   }
 
   static async restoreOnBoot() {
@@ -230,7 +242,11 @@ export class TelegramBotManager {
     }
 
     console.info("[Telegram] Boot: reconstruindo runtime Telegram persistido.", { instanceId: instance.id });
-    await this.startForInstance(instance.id);
+    try {
+      await this.startForInstance(instance.id);
+    } catch (err) {
+      console.error("[Telegram] Boot: falha ao restaurar runtime Telegram.", { instanceId: instance.id, err: safeLogError(err) });
+    }
   }
 
   static async stop() {
@@ -291,7 +307,12 @@ export class TelegramBotManager {
       data: { telegramBotToken: encrypted },
     });
 
-    await this.startForInstance(instanceId);
-    return { success: true };
+    try {
+      await this.startForInstance(instanceId);
+      return { success: true };
+    } catch (err) {
+      console.error("[Telegram] Falha ao iniciar bot após salvar token:", safeLogError(err));
+      return { success: false, error: "Token salvo, mas não foi possível iniciar o bot." };
+    }
   }
 }
