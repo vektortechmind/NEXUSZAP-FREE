@@ -1,6 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
+import { env } from "../config/env";
 
 const ALGORITHM = "aes-256-gcm";
 const KEY_LENGTH = 32;
@@ -23,14 +24,14 @@ function getOrCreateKey(): Buffer {
 }
 
 function getKey(): Buffer {
-  const envKey = process.env.ENCRYPTION_KEY;
+  const envKey = env.ENCRYPTION_KEY;
   if (envKey) {
     const key = Buffer.from(envKey, "base64");
     if (key.length === KEY_LENGTH) {
       return key;
     }
   }
-  if (process.env.NODE_ENV === "production") {
+  if (env.NODE_ENV === "production") {
     throw new Error("ENCRYPTION_KEY valida e obrigatoria em producao.");
   }
   return getOrCreateKey();

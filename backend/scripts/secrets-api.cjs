@@ -1,6 +1,10 @@
 process.env.NODE_ENV = "test";
 process.env.ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
 process.env.DATABASE_URL = process.env.DATABASE_URL || "postgresql://user:pass@localhost:5432/testdb?schema=public";
+process.env.JWT_SECRET = process.env.JWT_SECRET || "test-secret-with-more-than-32-characters";
+process.env.ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@example.com";
+process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "local-test-password";
+process.env.PORT = process.env.PORT || "0";
 
 require("ts-node/register/transpile-only");
 const assert = require("node:assert/strict");
@@ -13,6 +17,7 @@ const {
   decryptSecret,
   encryptSecret,
 } = require("../src/services/crypto.service");
+const { parseRuntimeEnv } = require("../src/config/env.ts");
 
 function baseAgent(overrides = {}) {
   const now = new Date("2026-05-27T00:00:00.000Z");
@@ -79,13 +84,15 @@ async function main() {
   const maskedUpdate = buildAgentConfigUpdateData({ groqKey: "gsk_****cret" });
   assert.equal(Object.prototype.hasOwnProperty.call(maskedUpdate, "groqKey"), false);
 
-  const oldEnv = process.env.NODE_ENV;
-  const oldKey = process.env.ENCRYPTION_KEY;
-  process.env.NODE_ENV = "production";
-  delete process.env.ENCRYPTION_KEY;
-  assert.throws(() => encryptSecret("must-fail"), /ENCRYPTION_KEY/);
-  process.env.NODE_ENV = oldEnv;
-  process.env.ENCRYPTION_KEY = oldKey;
+  assert.throws(() => parseRuntimeEnv({
+    NODE_ENV: "production",
+    DATABASE_URL: "postgresql://nexus:secret@db.example.com:5432/nexus",
+    JWT_SECRET: "production-jwt-secret-with-more-than-32-chars",
+    ADMIN_EMAIL: "admin@example.com",
+    ADMIN_PASSWORD: "StrongPassword1!",
+    APP_URL: "https://app.example.com",
+    GITHUB_REPO: "acme/nexuszap",
+  }), /ENCRYPTION_KEY/);
 
   console.log("secrets-api: OK");
 }

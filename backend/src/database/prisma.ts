@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { env } from "../config/env";
 
 /**
  * Configuração otimizada do Prisma em produção (VPS):
@@ -8,10 +9,10 @@ import { PrismaClient } from "@prisma/client";
 export const prisma = new PrismaClient({
   datasources: {
     db: {
-      url: process.env.DATABASE_URL
+      url: env.DATABASE_URL
     }
   },
-  log: process.env.NODE_ENV === "production"
+  log: env.NODE_ENV === "production"
     ? ["error"]
     : ["query", "info", "warn", "error"],
   errorFormat: "pretty"

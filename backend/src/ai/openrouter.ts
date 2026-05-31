@@ -1,5 +1,6 @@
 import type { ChatMessage } from "./systemPrompt";
 import { redactSensitiveText } from "../utils/redaction";
+import { env } from "../config/env";
 
 /**
  * Mensagens chegam como `ChatMessage[]` (system primeiro) via `askChat` → `normalizeMessagesForChatApi`.
@@ -23,8 +24,8 @@ export async function openRouterChat(
       ? modelId.trim()
       : DEFAULT_OPENROUTER_MODEL;
   const key = apiKey.trim();
-  const referer = process.env.OPENROUTER_REFERER ?? "http://localhost:5173";
-  const title = process.env.OPENROUTER_TITLE ?? "Chatbot Multi-IA Guard";
+  const referer = env.OPENROUTER_REFERER;
+  const title = env.OPENROUTER_TITLE;
   const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
     method: "POST",
     headers: {

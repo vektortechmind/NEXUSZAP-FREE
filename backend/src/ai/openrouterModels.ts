@@ -3,6 +3,7 @@
  * @see https://openrouter.ai/docs/api-reference/models
  */
 import { redactSensitiveText } from "../utils/redaction";
+import { env } from "../config/env";
 
 export type OpenRouterModelPublic = {
   id: string;
@@ -62,8 +63,8 @@ export async function fetchOpenRouterModelsGrouped(apiKey: string): Promise<{
   const res = await fetch("https://openrouter.ai/api/v1/models", {
     headers: {
       Authorization: `Bearer ${apiKey.trim()}`,
-      "HTTP-Referer": process.env.OPENROUTER_REFERER ?? "http://localhost:5173",
-      "X-Title": process.env.OPENROUTER_TITLE ?? "Chatbot Multi-IA Guard"
+      "HTTP-Referer": env.OPENROUTER_REFERER,
+      "X-Title": env.OPENROUTER_TITLE
     }
   });
   const rawText = await res.text();

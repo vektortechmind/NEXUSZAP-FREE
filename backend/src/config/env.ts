@@ -28,6 +28,8 @@ const envSchema = z.object({
   SETUP_COMPLETED: z.string().optional(),
   ENCRYPTION_KEY: z.string().optional(),
   GITHUB_REPO: z.string().optional(),
+  OPENROUTER_REFERER: z.string().url().default("http://localhost:5173"),
+  OPENROUTER_TITLE: z.string().min(1).default("Chatbot Multi-IA Guard"),
   /** Token real do BotFather (>=10). Valores curtos/placeholder são ignorados. */
   TELEGRAM_BOT_TOKEN: z.preprocess((val) => {
     if (val === undefined || val === null) return undefined;
@@ -84,5 +86,15 @@ const envSchema = z.object({
   }
 });
 
-export const env = envSchema.parse(process.env);
+export function parseRuntimeEnv(input: NodeJS.ProcessEnv) {
+  return envSchema.parse(input);
+}
+
+export const DIRECT_ENV_READ_JUSTIFICATIONS = {
+  setupService: "Le leituras diretas e arquivo .env para concluir o bootstrap inicial antes de reiniciar o processo com env validado.",
+  updateServicePaths: "Overrides UPDATE_* e APP_VERSION sao caminhos/versoes operacionais nao sensiveis usados por worker CLI e testes.",
+  scripts: "Scripts de teste/operacao definem defaults locais antes de importar o backend para isolar dependencias externas.",
+} as const;
+
+export const env = parseRuntimeEnv(process.env);
 

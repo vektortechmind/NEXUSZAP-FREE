@@ -1,6 +1,7 @@
 import { openSync, closeSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { prisma } from "../database/prisma";
+import { env } from "../config/env";
 import {
   decodeGitHubFileContent,
   getRepoFile,
@@ -107,7 +108,7 @@ function reconcileRecoveredJob(job: StoredUpdateJob | null): StoredUpdateJob | n
 }
 
 const CURRENT_VERSION = readVersionFile() || process.env.APP_VERSION || "v0.0.0";
-const GITHUB_REPO = process.env.GITHUB_REPO || (process.env.NODE_ENV === "production" ? "" : "owner/repo");
+const GITHUB_REPO = env.GITHUB_REPO || (env.NODE_ENV === "production" ? "" : "owner/repo");
 const UPDATE_WORKSPACE_DIR = resolveUpdateWorkspaceDir();
 const UPDATE_STORAGE_DIR = process.env.UPDATE_STORAGE_DIR
   ? path.resolve(process.env.UPDATE_STORAGE_DIR)
@@ -125,7 +126,7 @@ function ensureUpdateStorage() {
 }
 
 function getRepoParts(): { owner: string; repo: string } {
-  if (process.env.NODE_ENV === "production" && (!GITHUB_REPO || GITHUB_REPO === "owner/repo")) {
+  if (env.NODE_ENV === "production" && (!GITHUB_REPO || GITHUB_REPO === "owner/repo")) {
     throw new Error("GITHUB_REPO e obrigatorio em producao para consulta de versao.");
   }
 
