@@ -2,6 +2,16 @@
 
 Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
+## [1.0.5] - 2026-05-31
+
+### Fixed
+
+- O Update Center não exibe mais os botões `Verificar` e `Atualizar` enquanto um job de atualização remoto está ativo, evitando nova checagem manual durante a instalação/update em andamento.
+
+### Changed
+
+- Versão do frontend, backend, `backend/VERSION`, `README` e artefatos de release atualizada para `1.0.5`.
+
 ## [1.0.4] - 2026-05-31
 
 ### Added

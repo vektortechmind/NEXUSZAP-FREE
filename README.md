@@ -1,4 +1,4 @@
-# NexusZAP - Chatbot com IA v1.0.4
+# NexusZAP - Chatbot com IA v1.0.5
 
 NexusZAP e uma plataforma de automacao para WhatsApp e Telegram com IA, base de conhecimento, painel administrativo e endpoint publico de integracoes para sistemas externos.
 
