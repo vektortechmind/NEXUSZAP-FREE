@@ -43,7 +43,7 @@ export const INTEGRATION_SUPPORTED_EVENTS = [
   "assinatura_em_atraso",
 ] as const;
 
-export const INTEGRATION_SUPPORTED_MESSAGE_TYPES = ["text", "link", "image", "document", "template"] as const;
+export const INTEGRATION_SUPPORTED_MESSAGE_TYPES = ["text", "link", "image", "document"] as const;
 
 export const INTEGRATION_PAYLOAD_FIELDS = [
   { name: "event", description: "Slug do evento suportado pelo catálogo atual." },
@@ -117,10 +117,10 @@ export const INTEGRATION_TEMPLATE_FLOW = [
 export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
   {
     event: "pedido_pago",
-    messageType: "template",
+    messageType: "text",
     requiredFields: ["customer.phone", "customer.name ou order.user.name", "order.product.name ou equivalente"],
     optionalFields: ["checkout_link ou checkoutLink", "order.product.image ou cover"],
-    generatedMessage: "Confirmação de pagamento com texto e link visível no corpo da mensagem.",
+    generatedMessage: "Confirmação de pagamento em texto com link visível no corpo da mensagem quando checkoutLink existir.",
     fallback: "Sem checkoutLink, o texto continua sendo enviado sem link complementar.",
   },
   {
@@ -176,8 +176,8 @@ export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
     messageType: "image",
     requiredFields: ["customer.phone", "customer.name ou order.user.name", "order.product.name ou equivalente"],
     optionalFields: ["checkout_link ou checkoutLink", "order.product.image ou cover"],
-    generatedMessage: "Recuperação de carrinho com CTA para finalizar a compra.",
-    fallback: "Sem imagem válida, o runtime envia texto. Sem checkoutLink, o CTA de retomada não aparece.",
+    generatedMessage: "Recuperação de carrinho com link de retomada visível no corpo/caption quando checkoutLink existir.",
+    fallback: "Sem imagem válida, o runtime envia texto preservando o link visível quando informado. Sem checkoutLink, a mensagem segue sem URL de retomada.",
   },
   {
     event: "envio_acesso",
@@ -192,8 +192,8 @@ export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
     messageType: "image",
     requiredFields: ["customer.phone", "customer.name ou subscription.user.name", "subscription.product.name ou equivalente"],
     optionalFields: ["checkout_link ou checkoutLink", "subscription.product.image"],
-    generatedMessage: "Boas-vindas para assinatura criada.",
-    fallback: "Sem imagem válida, o runtime envia texto.",
+    generatedMessage: "Boas-vindas para assinatura criada com link de acesso visível no corpo/caption quando checkoutLink existir.",
+    fallback: "Sem imagem válida, o runtime envia texto preservando o link visível quando informado. Sem checkoutLink, a mensagem segue sem URL de acesso.",
   },
   {
     event: "assinatura_renovada",
@@ -216,8 +216,8 @@ export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
     messageType: "image",
     requiredFields: ["customer.phone", "customer.name ou subscription.user.name", "subscription.product.name ou equivalente"],
     optionalFields: ["checkout_link ou checkoutLink", "subscription.product.image"],
-    generatedMessage: "Lembrete de atraso com CTA para regularização.",
-    fallback: "Sem imagem válida, o runtime envia texto.",
+    generatedMessage: "Lembrete de atraso com link de regularização visível no corpo/caption quando checkoutLink existir.",
+    fallback: "Sem imagem válida, o runtime envia texto preservando o link visível quando informado. Sem checkoutLink, a mensagem segue sem URL de regularização.",
   },
 ] as const;
 
@@ -227,7 +227,8 @@ export const INTEGRATION_RENDER_RULES = [
   "Quando a imagem estiver ausente, inválida ou falhar no download, o runtime troca o envio para texto sem interromper o dispatch e registra deliveryPath text_fallback_image.",
   "No evento pix_gerado, a primeira mensagem fecha com a chamada 'Codigo Pix copia e cola' e, quando pix.copy_paste ou pix.copyPaste estiver disponível, o runtime envia uma segunda mensagem textual contendo apenas o código bruto.",
   "pedido_pago usa texto com link visível no corpo como caminho oficial e confiável.",
-  "Quando houver URL aplicável, o runtime mantém o link visível no corpo da mensagem.",
+  "carrinho_abandonado, assinatura_criada e assinatura_em_atraso mantêm messageType image, mas exibem checkoutLink no corpo/caption quando a URL é informada.",
+  "Quando houver URL aplicável, o runtime mantém o link visível no corpo, caption ou fallback textual da mensagem.",
   "A telemetria do dispatch registra secondaryDispatchStatus para indicar se a segunda mensagem do Pix foi enviada, pulada por ausência do código ou falhou isoladamente.",
   "externalAdReply continua restrito aos fluxos text, document e aos fallbacks textuais dos eventos ricos; ele não é usado no caminho de imagem limpa nem substitui botão real.",
   "Boleto é o caso oficial de document e exige URL válida em boleto.pdf_url ou boleto.pdfUrl.",
@@ -320,6 +321,7 @@ export const INTEGRATION_TROUBLESHOOTING = [
     title: "CTA real indisponível",
     steps: [
       "No evento pedido_pago, o comportamento oficial é mensagem textual com link visível no corpo quando checkoutLink existir.",
+      "Nos eventos carrinho_abandonado, assinatura_criada e assinatura_em_atraso, o checkoutLink aparece no corpo/caption quando informado.",
       "Sem checkoutLink, a mensagem continua sendo enviada sem link complementar.",
     ],
   },
@@ -385,7 +387,7 @@ export const INTEGRATION_CURL_EXAMPLE = `curl -X POST "$ENDPOINT_URL" \\
 export const INTEGRATION_CURL_EVENT_EXAMPLES = [
   {
     title: "pedido_pago",
-    description: "Pagamento aprovado com imagem do produto e link visível no corpo.",
+    description: "Pagamento aprovado com texto e link visível no corpo.",
     code: `curl -X POST "$ENDPOINT_URL" \\
   -H "Authorization: Bearer $SECRET_TOKEN" \\
   -H "Content-Type: application/json" \\
@@ -490,7 +492,7 @@ export const INTEGRATION_CURL_EVENT_EXAMPLES = [
   },
   {
     title: "carrinho_abandonado",
-    description: "Recuperação de carrinho com produto, telefone e link de retomada.",
+    description: "Recuperação de carrinho com produto, telefone e link de retomada visível no corpo/caption.",
     code: `curl -X POST "$ENDPOINT_URL" \\
   -H "Authorization: Bearer $SECRET_TOKEN" \\
   -H "Content-Type: application/json" \\
@@ -513,7 +515,7 @@ export const INTEGRATION_CURL_EVENT_EXAMPLES = [
   },
   {
     title: "assinatura_criada",
-    description: "Entrada de assinatura com produto recorrente e próxima cobrança opcional.",
+    description: "Entrada de assinatura com produto recorrente, próxima cobrança opcional e link de acesso visível no corpo/caption.",
     code: `curl -X POST "$ENDPOINT_URL" \\
   -H "Authorization: Bearer $SECRET_TOKEN" \\
   -H "Content-Type: application/json" \\
@@ -527,6 +529,31 @@ export const INTEGRATION_CURL_EVENT_EXAMPLES = [
       "checkoutLink": "https://checkout.exemplo.com/assinaturas/987",
       "subscription": {
         "status": "active",
+        "next_billing": "2026-06-30",
+        "product": {
+          "name": "Plano Anual Premium",
+          "image": "https://cdn.exemplo.com/produtos/plano-anual.jpg"
+        }
+      }
+    }
+  }'`,
+  },
+  {
+    title: "assinatura_em_atraso",
+    description: "Regularização de assinatura com produto recorrente e link de pagamento visível no corpo/caption.",
+    code: `curl -X POST "$ENDPOINT_URL" \\
+  -H "Authorization: Bearer $SECRET_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "event": "assinatura_em_atraso",
+    "instanceId": "$INSTANCE_ID",
+    "timestamp": "2026-05-30T16:40:00.000Z",
+    "dedupKey": "assinatura-987-atraso-20260530",
+    "payload": {
+      "customer": { "name": "Carlos Souza", "phone": "5511955554444" },
+      "checkoutLink": "https://checkout.exemplo.com/assinaturas/987/regularizar",
+      "subscription": {
+        "status": "past_due",
         "next_billing": "2026-06-30",
         "product": {
           "name": "Plano Anual Premium",
