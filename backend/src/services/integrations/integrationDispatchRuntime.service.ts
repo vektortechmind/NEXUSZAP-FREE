@@ -149,6 +149,12 @@ export type IntegrationWhatsappLookupSummary = {
   whatsappLookupError: string | null;
 };
 
+export type IntegrationProviderSendErrorSummary = {
+  providerSendErrorCode: string | null;
+  providerSendErrorType: string | null;
+  providerSendErrorMessage: string | null;
+};
+
 export class IntegrationDispatchRuntimeError extends Error {
   statusCode: number;
   code: string;
@@ -184,8 +190,11 @@ export class IntegrationDispatchRecipientMissingError extends IntegrationDispatc
 }
 
 export class IntegrationDispatchSendFailedError extends IntegrationDispatchRuntimeError {
-  constructor(eventSlug: string) {
+  providerSendError: IntegrationProviderSendErrorSummary;
+
+  constructor(eventSlug: string, providerSendError: IntegrationProviderSendErrorSummary) {
     super(`Falha ao enviar mensagem do evento ${eventSlug}.`, 409, "INTEGRATION_DISPATCH_SEND_FAILED", INTEGRATION_DISPATCH_STATUS.FAILED_SEND);
+    this.providerSendError = providerSendError;
   }
 }
 
@@ -527,9 +536,51 @@ export function buildBaileysDispatchPayload(
   };
 }
 
+function sanitizeRedactedSecretLabels(value: string): string {
+  return value.replace(/\b(?:authorization|token|password|api[_-]?key|secret|cookie)\s*[:=]\s*\[REDACTED\]/gi, "[REDACTED]");
+}
+
 function sanitizeLookupErrorMessage(error: unknown): string {
-  return safeErrorMessage(error, "Falha ao consultar WhatsApp")
-    .replace(/\b(?:authorization|token|password|api[_-]?key)\s*[:=]\s*\[REDACTED\]/gi, "[REDACTED]");
+  return sanitizeRedactedSecretLabels(safeErrorMessage(error, "Falha ao consultar WhatsApp"));
+}
+
+function sanitizeProviderErrorText(value: string | null, maxLength = 300): string | null {
+  if (!value?.trim()) return null;
+  return sanitizeRedactedSecretLabels(redactSensitiveText(value.trim(), maxLength));
+}
+
+function readErrorProperty(error: unknown, property: string): unknown {
+  if (!error || (typeof error !== "object" && typeof error !== "function")) return null;
+  return (error as Record<string, unknown>)[property];
+}
+
+function stringFromErrorProperty(value: unknown): string | null {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return null;
+}
+
+function buildProviderSendErrorSummary(error: unknown): IntegrationProviderSendErrorSummary {
+  const code = stringFromErrorProperty(readErrorProperty(error, "code"))
+    ?? stringFromErrorProperty(readErrorProperty(error, "statusCode"))
+    ?? stringFromErrorProperty(readErrorProperty(error, "status"));
+  const type = error instanceof Error && error.name && error.name !== "Error"
+    ? error.name
+    : stringFromErrorProperty(readErrorProperty(error, "name"));
+
+  return {
+    providerSendErrorCode: sanitizeProviderErrorText(code, 120),
+    providerSendErrorType: sanitizeProviderErrorText(type, 120),
+    providerSendErrorMessage: sanitizeRedactedSecretLabels(safeErrorMessage(error, "Falha do provider no sendMessage")),
+  };
+}
+
+function buildProviderSendErrorPayloadSummary(providerSendError: IntegrationProviderSendErrorSummary | null) {
+  return {
+    providerSendErrorCode: providerSendError?.providerSendErrorCode ?? null,
+    providerSendErrorType: providerSendError?.providerSendErrorType ?? null,
+    providerSendErrorMessage: providerSendError?.providerSendErrorMessage ?? null,
+  };
 }
 
 function buildWhatsappLookupPayloadSummary(whatsappLookup: IntegrationWhatsappLookupSummary | null) {
@@ -544,6 +595,7 @@ function buildWhatsappLookupPayloadSummary(whatsappLookup: IntegrationWhatsappLo
 function buildDispatchFailurePayloadSummary(
   context: IntegrationNormalizedEventContext,
   whatsappLookup: IntegrationWhatsappLookupSummary | null,
+  providerSendError: IntegrationProviderSendErrorSummary | null = null,
 ) {
   return {
     eventSlug: context.eventSlug,
@@ -551,6 +603,7 @@ function buildDispatchFailurePayloadSummary(
     normalizedPhone: context.phoneDigits,
     recipientJid: context.recipientJid,
     ...buildWhatsappLookupPayloadSummary(whatsappLookup),
+    ...buildProviderSendErrorPayloadSummary(providerSendError),
   };
 }
 
@@ -613,6 +666,7 @@ function buildPayloadSummary(
     normalizedPhone: template.context.phoneDigits,
     recipientJid: template.context.recipientJid,
     ...buildWhatsappLookupPayloadSummary(whatsappLookup),
+    ...buildProviderSendErrorPayloadSummary(null),
     intendedMessageType: template.messageType,
     dispatchedMessageType: resolveDispatchedMessageType(template, content),
     deliveryPath: resolveDeliveryPath(template, content, imageFallbackReason),
@@ -868,12 +922,13 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
           secondaryProviderMessageId,
           dispatchLog: finalLog,
         };
-      } catch {
-        throw new IntegrationDispatchSendFailedError(context.eventSlug);
+      } catch (error) {
+        throw new IntegrationDispatchSendFailedError(context.eventSlug, buildProviderSendErrorSummary(error));
       }
     } catch (error) {
       if (error instanceof IntegrationDispatchRuntimeError) {
         error.dispatchLogId = input.dispatchLog.id;
+        const providerSendError = error instanceof IntegrationDispatchSendFailedError ? error.providerSendError : null;
         const retryState = resolveRetryState(error, input.attemptCount, new Date());
         await logService.updateLog(input.dispatchLog.id, {
           recipientJid: context.recipientJid,
@@ -885,7 +940,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
           lastRetryError: retryState.lastRetryError,
           retryLockedAt: retryState.retryLockedAt,
           retryExhaustedAt: retryState.retryExhaustedAt,
-          payloadSummary: buildDispatchFailurePayloadSummary(context, whatsappLookup),
+          payloadSummary: buildDispatchFailurePayloadSummary(context, whatsappLookup, providerSendError),
         });
         throw error;
       }

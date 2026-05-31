@@ -51,6 +51,9 @@ export type IntegrationDashboardDispatchSummary = {
   whatsappLookupJid: string | null;
   whatsappLookupExists: boolean | null;
   whatsappLookupError: string | null;
+  providerSendErrorCode: string | null;
+  providerSendErrorType: string | null;
+  providerSendErrorMessage: string | null;
 };
 
 export type IntegrationDashboardDispatchRecord = {
@@ -247,6 +250,9 @@ function parseDispatchSummary(payloadSummaryJson: string | null): IntegrationDas
     whatsappLookupJid: null,
     whatsappLookupExists: null,
     whatsappLookupError: null,
+    providerSendErrorCode: null,
+    providerSendErrorType: null,
+    providerSendErrorMessage: null,
   };
 
   if (!payloadSummaryJson) return empty;
@@ -267,6 +273,9 @@ function parseDispatchSummary(payloadSummaryJson: string | null): IntegrationDas
       whatsappLookupJid: asStringOrNull(parsed.whatsappLookupJid),
       whatsappLookupExists: asBooleanOrNull(parsed.whatsappLookupExists),
       whatsappLookupError: asStringOrNull(parsed.whatsappLookupError),
+      providerSendErrorCode: asStringOrNull(parsed.providerSendErrorCode),
+      providerSendErrorType: asStringOrNull(parsed.providerSendErrorType),
+      providerSendErrorMessage: asStringOrNull(parsed.providerSendErrorMessage),
     };
   } catch {
     return empty;

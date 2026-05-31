@@ -111,6 +111,9 @@ function createOverviewService() {
           recipientJid: "5511888888888@s.whatsapp.net",
           dispatchedMessageType: "document",
           deliveryPath: "document",
+          providerSendErrorCode: "ETIMEDOUT",
+          providerSendErrorType: "ProviderTimeoutError",
+          providerSendErrorMessage: "send failed with provider timeout",
         }),
         retryable: true,
         retryAttemptCount: 2,
@@ -163,6 +166,9 @@ function createOverviewService() {
     assert.equal(overview.auditLogs[3].failureCode, "INTEGRATION_DISPATCH_INSTANCE_OFFLINE");
     assert.equal(overview.integrations[1].lastDispatch.retryable, true);
     assert.equal(overview.integrations[1].lastDispatch.nextRetryAt, "2026-05-29T10:02:03.000Z");
+    assert.equal(overview.integrations[1].lastDispatch.payloadSummary.providerSendErrorCode, "ETIMEDOUT");
+    assert.equal(overview.integrations[1].lastDispatch.payloadSummary.providerSendErrorType, "ProviderTimeoutError");
+    assert.equal(overview.integrations[1].lastDispatch.payloadSummary.providerSendErrorMessage, "send failed with provider timeout");
     assert.ok(!("secretToken" in overview.integrations[0]));
   }
 

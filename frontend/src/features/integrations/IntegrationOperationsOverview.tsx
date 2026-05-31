@@ -136,6 +136,9 @@ export function IntegrationOperationsOverview({ overview, refreshing, onRefresh 
                           <DetailField label="Lookup existe" value={formatBooleanSignal(entry.payloadSummary?.whatsappLookupExists)} />
                           <DetailField label="JID lookup" value={entry.payloadSummary?.whatsappLookupJid} mono />
                           <DetailField label="Erro lookup" value={entry.payloadSummary?.whatsappLookupError} />
+                          <DetailField label="Erro provider" value={entry.payloadSummary?.providerSendErrorMessage} />
+                          <DetailField label="Código provider" value={entry.payloadSummary?.providerSendErrorCode} mono />
+                          <DetailField label="Tipo provider" value={entry.payloadSummary?.providerSendErrorType} />
                         </>
                       ) : null}
                     </div>

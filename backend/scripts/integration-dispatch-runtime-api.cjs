@@ -676,7 +676,45 @@ function createDispatchService(options = {}) {
     const { service, store } = createDispatchService({
       sock: {
         async sendMessage() {
-          throw new Error("send failed");
+          const error = new Error("send failed with provider timeout");
+          error.name = "ProviderTimeoutError";
+          error.code = "ETIMEDOUT";
+          throw error;
+        },
+      },
+    });
+    await assert.rejects(
+      () => service.dispatchEvent({
+        instanceId: "instance-a",
+        eventSlug: "pedido_pago",
+        payload: createBasePayload(),
+      }),
+      (error) => {
+        assert.equal(error instanceof IntegrationDispatchSendFailedError, true);
+        assert.equal(error.providerSendError.providerSendErrorCode, "ETIMEDOUT");
+        assert.equal(error.providerSendError.providerSendErrorType, "ProviderTimeoutError");
+        assert.equal(error.providerSendError.providerSendErrorMessage, "send failed with provider timeout");
+        return true;
+      },
+    );
+    const log = Array.from(store.logs.values())[0];
+    assert.equal(log.dispatchStatus, INTEGRATION_DISPATCH_STATUS.FAILED_SEND);
+    assert.equal(log.retryable, true);
+    assert.equal(log.retryAttemptCount, 1);
+    assert.equal(log.failureCode, "INTEGRATION_DISPATCH_SEND_FAILED");
+    assert.equal(log.payloadSummaryJson.includes('"providerSendErrorCode":"ETIMEDOUT"'), true);
+    assert.equal(log.payloadSummaryJson.includes('"providerSendErrorType":"ProviderTimeoutError"'), true);
+    assert.equal(log.payloadSummaryJson.includes('"providerSendErrorMessage":"send failed with provider timeout"'), true);
+  }
+
+  {
+    const { service, store } = createDispatchService({
+      sock: {
+        async sendMessage() {
+          const error = new Error("provider denied token=super-secret-token Authorization: Bearer secret-token-123");
+          error.name = "ProviderAuthError";
+          error.code = "AUTH_FAILED";
+          throw error;
         },
       },
     });
@@ -688,10 +726,35 @@ function createDispatchService(options = {}) {
       }),
       (error) => error instanceof IntegrationDispatchSendFailedError,
     );
-    const log = Array.from(store.logs.values())[0];
-    assert.equal(log.dispatchStatus, INTEGRATION_DISPATCH_STATUS.FAILED_SEND);
-    assert.equal(log.retryable, true);
-    assert.equal(log.retryAttemptCount, 1);
+    const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
+    assert.equal(summary.includes('"providerSendErrorCode":"AUTH_FAILED"'), true);
+    assert.equal(summary.includes('"providerSendErrorType":"ProviderAuthError"'), true);
+    assert.equal(summary.includes('"providerSendErrorMessage":"provider denied [REDACTED] [REDACTED]"'), true);
+    assert.equal(summary.includes("super-secret-token"), false);
+    assert.equal(summary.includes("secret-token-123"), false);
+    assert.equal(summary.includes("Authorization"), false);
+  }
+
+  {
+    const { service, store } = createDispatchService({
+      sock: {
+        async sendMessage() {
+          throw { status: 503 };
+        },
+      },
+    });
+    await assert.rejects(
+      () => service.dispatchEvent({
+        instanceId: "instance-a",
+        eventSlug: "pedido_pago",
+        payload: createBasePayload(),
+      }),
+      (error) => error instanceof IntegrationDispatchSendFailedError,
+    );
+    const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
+    assert.equal(summary.includes('"providerSendErrorCode":"503"'), true);
+    assert.equal(summary.includes('"providerSendErrorType":null'), true);
+    assert.equal(summary.includes('"providerSendErrorMessage":"Falha do provider no sendMessage"'), true);
   }
 
   {

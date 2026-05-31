@@ -28,6 +28,9 @@ export type IntegrationDispatchPayloadSummary = {
   whatsappLookupJid: string | null;
   whatsappLookupExists: boolean | null;
   whatsappLookupError: string | null;
+  providerSendErrorCode: string | null;
+  providerSendErrorType: string | null;
+  providerSendErrorMessage: string | null;
 };
 
 export type IntegrationIngressSnapshot = IntegrationLogSnapshot & {
