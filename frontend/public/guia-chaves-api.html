@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Guia — Chaves de API (Gemini, Groq, OpenRouter) — NexusZAP</title>
+    <title>Guia — Chaves de API (Gemini, Groq, OpenRouter, OpenAI) — NexusZAP</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -208,6 +208,7 @@
                 <a href="#gemini" class="nav-link">Google Gemini</a>
                 <a href="#groq" class="nav-link">Groq</a>
                 <a href="#openrouter" class="nav-link">OpenRouter</a>
+                <a href="#openai" class="nav-link">OpenAI</a>
                 <a href="#dicas" class="nav-link">Dicas e teste</a>
             </nav>
         </aside>
@@ -215,7 +216,7 @@
         <main class="main-content">
             <header id="intro" class="fade-in">
                 <h1>Chaves de API — passo a passo</h1>
-                <p>O NexusZAP usa o painel <strong>Integração IA</strong> (Chaves de API) para conectar Gemini, Groq e/ou OpenRouter ao WhatsApp. Você precisa de pelo menos uma chave válida do provedor que escolher como preferencial.</p>
+                <p>O NexusZAP usa o painel <strong>Integração IA</strong> (Chaves de API) para conectar Gemini, Groq, OpenRouter e/ou OpenAI ao WhatsApp. Você precisa de pelo menos uma chave válida do provedor que escolher como preferencial.</p>
             </header>
 
             <section id="painel">
@@ -224,9 +225,10 @@
                     <ol class="steps">
                         <li><strong>Faça login</strong> no painel (ex.: <a href="http://localhost:5173" target="_blank">http://localhost:5173</a> em desenvolvimento).</li>
                         <li><strong>Abra o menu</strong> e vá em <strong>Integração IA</strong> (ou a página onde estão as chaves e o provedor preferencial).</li>
-                        <li><strong>Escolha o provedor preferencial</strong>: <code>gemini</code>, <code>groq</code> ou <code>openrouter</code> — o sistema tenta esse primeiro em caso de falha.</li>
-                        <li><strong>Cole a chave</strong> correspondente no campo (Gemini, Groq ou OpenRouter).</li>
+                        <li><strong>Escolha o provedor preferencial</strong>: <code>gemini</code>, <code>groq</code>, <code>openrouter</code> ou <code>openai</code> — o sistema tenta esse primeiro em caso de falha.</li>
+                        <li><strong>Cole a chave</strong> correspondente no campo (Gemini, Groq, OpenRouter ou OpenAI).</li>
                         <li><strong>OpenRouter</strong>: após colar a chave, aguarde a lista de modelos ou clique em <em>Atualizar lista</em>, escolha o modelo e clique em <strong>Salvar configurações</strong>.</li>
+                        <li><strong>OpenAI</strong>: cole a chave, opcionalmente informe o modelo desejado (ex.: <code>gpt-5</code>) e clique em <strong>Salvar configurações</strong>.</li>
                         <li><strong>Salvar</strong> e use <strong>Testar</strong> para ver o status de cada provedor (Online / Erro).</li>
                     </ol>
                     <div class="tip">
@@ -308,6 +310,22 @@ OPENROUTER_TITLE=NexusZAP</code></pre>
                 </div>
             </section>
 
+            <section id="openai">
+                <h2>OpenAI</h2>
+                <div class="card">
+                    <ol class="steps">
+                        <li><strong>Acesse a plataforma OpenAI</strong>: <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a> e faça login.</li>
+                        <li><strong>Crie uma chave</strong> em <strong>API keys</strong> e copie o valor. Ele normalmente começa com <code>sk-</code>.</li>
+                        <li><strong>No painel NexusZAP</strong>, cole em <strong>OpenAI Key</strong> e defina <code>openai</code> como provedor preferencial se quiser usar esse provedor primeiro.</li>
+                        <li><strong>Modelo</strong>: se deixar vazio, o sistema usa o padrão interno <code>gpt-5</code>. Para usar outro modelo liberado na sua conta, informe o ID exato no campo <strong>Modelo OpenAI</strong>.</li>
+                        <li><strong>Salvar configurações</strong> e <strong>Testar</strong>. Se houver erro de cota ou billing, revise créditos, limites e permissões na conta OpenAI.</li>
+                    </ol>
+                    <div class="warn">
+                        A chave OpenAI tem acesso à sua cobrança da plataforma. Nunca compartilhe em prints, grupos, repositórios ou atendimentos públicos.
+                    </div>
+                </div>
+            </section>
+
             <section id="dicas">
                 <h2>Dicas e teste</h2>
                 <div class="card">
@@ -315,6 +333,7 @@ OPENROUTER_TITLE=NexusZAP</code></pre>
                         <li style="margin-bottom: 0.75rem;">O botão <strong>Testar</strong> faz uma chamada curta a cada provedor; se aparecer <strong>Erro</strong>, passe o mouse no badge para ver a mensagem resumida.</li>
                         <li style="margin-bottom: 0.75rem;">Se o preferencial falhar (cota, chave inválida), o sistema pode tentar os outros provedores que tiverem chave configurada.</li>
                         <li style="margin-bottom: 0.75rem;">OpenRouter: modelos com sufixo <code>:free</code> ou preço zero na lista são tratados como gratuitos na interface; ainda assim pode haver limites de uso.</li>
+                        <li style="margin-bottom: 0.75rem;">OpenAI: o campo de modelo aceita qualquer ID disponível na sua conta; se ficar vazio, usa <code>gpt-5</code>.</li>
                     </ul>
                 </div>
             </section>

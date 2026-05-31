@@ -29,6 +29,8 @@ export const updateSchema = z.object({
   groqKey: z.preprocess(emptyToNull, z.string().nullable().optional()),
   groqAudioKey: z.preprocess(emptyToNull, z.string().nullable().optional()),
   geminiKey: z.preprocess(emptyToNull, z.string().nullable().optional()),
+  openaiKey: z.preprocess(emptyToNull, z.string().nullable().optional()),
+  openaiModel: z.preprocess(emptyToNull, z.string().nullable().optional()),
   openrouterKey: z.preprocess(emptyToNull, z.string().nullable().optional()),
   openrouterModel: z.preprocess(emptyToNull, z.string().nullable().optional()),
 }).superRefine((val, ctx) => {
@@ -49,6 +51,7 @@ export const updateInstanceSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   aiWhatsappEnabled: z.coerce.boolean().optional(),
   chatProvider: z.preprocess(emptyToNull, z.string().nullable().optional()),
+  openaiModel: z.preprocess(emptyToNull, z.string().nullable().optional()),
   openrouterModel: z.preprocess(emptyToNull, z.string().nullable().optional()),
   memoryLimit: z.coerce.number().int().min(1).max(MAX_INSTANCE_MEMORY_LIMIT).optional(),
 });
@@ -62,6 +65,7 @@ export const updateAgentWorkspaceSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   systemPrompt: z.preprocess(emptyToNull, z.string().nullable().optional()),
   chatProvider: z.preprocess(emptyToNull, z.string().nullable().optional()),
+  openaiModel: z.preprocess(emptyToNull, z.string().nullable().optional()),
   openrouterModel: z.preprocess(emptyToNull, z.string().nullable().optional()),
   memoryLimit: z.coerce.number().int().min(1).max(MAX_INSTANCE_MEMORY_LIMIT).optional(),
   audioTranscriptionEnabled: z.coerce.boolean().optional(),
@@ -82,9 +86,10 @@ export function serializeInstanceStatus(instance: {
   status: string;
   aiWhatsappEnabled: boolean;
   chatProvider?: string | null;
+  openaiModel?: string | null;
   openrouterModel?: string | null;
   memoryLimit?: number;
-  agent?: { id: string; name: string; chatProvider?: string | null; openrouterModel?: string | null; memoryLimit?: number } | null;
+  agent?: { id: string; name: string; chatProvider?: string | null; openaiModel?: string | null; openrouterModel?: string | null; memoryLimit?: number } | null;
 }) {
   const active = InstanceManager.isRunning(instance.id);
   const connected = instance.status === "CONNECTED";
@@ -92,6 +97,7 @@ export function serializeInstanceStatus(instance: {
 
   const fallback = describeRuntimeFallback({
     chatProvider: instance.agent?.chatProvider ?? instance.chatProvider,
+    openaiModel: instance.agent?.openaiModel ?? instance.openaiModel,
     openrouterModel: instance.agent?.openrouterModel ?? instance.openrouterModel,
   });
 
@@ -114,6 +120,7 @@ export function serializeInstanceStatus(instance: {
       : null,
     aiWhatsappEnabled: instance.aiWhatsappEnabled,
     chatProvider: isChatProviderId(instance.agent?.chatProvider ?? instance.chatProvider) ? (instance.agent?.chatProvider ?? instance.chatProvider ?? null) : null,
+    openaiModel: instance.agent?.openaiModel ?? instance.openaiModel ?? null,
     openrouterModel: instance.agent?.openrouterModel ?? instance.openrouterModel ?? null,
     memoryLimit: normalizeMemoryLimit(instance.agent?.memoryLimit ?? instance.memoryLimit),
     providerFallback: fallback.providerFallback,
@@ -129,6 +136,7 @@ export function serializeAgent(agent: {
   telegramEnabled: boolean;
   systemPrompt?: string | null;
   chatProvider?: string | null;
+  openaiModel?: string | null;
   openrouterModel?: string | null;
   memoryLimit?: number;
   audioTranscriptionEnabled?: boolean;
@@ -139,6 +147,7 @@ export function serializeAgent(agent: {
     name: string;
     status: string;
     chatProvider?: string | null;
+    openaiModel?: string | null;
     openrouterModel?: string | null;
   };
 }) {
@@ -148,6 +157,7 @@ export function serializeAgent(agent: {
     telegramEnabled: agent.telegramEnabled,
     audioTranscriptionEnabled: agent.audioTranscriptionEnabled ?? false,
     chatProvider: isChatProviderId(agent.chatProvider) ? agent.chatProvider : null,
+    openaiModel: agent.openaiModel ?? null,
     openrouterModel: agent.openrouterModel ?? null,
     memoryLimit: normalizeMemoryLimit(agent.memoryLimit),
     createdAt: agent.createdAt,
@@ -156,6 +166,7 @@ export function serializeAgent(agent: {
     instanceSlot: agent.instance.slot,
     instanceStatus: agent.instance.status,
     instanceChatProvider: isChatProviderId(agent.chatProvider) ? agent.chatProvider : null,
+    instanceOpenaiModel: agent.openaiModel ?? null,
     instanceOpenrouterModel: agent.openrouterModel ?? null,
     systemPrompt: agent.systemPrompt ?? null,
   };
@@ -179,6 +190,8 @@ export function buildEmptyConfigResponse() {
     groqKey: null,
     groqAudioKey: null,
     geminiKey: null,
+    openaiKey: null,
+    openaiModel: null,
     openrouterKey: null,
     openrouterModel: null,
     memoryLimit: 5,
@@ -190,6 +203,8 @@ export function buildEmptyConfigResponse() {
     groqAudioKeyMasked: null,
     geminiKeyConfigured: false,
     geminiKeyMasked: null,
+    openaiKeyConfigured: false,
+    openaiKeyMasked: null,
     openrouterKeyConfigured: false,
     openrouterKeyMasked: null,
     telegramBotTokenConfigured: false,

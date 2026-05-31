@@ -30,6 +30,8 @@ const primaryWhatsapp = {
   chatProvider: "gemini",
   groqKey: null,
   geminiKey: "primary-gemini-key",
+  openaiKey: "primary-openai-key",
+  openaiModel: "gpt-5-mini",
   openrouterKey: null,
   openrouterModel: null,
   groqAudioKey: "primary-audio-key",
@@ -44,6 +46,8 @@ const secondaryWhatsapp = {
   chatProvider: null,
   groqKey: null,
   geminiKey: null,
+  openaiKey: null,
+  openaiModel: null,
   openrouterKey: null,
   openrouterModel: null,
   groqAudioKey: null,
@@ -53,6 +57,7 @@ const secondaryWhatsapp = {
   agent: {
     id: "agent-secondary",
     chatProvider: null,
+    openaiModel: null,
     openrouterModel: null,
     memoryLimit: 11,
     systemPrompt: null,
@@ -66,6 +71,8 @@ const overrideWhatsapp = {
   chatProvider: "groq",
   groqKey: "override-groq-key",
   geminiKey: null,
+  openaiKey: null,
+  openaiModel: null,
   openrouterKey: null,
   openrouterModel: null,
   groqAudioKey: null,
@@ -75,6 +82,7 @@ const overrideWhatsapp = {
   agent: {
     id: "agent-override",
     chatProvider: "openrouter",
+    openaiModel: null,
     openrouterModel: "anthropic/claude-3.5-haiku",
     memoryLimit: 13,
     systemPrompt: "prompt do agente override",
@@ -88,6 +96,8 @@ const telegramInstance = {
   chatProvider: null,
   groqKey: null,
   geminiKey: null,
+  openaiKey: null,
+  openaiModel: null,
   openrouterKey: null,
   openrouterModel: null,
   groqAudioKey: null,
@@ -97,6 +107,7 @@ const telegramInstance = {
   agent: {
     id: "agent-telegram",
     chatProvider: null,
+    openaiModel: null,
     openrouterModel: null,
     memoryLimit: 7,
     systemPrompt: "prompt do agente telegram",
@@ -153,10 +164,14 @@ const { getResolvedAgentPrompt, getResolvedTelegramPrompt } = require(agentPromp
   const baseKeys = await getKeys();
   assert.equal(baseKeys.chatProvider, "gemini", "getKeys sem instanceId deve usar a instancia primaria de WhatsApp");
   assert.equal(baseKeys.geminiKey, "primary-gemini-key", "getKeys sem instanceId deve usar a chave da instancia primaria de WhatsApp");
+  assert.equal(baseKeys.openaiKey, "primary-openai-key", "getKeys sem instanceId deve usar a chave OpenAI da instancia primaria de WhatsApp");
+  assert.equal(baseKeys.openaiModel, "gpt-5-mini", "getKeys sem instanceId deve usar o modelo OpenAI da instancia primaria de WhatsApp");
   assert.equal(baseKeys.groqAudioKey, "primary-audio-key", "getKeys sem instanceId deve usar a chave de audio da instancia primaria de WhatsApp");
 
   const inheritedKeys = await getKeys(secondaryWhatsapp.id);
   assert.equal(inheritedKeys.geminiKey, "primary-gemini-key", "instancia secundaria deve herdar a chave global do WhatsApp primario");
+  assert.equal(inheritedKeys.openaiKey, "primary-openai-key", "instancia secundaria deve herdar a chave OpenAI global do WhatsApp primario");
+  assert.equal(inheritedKeys.openaiModel, "gpt-5-mini", "instancia secundaria deve herdar o modelo OpenAI global do WhatsApp primario");
   assert.equal(inheritedKeys.chatProvider, "gemini", "instancia secundaria deve herdar o chatProvider global do WhatsApp primario quando elegivel a fallback");
   assert.equal(inheritedKeys.memoryLimit, 11, "memoryLimit deve respeitar override do agente vinculado");
 
@@ -170,6 +185,8 @@ const { getResolvedAgentPrompt, getResolvedTelegramPrompt } = require(agentPromp
   assert.equal(telegramKeys.chatProvider, null, "Telegram nao deve herdar provider global do WhatsApp");
   assert.equal(telegramKeys.geminiKey, null, "Telegram nao deve herdar chave Gemini global do WhatsApp");
   assert.equal(telegramKeys.groqAudioKey, null, "Telegram nao deve herdar chave de audio global do WhatsApp");
+  assert.equal(telegramKeys.openaiKey, null, "Telegram nao deve herdar chave OpenAI global do WhatsApp");
+  assert.equal(telegramKeys.openaiModel, null, "Telegram nao deve herdar modelo OpenAI global do WhatsApp");
   assert.equal(telegramKeys.openrouterModel, null, "Telegram nao deve herdar modelo OpenRouter global do WhatsApp");
   assert.equal(telegramKeys.memoryLimit, 7, "Telegram deve respeitar memoryLimit do agente sem fallback global do WhatsApp");
 

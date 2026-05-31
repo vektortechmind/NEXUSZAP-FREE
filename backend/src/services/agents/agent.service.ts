@@ -94,6 +94,7 @@ export async function ensureAgentForInstanceTx(
       systemPrompt: instance.systemPrompt,
       telegramSystemPrompt: instance.telegramSystemPrompt,
       chatProvider: instance.chatProvider,
+      openaiModel: instance.openaiModel,
       openrouterModel: instance.openrouterModel,
       memoryLimit: instance.memoryLimit,
       audioTranscriptionEnabled: false,
@@ -164,6 +165,7 @@ export async function createAgent(input: { name: string; instanceId: string }) {
         systemPrompt: instance.systemPrompt,
         telegramSystemPrompt: instance.telegramSystemPrompt,
         chatProvider: instance.chatProvider,
+        openaiModel: instance.openaiModel,
         openrouterModel: instance.openrouterModel,
         memoryLimit: instance.memoryLimit,
         audioTranscriptionEnabled: false,
@@ -200,6 +202,7 @@ export async function updateAgentWorkspace(
     name?: string;
     systemPrompt?: string | null;
     chatProvider?: string | null;
+    openaiModel?: string | null;
     openrouterModel?: string | null;
     memoryLimit?: number;
     audioTranscriptionEnabled?: boolean;
@@ -222,6 +225,7 @@ export async function updateAgentWorkspace(
         ...(nextName ? { name: nextName } : {}),
         ...(input.systemPrompt !== undefined ? { systemPrompt: input.systemPrompt } : {}),
         ...(input.chatProvider !== undefined ? { chatProvider: input.chatProvider } : {}),
+        ...(input.openaiModel !== undefined ? { openaiModel: input.openaiModel } : {}),
         ...(input.openrouterModel !== undefined ? { openrouterModel: input.openrouterModel } : {}),
         ...(input.memoryLimit !== undefined ? { memoryLimit: input.memoryLimit } : {}),
         ...(input.audioTranscriptionEnabled !== undefined ? { audioTranscriptionEnabled: input.audioTranscriptionEnabled } : {}),

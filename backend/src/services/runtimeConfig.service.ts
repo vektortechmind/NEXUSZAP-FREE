@@ -5,6 +5,7 @@ import { getPrimaryInstance, TELEGRAM_INSTANCE_SLOT } from "./instance.service";
 type RuntimeAgent = {
   id?: string;
   chatProvider: string | null;
+  openaiModel: string | null;
   openrouterModel: string | null;
   memoryLimit: number;
   systemPrompt: string | null;
@@ -15,6 +16,7 @@ type RuntimeInstance = {
   id: string;
   slot: number;
   chatProvider: string | null;
+  openaiModel: string | null;
   openrouterModel: string | null;
   memoryLimit: number;
   systemPrompt: string | null;
@@ -22,6 +24,7 @@ type RuntimeInstance = {
   groqKey: string | null;
   groqAudioKey: string | null;
   geminiKey: string | null;
+  openaiKey: string | null;
   openrouterKey: string | null;
   agent?: RuntimeAgent | null;
 };
@@ -36,6 +39,7 @@ const runtimeAgentSelect = {
   select: {
     id: true,
     chatProvider: true,
+    openaiModel: true,
     openrouterModel: true,
     memoryLimit: true,
     systemPrompt: true,
@@ -116,6 +120,16 @@ export function resolveOpenRouterModel(source: RuntimeConfigSource): string | nu
   ) ?? null;
 }
 
+export function resolveOpenAiModel(source: RuntimeConfigSource): string | null {
+  const { current, primaryWhatsapp } = source;
+  return pickScopedValue(
+    current,
+    current?.agent?.openaiModel,
+    current?.openaiModel,
+    primaryWhatsapp?.openaiModel
+  ) ?? null;
+}
+
 export function resolveMemoryLimit(source: RuntimeConfigSource): number {
   const { current, primaryWhatsapp } = source;
   return pickScopedValue(
@@ -138,6 +152,7 @@ export function resolveRawSecrets(source: RuntimeConfigSource) {
       primaryWhatsapp?.groqAudioKey ?? primaryWhatsapp?.groqKey
     ) ?? null,
     geminiKey: pickScopedValue(current, undefined, current?.geminiKey, primaryWhatsapp?.geminiKey) ?? null,
+    openaiKey: pickScopedValue(current, undefined, current?.openaiKey, primaryWhatsapp?.openaiKey) ?? null,
     openrouterKey: pickScopedValue(current, undefined, current?.openrouterKey, primaryWhatsapp?.openrouterKey) ?? null,
   };
 }

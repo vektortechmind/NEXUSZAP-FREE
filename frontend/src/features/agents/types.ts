@@ -1,6 +1,7 @@
 export type CreateChannel = "WHATSAPP" | "TELEGRAM";
 export type WorkspaceTab = "agent" | "ai" | "files" | "integrations";
 export type StatusTone = "neutral" | "success" | "warning" | "danger" | "info";
+export type ChatProvider = "groq" | "gemini" | "openrouter" | "openai";
 
 export type AgentSummary = {
   id: string;
@@ -12,9 +13,11 @@ export type AgentSummary = {
   instanceName: string;
   instanceSlot: number;
   instanceStatus: string;
-  instanceChatProvider: "groq" | "gemini" | "openrouter" | null;
+  instanceChatProvider: ChatProvider | null;
+  instanceOpenaiModel: string | null;
   instanceOpenrouterModel: string | null;
-  chatProvider?: "groq" | "gemini" | "openrouter" | null;
+  chatProvider?: ChatProvider | null;
+  openaiModel?: string | null;
   openrouterModel?: string | null;
   memoryLimit?: number;
   systemPrompt?: string | null;
@@ -34,7 +37,7 @@ export type EligibleInstance = {
 };
 
 export type RuntimeProviderOption = {
-  id: "groq" | "gemini" | "openrouter";
+  id: ChatProvider;
   label: string;
   supportsModel: boolean;
   defaultModel?: string;
@@ -80,7 +83,8 @@ export type AgentEditor = {
   instanceSlot: number;
   instanceStatus: string;
   runtime: {
-    chatProvider: "groq" | "gemini" | "openrouter" | "";
+    chatProvider: ChatProvider | "";
+    openaiModel: string;
     openrouterModel: string;
     memoryLimit: number;
     providerFallback: boolean;

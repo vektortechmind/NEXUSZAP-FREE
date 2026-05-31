@@ -2,6 +2,23 @@
 
 Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
+## [1.0.4] - 2026-05-31
+
+### Added
+
+- Suporte ao provedor `OpenAI` no runtime de IA usando a Responses API oficial.
+- Nova configuração segura `openaiKey` por instância, com criptografia, máscara em resposta e teste de saúde em `/api/agent/providers-health`.
+- Campo `openaiModel` para definir modelo OpenAI globalmente, por instância ou por agente; quando vazio, o padrão interno é `gpt-5`.
+- Migração Prisma para persistir `openaiKey` e `openaiModel` em `Instance` e `openaiModel` em `Agent`.
+- Interface para cadastrar chave OpenAI, selecionar OpenAI como provedor preferencial e ajustar modelo no workspace do agente.
+- Guia de chaves de API atualizado com instruções de configuração da OpenAI.
+
+### Changed
+
+- Fallback automático de IA passa a considerar `Groq -> Gemini -> OpenRouter -> OpenAI`.
+- Documentação principal atualizada para listar OpenAI entre os provedores suportados.
+- Versão do frontend, backend, `backend/VERSION`, `README` e artefatos de release atualizada para `1.0.4`.
+
 ## [1.0.3] - 2026-05-29
 
 ### Added
