@@ -170,6 +170,143 @@ function createDispatchService(options = {}) {
   }
 
   {
+    const sentPayloads = [];
+    const { service, store } = createDispatchService({
+      sentPayloads,
+      sock: {
+        user: { id: "5511911111111@s.whatsapp.net" },
+        async onWhatsApp(jid) {
+          assert.equal(jid, "5511998765432@s.whatsapp.net");
+          return [{ exists: true, jid: "5511998765432@s.whatsapp.net" }];
+        },
+        async sendMessage(jid, content) {
+          sentPayloads.push({ jid, content });
+          return { key: { id: "wamid.lookup-found" } };
+        },
+      },
+    });
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pedido_pago",
+      dedupKey: "evt-lookup-found",
+      payload: createBasePayload(),
+    });
+    const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
+    assert.equal(sentPayloads.length, 1);
+    assert.equal(summary.includes('"whatsappLookupStatus":"found"'), true);
+    assert.equal(summary.includes('"whatsappLookupJid":"5511998765432@s.whatsapp.net"'), true);
+    assert.equal(summary.includes('"whatsappLookupExists":true'), true);
+  }
+
+  {
+    const sentPayloads = [];
+    const { service, store } = createDispatchService({
+      sentPayloads,
+      sock: {
+        user: { id: "5511911111111@s.whatsapp.net" },
+        async onWhatsApp() {
+          return [{ exists: false, jid: "5511998765432@s.whatsapp.net" }];
+        },
+        async sendMessage(jid, content) {
+          sentPayloads.push({ jid, content });
+          return { key: { id: "wamid.lookup-not-found" } };
+        },
+      },
+    });
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pedido_pago",
+      dedupKey: "evt-lookup-not-found",
+      payload: createBasePayload(),
+    });
+    const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
+    assert.equal(sentPayloads.length, 1);
+    assert.equal(summary.includes('"whatsappLookupStatus":"not_found"'), true);
+    assert.equal(summary.includes('"whatsappLookupExists":false'), true);
+  }
+
+  {
+    const sentPayloads = [];
+    const { service, store } = createDispatchService({
+      sentPayloads,
+      sock: {
+        user: { id: "5511911111111@s.whatsapp.net" },
+        async onWhatsApp() {
+          throw new Error("lookup failed token=secret-lookup-token");
+        },
+        async sendMessage(jid, content) {
+          sentPayloads.push({ jid, content });
+          return { key: { id: "wamid.lookup-error" } };
+        },
+      },
+    });
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pedido_pago",
+      dedupKey: "evt-lookup-error",
+      payload: createBasePayload(),
+    });
+    const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
+    assert.equal(sentPayloads.length, 1);
+    assert.equal(summary.includes('"whatsappLookupStatus":"error"'), true);
+    assert.equal(summary.includes('"whatsappLookupError":"lookup failed [REDACTED]"'), true);
+    assert.equal(summary.includes("secret-lookup-token"), false);
+  }
+
+  {
+    const sentPayloads = [];
+    const { service, store } = createDispatchService({
+      sentPayloads,
+      sock: {
+        user: { id: "5511911111111@s.whatsapp.net" },
+        async sendMessage(jid, content) {
+          sentPayloads.push({ jid, content });
+          return { key: { id: "wamid.lookup-unavailable" } };
+        },
+      },
+    });
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pedido_pago",
+      dedupKey: "evt-lookup-unavailable",
+      payload: createBasePayload(),
+    });
+    const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
+    assert.equal(sentPayloads.length, 1);
+    assert.equal(summary.includes('"whatsappLookupStatus":"unavailable"'), true);
+    assert.equal(summary.includes('"whatsappLookupExists":null'), true);
+  }
+
+  {
+    const sentPayloads = [];
+    const { service, store } = createDispatchService({
+      sentPayloads,
+      sock: {
+        user: { id: "5511911111111@s.whatsapp.net" },
+        async onWhatsApp() {
+          return [{ exists: true, jid: "5511998765432@s.whatsapp.net" }];
+        },
+        async sendMessage() {
+          throw new Error("send failed");
+        },
+      },
+    });
+    await assert.rejects(
+      () => service.dispatchEvent({
+        instanceId: "instance-a",
+        eventSlug: "pedido_pago",
+        dedupKey: "evt-lookup-before-send-failure",
+        payload: createBasePayload(),
+      }),
+      (error) => error instanceof IntegrationDispatchSendFailedError,
+    );
+    const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
+    assert.equal(sentPayloads.length, 0);
+    assert.equal(summary.includes('"whatsappLookupStatus":"found"'), true);
+    assert.equal(summary.includes('"whatsappLookupJid":"5511998765432@s.whatsapp.net"'), true);
+  }
+
+  {
     const payload = createBasePayload();
     payload.message = { body: "Texto externo aprovado para pedido pago" };
     const { service, sentPayloads, store } = createDispatchService();

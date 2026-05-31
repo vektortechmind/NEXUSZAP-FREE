@@ -2,7 +2,7 @@ import { type AnyMessageContent, type WASocket, type WAMessage } from "@whiskeys
 import { randomUUID } from "crypto";
 import { prisma } from "../../database/prisma";
 import { InstanceManager } from "../../whatsapp/InstanceManager";
-import { redactSensitiveText } from "../../utils/redaction";
+import { redactSensitiveText, safeErrorMessage } from "../../utils/redaction";
 import {
   type IntegrationNormalizedEventContext,
   normalizeIntegrationEventContext,
@@ -139,6 +139,15 @@ export type IntegrationDispatchDeliveryPath =
   | "link"
   | "text";
 export type IntegrationDispatchTransportPayload = AnyMessageContent;
+
+export type IntegrationWhatsappLookupStatus = "found" | "not_found" | "error" | "unavailable";
+
+export type IntegrationWhatsappLookupSummary = {
+  whatsappLookupStatus: IntegrationWhatsappLookupStatus;
+  whatsappLookupJid: string | null;
+  whatsappLookupExists: boolean | null;
+  whatsappLookupError: string | null;
+};
 
 export class IntegrationDispatchRuntimeError extends Error {
   statusCode: number;
@@ -518,6 +527,67 @@ export function buildBaileysDispatchPayload(
   };
 }
 
+function sanitizeLookupErrorMessage(error: unknown): string {
+  return safeErrorMessage(error, "Falha ao consultar WhatsApp")
+    .replace(/\b(?:authorization|token|password|api[_-]?key)\s*[:=]\s*\[REDACTED\]/gi, "[REDACTED]");
+}
+
+function buildWhatsappLookupPayloadSummary(whatsappLookup: IntegrationWhatsappLookupSummary | null) {
+  return {
+    whatsappLookupStatus: whatsappLookup?.whatsappLookupStatus ?? null,
+    whatsappLookupJid: whatsappLookup?.whatsappLookupJid ?? null,
+    whatsappLookupExists: whatsappLookup?.whatsappLookupExists ?? null,
+    whatsappLookupError: whatsappLookup?.whatsappLookupError ?? null,
+  };
+}
+
+function buildDispatchFailurePayloadSummary(
+  context: IntegrationNormalizedEventContext,
+  whatsappLookup: IntegrationWhatsappLookupSummary | null,
+) {
+  return {
+    eventSlug: context.eventSlug,
+    rawPhone: context.phone,
+    normalizedPhone: context.phoneDigits,
+    recipientJid: context.recipientJid,
+    ...buildWhatsappLookupPayloadSummary(whatsappLookup),
+  };
+}
+
+async function lookupWhatsappRecipient(sock: WASocket, recipientJid: string): Promise<IntegrationWhatsappLookupSummary> {
+  const lookupSocket = sock as {
+    onWhatsApp?: (...jids: string[]) => Promise<Array<{ exists?: boolean; jid?: string } | undefined>>;
+  };
+
+  if (typeof lookupSocket.onWhatsApp !== "function") {
+    return {
+      whatsappLookupStatus: "unavailable",
+      whatsappLookupJid: null,
+      whatsappLookupExists: null,
+      whatsappLookupError: null,
+    };
+  }
+
+  try {
+    const [result] = await lookupSocket.onWhatsApp(recipientJid);
+    const exists = result?.exists === true;
+    const jid = typeof result?.jid === "string" && result.jid.trim() ? result.jid : null;
+    return {
+      whatsappLookupStatus: exists ? "found" : "not_found",
+      whatsappLookupJid: jid,
+      whatsappLookupExists: exists,
+      whatsappLookupError: null,
+    };
+  } catch (error) {
+    return {
+      whatsappLookupStatus: "error",
+      whatsappLookupJid: null,
+      whatsappLookupExists: null,
+      whatsappLookupError: sanitizeLookupErrorMessage(error),
+    };
+  }
+}
+
 function buildPayloadSummary(
   template: IntegrationRenderedDispatchTemplate,
   content: IntegrationDispatchTransportPayload,
@@ -525,6 +595,7 @@ function buildPayloadSummary(
   imageFallbackReason: IntegrationImageFallbackReason | null,
   secondaryProviderMessageId: string | null,
   secondaryDispatchFailureCode: IntegrationSecondaryDispatchFailureCode | null,
+  whatsappLookup: IntegrationWhatsappLookupSummary | null,
 ) {
   const secondaryDispatchStatus: IntegrationSecondaryDispatchStatus = template.followup
     ? secondaryDispatchFailureCode
@@ -541,6 +612,7 @@ function buildPayloadSummary(
     rawPhone: template.context.phone,
     normalizedPhone: template.context.phoneDigits,
     recipientJid: template.context.recipientJid,
+    ...buildWhatsappLookupPayloadSummary(whatsappLookup),
     intendedMessageType: template.messageType,
     dispatchedMessageType: resolveDispatchedMessageType(template, content),
     deliveryPath: resolveDeliveryPath(template, content, imageFallbackReason),
@@ -699,6 +771,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
     attemptCount: number;
   }) {
     const context = eventCatalogService.normalizeEventContext(input.eventSlug, input.payload) as IntegrationNormalizedEventContext;
+    let whatsappLookup: IntegrationWhatsappLookupSummary | null = null;
 
     try {
       if (!context.recipientJid) {
@@ -714,6 +787,12 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
       if (instance.status !== "CONNECTED" || !sock) {
         throw new IntegrationDispatchInstanceOfflineError(input.instanceId);
       }
+
+      whatsappLookup = await lookupWhatsappRecipient(sock, context.recipientJid);
+      await logService.updateLog(input.dispatchLog.id, {
+        recipientJid: context.recipientJid,
+        payloadSummary: buildDispatchFailurePayloadSummary(context, whatsappLookup),
+      });
 
       let template: IntegrationRenderedDispatchTemplate;
       try {
@@ -778,7 +857,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
           lastRetryError: null,
           retryLockedAt: null,
           retryExhaustedAt: null,
-          payloadSummary: buildPayloadSummary(template, content, imageAsset, imageFallbackReason, secondaryProviderMessageId, secondaryDispatchFailureCode),
+          payloadSummary: buildPayloadSummary(template, content, imageAsset, imageFallbackReason, secondaryProviderMessageId, secondaryDispatchFailureCode, whatsappLookup),
         });
 
         return {
@@ -806,6 +885,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
           lastRetryError: retryState.lastRetryError,
           retryLockedAt: retryState.retryLockedAt,
           retryExhaustedAt: retryState.retryExhaustedAt,
+          payloadSummary: buildDispatchFailurePayloadSummary(context, whatsappLookup),
         });
         throw error;
       }
@@ -827,6 +907,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
         lastRetryError: retryState.lastRetryError,
         retryLockedAt: retryState.retryLockedAt,
         retryExhaustedAt: retryState.retryExhaustedAt,
+        payloadSummary: buildDispatchFailurePayloadSummary(context, whatsappLookup),
       });
       throw error;
     }
