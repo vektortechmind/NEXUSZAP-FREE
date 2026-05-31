@@ -1,10 +1,5 @@
 import { randomBytes } from "crypto";
-
-type BinaryNode = {
-  tag: string;
-  attrs: Record<string, string>;
-  content?: Array<BinaryNode | { tag: string; attrs: Record<string, string>; content: Buffer }>;
-};
+import type { BinaryNode } from "@whiskeysockets/baileys";
 
 export type CtaUrlInteractiveInput = {
   body: string;
@@ -186,4 +181,3 @@ export function buildCtaUrlFallbackText(input: CtaUrlInteractiveInput): string {
   const url = normalizeHttpUrl(input.url);
   return `${body}\n\n${url}`;
 }
-

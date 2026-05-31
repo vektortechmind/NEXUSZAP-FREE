@@ -49,11 +49,18 @@ export type IntegrationNormalizedBoleto = {
 
 export type IntegrationNormalizedAccess = Record<string, unknown> | null;
 
+export type IntegrationNormalizedCtaUrlButton = {
+  enabled: boolean;
+  text: string | null;
+  url: string | null;
+} | null;
+
 export type IntegrationNormalizedMessageOverride = {
   body: string | null;
   pixFollowupBody: string | null;
   bodyLength: number | null;
   pixFollowupBodyLength: number | null;
+  ctaUrlButton: IntegrationNormalizedCtaUrlButton;
 } | null;
 
 export type IntegrationExtractedContext = {
@@ -341,11 +348,46 @@ function normalizeCustomMessageText(value: unknown, fieldName: string): string {
   return normalized;
 }
 
+function normalizeCtaUrlButton(value: unknown): IntegrationNormalizedCtaUrlButton {
+  const config = asRecord(value);
+  if (!config) {
+    throw new InvalidIntegrationCustomMessageError("message.cta_url_button deve ser objeto.");
+  }
+
+  const allowedFields = new Set(["enabled", "text", "url"]);
+  for (const field of Object.keys(config)) {
+    if (!allowedFields.has(field)) {
+      throw new InvalidIntegrationCustomMessageError(`Campo message.cta_url_button.${field} nao e aceito no contrato de integracao.`);
+    }
+  }
+
+  const enabled = config.enabled === undefined ? true : config.enabled === true;
+  if (config.enabled !== undefined && typeof config.enabled !== "boolean") {
+    throw new InvalidIntegrationCustomMessageError("message.cta_url_button.enabled deve ser booleano.");
+  }
+
+  const text = config.text === undefined || config.text === null
+    ? null
+    : normalizeCustomMessageText(config.text, "message.cta_url_button.text");
+  if (text && text.length > 60) {
+    throw new InvalidIntegrationCustomMessageError("message.cta_url_button.text excede o limite de 60 caracteres.");
+  }
+
+  const url = config.url === undefined || config.url === null
+    ? null
+    : normalizeUrl(config.url);
+  if (config.url !== undefined && config.url !== null && !url) {
+    throw new InvalidIntegrationCustomMessageError("message.cta_url_button.url deve ser uma URL http/https valida.");
+  }
+
+  return { enabled, text, url };
+}
+
 function normalizeMessageOverride(eventSlug: SupportedIntegrationEventSlug, payload: IntegrationPayload): IntegrationNormalizedMessageOverride {
   const message = asRecord(payload.message);
   if (!message) return null;
 
-  const allowedFields = new Set(["body", "pix_followup_body"]);
+  const allowedFields = new Set(["body", "pix_followup_body", "cta_url_button"]);
   for (const field of Object.keys(message)) {
     if (!allowedFields.has(field)) {
       throw new InvalidIntegrationCustomMessageError(`Campo message.${field} nao e aceito no contrato de integracao.`);
@@ -354,6 +396,7 @@ function normalizeMessageOverride(eventSlug: SupportedIntegrationEventSlug, payl
 
   const hasBody = Object.prototype.hasOwnProperty.call(message, "body");
   const hasPixFollowupBody = Object.prototype.hasOwnProperty.call(message, "pix_followup_body");
+  const hasCtaUrlButton = Object.prototype.hasOwnProperty.call(message, "cta_url_button");
 
   if (hasPixFollowupBody && eventSlug !== "pix_gerado") {
     throw new InvalidIntegrationCustomMessageError("message.pix_followup_body so e aceito para o evento pix_gerado.");
@@ -361,12 +404,14 @@ function normalizeMessageOverride(eventSlug: SupportedIntegrationEventSlug, payl
 
   const body = hasBody ? normalizeCustomMessageText(message.body, "message.body") : null;
   const pixFollowupBody = hasPixFollowupBody ? normalizeCustomMessageText(message.pix_followup_body, "message.pix_followup_body") : null;
+  const ctaUrlButton = hasCtaUrlButton ? normalizeCtaUrlButton(message.cta_url_button) : null;
 
-  return body || pixFollowupBody ? {
+  return body || pixFollowupBody || ctaUrlButton ? {
     body,
     pixFollowupBody,
     bodyLength: body?.length ?? null,
     pixFollowupBodyLength: pixFollowupBody?.length ?? null,
+    ctaUrlButton,
   } : null;
 }
 

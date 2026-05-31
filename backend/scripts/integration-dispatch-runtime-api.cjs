@@ -378,6 +378,77 @@ function createDispatchService(options = {}) {
     assert.equal(summary.includes("Texto externo aprovado"), false);
   }
   {
+    const payload = createBasePayload();
+    payload.message = {
+      body: "Texto com botao experimental e link visivel https://checkout.example.com/c/123",
+      cta_url_button: { enabled: true, text: "Abrir pedido" },
+    };
+    const relayCalls = [];
+    const sentPayloads = [];
+    const { service, store } = createDispatchService({
+      sentPayloads,
+      sock: {
+        user: { id: "5511911111111@s.whatsapp.net" },
+        async relayMessage(jid, message, options) {
+          relayCalls.push({ jid, message, options });
+          return "wamid.cta-url";
+        },
+        async sendMessage(jid, content) {
+          sentPayloads.push({ jid, content });
+          return { key: { id: "wamid.fallback" } };
+        },
+      },
+    });
+    const result = await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pedido_pago",
+      dedupKey: "evt-custom-cta-url-button",
+      payload,
+    });
+    const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
+    assert.equal(relayCalls.length, 1);
+    assert.equal(sentPayloads.length, 0);
+    assert.equal(relayCalls[0].options.additionalNodes[0].tag, "biz");
+    assert.equal(result.dispatchLog.providerMessageId, "wamid.cta-url");
+    assert.equal(summary.includes('"deliveryPath":"interactive_cta_url"'), true);
+    assert.equal(summary.includes('"ctaUrlButtonRequested":true'), true);
+    assert.equal(summary.includes('"ctaUrlButtonAttempted":true'), true);
+    assert.equal(summary.includes('"ctaUrlButtonFallbackUsed":false'), true);
+  }
+  {
+    const payload = createBasePayload();
+    payload.message = {
+      body: "Texto com fallback de botao experimental https://checkout.example.com/c/123",
+      cta_url_button: { enabled: true, text: "Abrir pedido" },
+    };
+    const sentPayloads = [];
+    const { service, store } = createDispatchService({
+      sentPayloads,
+      sock: {
+        user: { id: "5511911111111@s.whatsapp.net" },
+        async relayMessage() {
+          throw new Error("relay failed");
+        },
+        async sendMessage(jid, content) {
+          sentPayloads.push({ jid, content });
+          return { key: { id: "wamid.cta-fallback" } };
+        },
+      },
+    });
+    const result = await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pedido_pago",
+      dedupKey: "evt-custom-cta-url-button-fallback",
+      payload,
+    });
+    const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
+    assert.equal(sentPayloads.length, 1);
+    assert.equal(sentPayloads[0].content.text.includes("Texto com fallback"), true);
+    assert.equal(result.dispatchLog.providerMessageId, "wamid.cta-fallback");
+    assert.equal(summary.includes('"deliveryPath":"text_fallback_interactive_cta_url"'), true);
+    assert.equal(summary.includes('"ctaUrlButtonFallbackUsed":true'), true);
+  }
+  {
     const { service, sentPayloads } = createDispatchService();
     await service.dispatchEvent({
       instanceId: "instance-a",

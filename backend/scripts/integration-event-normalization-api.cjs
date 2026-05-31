@@ -390,6 +390,24 @@ function expectPhoneContext(context, digits) {
       pixFollowupBody: null,
       bodyLength: "Texto customizado final".length,
       pixFollowupBodyLength: null,
+      ctaUrlButton: null,
+    });
+  }
+
+  {
+    const payload = createBasePayload();
+    payload.message = { cta_url_button: { enabled: true, text: "Abrir pedido", url: "https://checkout.example.com/c/123" } };
+    const context = normalizeIntegrationEventContext("pedido_pago", payload);
+    assert.deepEqual(context.messageOverride, {
+      body: null,
+      pixFollowupBody: null,
+      bodyLength: null,
+      pixFollowupBodyLength: null,
+      ctaUrlButton: {
+        enabled: true,
+        text: "Abrir pedido",
+        url: "https://checkout.example.com/c/123",
+      },
     });
   }
 
@@ -407,6 +425,9 @@ function expectPhoneContext(context, digits) {
     { body: "Texto undefined invalido" },
     { caption: "nao aceito" },
     { body: "ok", messageType: "button" },
+    { cta_url_button: { enabled: true, rawPayload: {} } },
+    { cta_url_button: { enabled: "yes" } },
+    { cta_url_button: { enabled: true, url: "ftp://example.com" } },
   ]) {
     const payload = createBasePayload();
     payload.message = invalidMessage;
