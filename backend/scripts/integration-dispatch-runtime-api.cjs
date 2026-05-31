@@ -13,17 +13,14 @@ require("ts-node/register");
 const assert = require("assert");
 const {
   buildBaileysDispatchPayload,
-  buildRealCtaMessage,
   createInMemoryIntegrationDispatchStore,
   createIntegrationDispatchLogService,
   createIntegrationDispatchRuntimeService,
-  INTEGRATION_CTA_FORMAT_MATRIX,
   INTEGRATION_DISPATCH_STATUS,
   IntegrationDispatchInstanceNotFoundError,
   IntegrationDispatchInstanceOfflineError,
   IntegrationDispatchRecipientMissingError,
   IntegrationDispatchSendFailedError,
-  resolveIntegrationCtaButtonFormat,
 } = require("../src/services/integrations/integrationDispatchRuntime.service.ts");
 
 function createBasePayload() {
@@ -58,19 +55,15 @@ function createBasePayload() {
 function createDispatchService(options = {}) {
   const store = createInMemoryIntegrationDispatchStore();
   const logService = createIntegrationDispatchLogService(store);
-  const sentPayloads = [];
-  const relayedPayloads = [];
+  const sentPayloads = options.sentPayloads ?? [];
   let sendCounter = 0;
+
   const sock = options.sock ?? {
     user: { id: "5511911111111@s.whatsapp.net" },
     async sendMessage(jid, content) {
       sentPayloads.push({ jid, content });
       sendCounter += 1;
       return { key: { id: `wamid.${sendCounter}` } };
-    },
-    async relayMessage(jid, message, options) {
-      relayedPayloads.push({ jid, message, options });
-      return options?.messageId || "relay.wamid.123";
     },
   };
 
@@ -82,31 +75,22 @@ function createDispatchService(options = {}) {
     templateService: options.templateService,
   });
 
-  return { service, store, sentPayloads, relayedPayloads, sock };
-}
-
-async function withCtaFormat(format, run) {
-  const previous = process.env.INTEGRATION_CTA_BUTTON_FORMAT;
-  if (format === undefined || format === null) {
-    delete process.env.INTEGRATION_CTA_BUTTON_FORMAT;
-  } else {
-    process.env.INTEGRATION_CTA_BUTTON_FORMAT = format;
-  }
-
-  try {
-    return await run();
-  } finally {
-    if (previous === undefined) {
-      delete process.env.INTEGRATION_CTA_BUTTON_FORMAT;
-    } else {
-      process.env.INTEGRATION_CTA_BUTTON_FORMAT = previous;
-    }
-  }
+  return { service, store, sentPayloads, sock };
 }
 
 (async () => {
   {
-    const { service, store, sentPayloads, relayedPayloads } = createDispatchService();
+    const sentPayloads = [];
+    const { service, store } = createDispatchService({
+      sentPayloads,
+      sock: {
+        user: { id: "5511911111111@s.whatsapp.net" },
+        async sendMessage(jid, content) {
+          sentPayloads.push({ jid, content });
+          return { key: { id: "wamid.link-only" } };
+        },
+      },
+    });
     const result = await service.dispatchEvent({
       ingressLogId: "ingress-1",
       credentialId: "cred-1",
@@ -115,65 +99,21 @@ async function withCtaFormat(format, run) {
       dedupKey: "evt-1",
       payload: createBasePayload(),
     });
-    assert.equal(sentPayloads.length, 0);
-    assert.equal(relayedPayloads[0].jid, "5511998765432@s.whatsapp.net");
-    assert.equal(relayedPayloads[0].message.templateMessage.hydratedTemplate.hydratedContentText, result.template.body);
-    assert.equal(relayedPayloads[0].message.templateMessage.hydratedTemplate.hydratedButtons[0].urlButton.displayText, "Acessar agora");
-    assert.equal(relayedPayloads[0].message.templateMessage.hydratedTemplate.hydratedButtons[0].urlButton.url, "https://checkout.example.com/c/123");
-    assert.equal(relayedPayloads[0].message.messageContextInfo.messageSecret.length, 32);
+    assert.equal(sentPayloads.length, 1);
+    assert.equal(sentPayloads[0].jid, "5511998765432@s.whatsapp.net");
+    assert.equal(sentPayloads[0].content.text.includes("Parabéns"), true);
+    assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
+    assert.equal(sentPayloads[0].content.contextInfo, undefined);
     assert.equal(result.dispatchLog.dispatchStatus, INTEGRATION_DISPATCH_STATUS.SENT);
-    assert.equal(result.dispatchLog.messageType, "template");
-    assert.equal(result.dispatchLog.providerMessageId, relayedPayloads[0].options.messageId);
+    assert.equal(result.dispatchLog.messageType, "text");
+    assert.equal(result.dispatchLog.providerMessageId, "wamid.link-only");
     assert.equal(Array.from(store.logs.values())[0].dispatchStatus, INTEGRATION_DISPATCH_STATUS.SENT);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"usedRealCtaButton":true'), true);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"template_cta"'), true);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"ctaButtonFormat":"template_hydrated"'), true);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"ctaTransport":"relay_message"'), true);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"messageSecretByteLength":32'), true);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"reportingTokenFieldCovered":true'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"dispatchedMessageType":"text"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"linkUrl":"https://checkout.example.com/c/123"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"ctaButtonFormat"'), false);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"ctaProtocolTrace"'), false);
   }
-
-  await withCtaFormat("buttons_message", async () => {
-    const { service, store, relayedPayloads } = createDispatchService();
-    const result = await service.dispatchEvent({
-      instanceId: "instance-a",
-      eventSlug: "pedido_pago",
-      dedupKey: "evt-buttons-matrix",
-      payload: createBasePayload(),
-    });
-    assert.equal(service.ctaButtonFormat, "buttons_message");
-    assert.equal(relayedPayloads[0].message.buttonsMessage.contentText, result.template.body);
-    assert.equal(relayedPayloads[0].message.buttonsMessage.buttons[0].type, 2);
-    assert.equal(relayedPayloads[0].message.buttonsMessage.buttons[0].nativeFlowInfo.name, "cta_url");
-    assert.equal(relayedPayloads[0].message.messageContextInfo.messageSecret.length, 32);
-    assert.equal(relayedPayloads[0].options.additionalNodes, undefined);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"buttons_cta"'), true);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"ctaButtonFormat":"buttons_message"'), true);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"reportingTokenFieldCovered":false'), true);
-  });
-
-  await withCtaFormat("interactive_native_flow", async () => {
-    const { service, store, relayedPayloads } = createDispatchService();
-    await service.dispatchEvent({
-      instanceId: "instance-a",
-      eventSlug: "pedido_pago",
-      dedupKey: "evt-interactive-matrix",
-      payload: createBasePayload(),
-    });
-    assert.equal(service.ctaButtonFormat, "interactive_native_flow");
-    assert.equal(relayedPayloads[0].message.interactiveMessage.body.text.includes("Parabéns"), true);
-    assert.equal(relayedPayloads[0].message.interactiveMessage.nativeFlowMessage.buttons[0].name, "cta_url");
-    assert.equal(relayedPayloads[0].message.messageContextInfo.messageSecret.length, 32);
-    assert.equal(relayedPayloads[0].options.additionalNodes.length, 2);
-    assert.equal(relayedPayloads[0].options.additionalNodes[0].tag, "bot");
-    assert.equal(relayedPayloads[0].options.additionalNodes[0].attrs.biz_bot, "1");
-    assert.equal(relayedPayloads[0].options.additionalNodes[1].tag, "biz");
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"interactive_cta"'), true);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"ctaButtonFormat":"interactive_native_flow"'), true);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"reportingTokenFieldCovered":false'), true);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"relayAdditionalNodesCount":2'), true);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"relayAdditionalNodeTags":["bot","biz"]'), true);
-  });
 
   {
     const { service, sentPayloads } = createDispatchService();
@@ -231,55 +171,6 @@ async function withCtaFormat(format, run) {
   {
     const { service, sentPayloads, store } = createDispatchService({
       sock: {
-        user: { id: "5511911111111@s.whatsapp.net" },
-        async sendMessage(jid, content) {
-          sentPayloads.push({ jid, content });
-          return { key: { id: "wamid.123" } };
-        },
-        async relayMessage() {
-          throw new Error("relay failed");
-        },
-      },
-    });
-    const result = await service.dispatchEvent({
-      instanceId: "instance-a",
-      eventSlug: "pedido_pago",
-      dedupKey: "evt-img-fallback",
-      payload: createBasePayload(),
-    });
-    assert.equal(sentPayloads[0].content.text.includes("Parabéns"), true);
-    assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
-    assert.equal(sentPayloads[0].content.contextInfo, undefined);
-    assert.equal(result.dispatchLog.messageType, "text");
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"buttonFallbackReason":"button_dispatch_failed"'), true);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text_fallback_button"'), true);
-  }
-
-  {
-    const { service, sentPayloads, store } = createDispatchService({
-      sock: {
-        async sendMessage(jid, content) {
-          sentPayloads.push({ jid, content });
-          return { key: { id: "wamid.123" } };
-        },
-      },
-    });
-    await service.dispatchEvent({
-      instanceId: "instance-a",
-      eventSlug: "pedido_pago",
-      dedupKey: "evt-no-image",
-      payload: createBasePayload(),
-    });
-    assert.equal(sentPayloads[0].content.text.includes("Parabéns"), true);
-    assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
-    assert.equal(sentPayloads[0].content.contextInfo, undefined);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"buttonFallbackReason":"unsupported_socket_transport"'), true);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text_fallback_button"'), true);
-  }
-
-  {
-    const { service, sentPayloads, store } = createDispatchService({
-      sock: {
         async sendMessage(jid, content) {
           sentPayloads.push({ jid, content });
           return { key: { id: "wamid.123" } };
@@ -317,7 +208,8 @@ async function withCtaFormat(format, run) {
     });
     assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
     assert.equal(sentPayloads[0].content.contextInfo, undefined);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"buttonFallbackReason":"unsupported_socket_transport"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":null'), true);
   }
 
   {
@@ -360,6 +252,7 @@ async function withCtaFormat(format, run) {
     const sentPayloads = [];
     let sendCount = 0;
     const { service, store } = createDispatchService({
+      sentPayloads,
       sock: {
         user: { id: "5511911111111@s.whatsapp.net" },
         async sendMessage(jid, content) {
@@ -369,9 +262,6 @@ async function withCtaFormat(format, run) {
             throw new Error("followup failed");
           }
           return { key: { id: `wamid.${sendCount}` } };
-        },
-        async relayMessage(jid, message, options) {
-          return options?.messageId || "relay.wamid.123";
         },
       },
     });
@@ -448,6 +338,7 @@ async function withCtaFormat(format, run) {
     assert.equal(payload.caption, "Texto principal");
     assert.equal(payload.contextInfo, undefined);
   }
+
   {
     const template = {
       eventSlug: "pedido_pago",
@@ -471,35 +362,6 @@ async function withCtaFormat(format, run) {
     const payload = buildBaileysDispatchPayload(template, { imageBuffer: null, imageMimeType: null });
     assert.equal(payload.text, "Texto principal\n\nhttps://checkout.example.com/c/123");
     assert.equal(payload.contextInfo.externalAdReply.sourceUrl, "https://checkout.example.com/c/123");
-  }
-
-  {
-    const template = {
-      eventSlug: "pedido_pago",
-      messageType: "image",
-      title: "Synthetic CTA",
-      body: "Texto principal",
-      caption: "Texto principal",
-      linkUrl: "https://checkout.example.com/c/123",
-      documentUrl: null,
-      imageUrl: "https://cdn.example.com/file.jpg",
-      fileName: null,
-      mimeType: null,
-      externalAdReply: null,
-      followup: null,
-      context: { eventSlug: "pedido_pago" },
-    };
-    const templatePayload = buildRealCtaMessage(template, "template_hydrated");
-    const buttonsPayload = buildRealCtaMessage(template, "buttons_message");
-    const interactivePayload = buildRealCtaMessage(template, "interactive_native_flow");
-    assert.equal(templatePayload.templateMessage.hydratedTemplate.hydratedButtons[0].urlButton.url, "https://checkout.example.com/c/123");
-    assert.equal(templatePayload.messageContextInfo.messageSecret.length, 32);
-    assert.equal(buttonsPayload.buttonsMessage.buttons[0].nativeFlowInfo.paramsJson.includes('display_text'), true);
-    assert.equal(buttonsPayload.messageContextInfo.messageSecret.length, 32);
-    assert.equal(interactivePayload.interactiveMessage.nativeFlowMessage.buttons[0].buttonParamsJson.includes('https://checkout.example.com/c/123'), true);
-    assert.equal(interactivePayload.messageContextInfo.messageSecret.length, 32);
-    assert.equal(INTEGRATION_CTA_FORMAT_MATRIX.length, 3);
-    assert.equal(resolveIntegrationCtaButtonFormat("invalid-value"), "template_hydrated");
   }
 
   {
@@ -575,6 +437,3 @@ async function withCtaFormat(format, run) {
   console.error("integration-dispatch-runtime-api:", error);
   process.exit(1);
 });
-
-
-
