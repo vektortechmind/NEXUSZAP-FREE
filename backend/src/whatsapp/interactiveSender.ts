@@ -18,6 +18,7 @@ export type SendCtaUrlInteractiveOptions = {
   enabled?: boolean;
   messageId?: string;
   fallbackText?: string;
+  sendFallbackAfterInteractiveSuccess?: boolean;
 };
 
 export type SendCtaUrlInteractiveResult = {
@@ -86,6 +87,21 @@ export async function sendCtaUrlInteractiveMessage(
       messageId,
       additionalNodes: payload.additionalNodes,
     });
+
+    if (options.sendFallbackAfterInteractiveSuccess) {
+      const fallbackProviderMessageId = await sendFallbackText(sock, jid, input, options.fallbackText);
+      return {
+        deliveryPath: "text_fallback_interactive_cta_url",
+        providerMessageId: providerMessageId || messageId,
+        fallbackProviderMessageId,
+        summary: {
+          interactiveKind: "cta_url",
+          attemptedInteractive: true,
+          fallbackUsed: true,
+          hasAdditionalNodes: true,
+        },
+      };
+    }
 
     return {
       deliveryPath: "interactive_cta_url",

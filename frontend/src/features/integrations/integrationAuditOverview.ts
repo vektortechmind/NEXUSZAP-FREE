@@ -27,6 +27,10 @@ export function formatDispatchDeliveryPath(value: string | null | undefined): st
       return "Texto por fallback de imagem";
     case "text_fallback_document":
       return "Texto por fallback de documento";
+    case "interactive_cta_url":
+      return "Botão CTA URL experimental";
+    case "text_fallback_interactive_cta_url":
+      return "Texto por fallback de botão CTA";
     case "document":
       return "Documento";
     case "link":

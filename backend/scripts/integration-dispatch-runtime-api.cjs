@@ -407,13 +407,14 @@ function createDispatchService(options = {}) {
     });
     const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
     assert.equal(relayCalls.length, 1);
-    assert.equal(sentPayloads.length, 0);
+    assert.equal(sentPayloads.length, 1);
     assert.equal(relayCalls[0].options.additionalNodes[0].tag, "biz");
-    assert.equal(result.dispatchLog.providerMessageId, "wamid.cta-url");
-    assert.equal(summary.includes('"deliveryPath":"interactive_cta_url"'), true);
+    assert.equal(sentPayloads[0].content.text.includes("Texto com botao experimental"), true);
+    assert.equal(result.dispatchLog.providerMessageId, "wamid.fallback");
+    assert.equal(summary.includes('"deliveryPath":"text_fallback_interactive_cta_url"'), true);
     assert.equal(summary.includes('"ctaUrlButtonRequested":true'), true);
     assert.equal(summary.includes('"ctaUrlButtonAttempted":true'), true);
-    assert.equal(summary.includes('"ctaUrlButtonFallbackUsed":false'), true);
+    assert.equal(summary.includes('"ctaUrlButtonFallbackUsed":true'), true);
   }
   {
     const payload = createBasePayload();
