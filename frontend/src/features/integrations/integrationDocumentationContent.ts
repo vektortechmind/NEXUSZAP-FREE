@@ -111,7 +111,7 @@ export const INTEGRATION_TEMPLATE_FLOW = [
   "O sistema externo envia apenas o evento, a autenticação e o payload operacional. Não existe envio de template livre no request.",
   "O backend normaliza telefone, cliente, produto, links, Pix, boleto e acesso antes de escolher a mensagem padrão do evento.",
   "Cada evento já possui um template predefinido com tipo final de saída, texto base, caption e, quando aplicável, links textuais ou enriquecimento contextual.",
-  "A resposta HTTP 202 significa que o evento foi aceito para dispatch. O envio para o WhatsApp continua no runtime da instância conectada.",
+  "A resposta HTTP 202 significa que o evento foi aceito para processamento e que o runtime tentou submeter a mensagem ao provider. Isso não é recibo de entrega, leitura ou confirmação do aparelho final.",
 ] as const;
 
 export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
@@ -225,6 +225,7 @@ export const INTEGRATION_RENDER_RULES = [
   "O backend define a mensagem a partir do event e do payload normalizado; a ferramenta externa não escolhe corpo, caption nem tipo final manualmente.",
   "Eventos mapeados como image fazem download da imagem no runtime quando imageUrl for HTTP/HTTPS válida e acessível pelo backend.",
   "Quando a imagem estiver ausente, inválida ou falhar no download, o runtime troca o envio para texto sem interromper o dispatch e registra deliveryPath text_fallback_image.",
+  "O status técnico SENT nos logs de dispatch significa que o sendMessage retornou e o provider aceitou a tentativa operacional; não significa entrega confirmada no WhatsApp.",
   "No evento pix_gerado, a primeira mensagem fecha com a chamada 'Codigo Pix copia e cola' e, quando pix.copy_paste ou pix.copyPaste estiver disponível, o runtime envia uma segunda mensagem textual contendo apenas o código bruto.",
   "pedido_pago usa texto com link visível no corpo como caminho oficial e confiável.",
   "carrinho_abandonado, assinatura_criada e assinatura_em_atraso mantêm messageType image, mas exibem checkoutLink no corpo/caption quando a URL é informada.",
@@ -248,7 +249,7 @@ export const INTEGRATION_OPERATION_LIMITS = [
 ] as const;
 
 export const INTEGRATION_RESPONSE_CODES = [
-  { status: "202", code: "accepted", meaning: "Evento aceito e dispatch operacional iniciado com sucesso." },
+  { status: "202", code: "accepted", meaning: "Evento aceito e tentativa de dispatch submetida ao runtime/provider; não confirma entrega final no WhatsApp." },
   { status: "400", code: "INTEGRATION_CONTRACT_INVALID", meaning: "Headers ou body fora do contrato esperado." },
   { status: "400", code: "UNSUPPORTED_INTEGRATION_EVENT", meaning: "Slug de evento não suportado pelo catálogo atual." },
   { status: "401", code: "INVALID_INTEGRATION_TOKEN", meaning: "Token Bearer inválido ou inexistente." },
@@ -268,7 +269,7 @@ export const INTEGRATION_RESPONSE_CODES = [
 export const INTEGRATION_RESPONSE_FIELDS = [
   { name: "ingressId", description: "UUID do log de ingresso persistido no recebimento do evento." },
   { name: "dispatchId", description: "UUID do log operacional do dispatch gerado para a tentativa de envio." },
-  { name: "providerMessageId", description: "Identificador devolvido pelo provedor de mensageria quando o sendMessage conclui com sucesso." },
+  { name: "providerMessageId", description: "Identificador devolvido pelo provider quando o sendMessage retorna com sucesso operacional. Não é recibo de entrega, leitura ou confirmação do aparelho final." },
   { name: "status", description: "Hoje o valor esperado na aceitação é accepted." },
   { name: "instanceId", description: "Instância efetivamente autorizada e usada no processamento do evento." },
   { name: "event", description: "Slug do evento aceito e normalizado pelo catálogo público atual." },

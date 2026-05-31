@@ -7,6 +7,7 @@ import { type IntegrationDashboardResponse, summarizeIntegrationCards } from "..
 import {
   formatAuditEntryType,
   formatAuditMeta,
+  formatAuditStatus,
   getVisibleAuditLogs,
   INTEGRATION_AUDIT_SCROLL_CONTAINER_CLASSNAME,
   INTEGRATION_AUDIT_VISIBLE_LIMIT,
@@ -67,7 +68,7 @@ export function IntegrationOperationsOverview({ overview, refreshing, onRefresh 
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">{formatAuditEntryType(entry.entryType)}</span>
-                        <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">{entry.status}</span>
+                        <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">{formatAuditStatus(entry)}</span>
                         <span className="truncate text-xs text-slate-500 dark:text-slate-400">{entry.instanceName}</span>
                       </div>
                       <p className="mt-2 truncate text-sm font-semibold text-slate-950 dark:text-slate-50">{entry.eventSlug ?? "evento"}</p>

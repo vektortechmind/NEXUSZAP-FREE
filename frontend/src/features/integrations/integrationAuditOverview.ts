@@ -8,9 +8,14 @@ export function getVisibleAuditLogs(auditLogs: IntegrationAuditEntry[]): Integra
 }
 
 export function formatAuditMeta(entry: IntegrationAuditEntry): string {
-  if (entry.providerMessageId) return entry.providerMessageId;
+  if (entry.providerMessageId) return `Provider aceitou: ${entry.providerMessageId}`;
   if (entry.failureCode) return entry.failureCode;
   return entry.instanceName;
+}
+
+export function formatAuditStatus(entry: IntegrationAuditEntry): string {
+  if (entry.entryType === "dispatch" && entry.status === "SENT") return "Enviado ao provider";
+  return entry.status;
 }
 
 export function formatAuditEntryType(type: IntegrationAuditEntry["entryType"]): string {
