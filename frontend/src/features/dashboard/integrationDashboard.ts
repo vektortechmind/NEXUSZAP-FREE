@@ -14,6 +14,20 @@ export type IntegrationLogSnapshot = {
   failureCode: string | null;
 };
 
+export type IntegrationDispatchPayloadSummary = {
+  rawPhone: string | null;
+  normalizedPhone: string | null;
+  recipientJid: string | null;
+  intendedMessageType: string | null;
+  dispatchedMessageType: string | null;
+  deliveryPath: string | null;
+  secondaryDispatchStatus: string | null;
+  secondaryProviderMessageId: string | null;
+  secondaryDispatchFailureCode: string | null;
+  whatsappLookupStatus: string | null;
+  whatsappLookupJid: string | null;
+};
+
 export type IntegrationIngressSnapshot = IntegrationLogSnapshot & {
   dedupKey: string | null;
   status: string;
@@ -23,9 +37,16 @@ export type IntegrationIngressSnapshot = IntegrationLogSnapshot & {
 };
 
 export type IntegrationDispatchSnapshot = IntegrationLogSnapshot & {
+  recipientJid: string | null;
   messageType: string | null;
   dispatchStatus: string;
   providerMessageId: string | null;
+  payloadSummary: IntegrationDispatchPayloadSummary;
+  retryable: boolean;
+  retryAttemptCount: number;
+  nextRetryAt: string | null;
+  lastRetryError: string | null;
+  retryExhaustedAt: string | null;
   createdAt: string;
   processedAt: string | null;
 };
@@ -42,6 +63,14 @@ export type IntegrationAuditEntry = {
   timestamp: string;
   failureCode: string | null;
   providerMessageId: string | null;
+  recipientJid: string | null;
+  payloadSummary: IntegrationDispatchPayloadSummary | null;
+  messageType: string | null;
+  retryable: boolean | null;
+  retryAttemptCount: number | null;
+  nextRetryAt: string | null;
+  lastRetryError: string | null;
+  retryExhaustedAt: string | null;
 };
 
 export type IntegrationDashboardItem = {

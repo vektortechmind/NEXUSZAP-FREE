@@ -160,6 +160,9 @@ function createDispatchService(options = {}) {
     assert.equal(result.dispatchLog.providerMessageId, "wamid.link-only");
     assert.equal(Array.from(store.logs.values())[0].dispatchStatus, INTEGRATION_DISPATCH_STATUS.SENT);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"rawPhone":"(11) 99876-5432"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"normalizedPhone":"5511998765432"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"recipientJid":"5511998765432@s.whatsapp.net"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"dispatchedMessageType":"text"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"linkUrl":"https://checkout.example.com/c/123"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"ctaButtonFormat"'), false);
@@ -214,8 +217,10 @@ function createDispatchService(options = {}) {
     assert.equal(sentPayloads[1].content.text, "000201PIX-COPIA-COLA");
     assert.equal(result.dispatchLog.messageType, "image");
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"image_clean"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"normalizedPhone":"5511998765432"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":null'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"secondaryDispatchStatus":"sent"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"secondaryProviderMessageId":"wamid.2"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"secondaryDispatchKind":"pix_copy_paste_text"'), true);
   }
 

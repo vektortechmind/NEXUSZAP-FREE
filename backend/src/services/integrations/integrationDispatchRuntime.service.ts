@@ -538,6 +538,9 @@ function buildPayloadSummary(
 
   return {
     eventSlug: template.eventSlug,
+    rawPhone: template.context.phone,
+    normalizedPhone: template.context.phoneDigits,
+    recipientJid: template.context.recipientJid,
     intendedMessageType: template.messageType,
     dispatchedMessageType: resolveDispatchedMessageType(template, content),
     deliveryPath: resolveDeliveryPath(template, content, imageFallbackReason),
