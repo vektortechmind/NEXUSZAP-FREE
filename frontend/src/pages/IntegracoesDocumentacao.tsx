@@ -6,6 +6,9 @@ import { Section } from "../components/ui/Section";
 import {
   INTEGRATION_CONTEXT_FIELDS,
   INTEGRATION_CREDENTIAL_FIELDS,
+  INTEGRATION_CUSTOM_MESSAGE_EXAMPLE,
+  INTEGRATION_CUSTOM_MESSAGE_RULES,
+  INTEGRATION_CUSTOM_PIX_FOLLOWUP_EXAMPLE,
   INTEGRATION_CURL_EVENT_EXAMPLES,
   INTEGRATION_CURL_EXAMPLE,
   INTEGRATION_DOCUMENTATION_TOPICS,
@@ -109,13 +112,13 @@ export function IntegracoesDocumentacao() {
       </Panel>
 
       <div className="grid gap-6 xl:grid-cols-[15rem_minmax(0,1fr)]">
-        <aside aria-label="Tópicos da documentação" className="xl:sticky xl:top-8 xl:self-start">
-          <Panel className="p-4">
+        <aside aria-label="Tópicos da documentação" className="sticky top-4 z-20 self-start xl:top-8">
+          <Panel className="max-h-[calc(100vh-2rem)] overflow-y-auto p-4 xl:max-h-[calc(100vh-4rem)]">
             <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
               <BookOpenText className="h-4 w-4" aria-hidden="true" />
               Tópicos
             </div>
-            <nav className="mt-4 flex gap-2 overflow-x-auto xl:flex-col xl:overflow-visible">
+            <nav className="mt-4 flex gap-2 overflow-x-auto pb-1 xl:flex-col xl:overflow-visible xl:pb-0">
               {INTEGRATION_DOCUMENTATION_TOPICS.map((topic) => {
                 const isActive = activeTopic == topic.id;
                 return (
@@ -260,7 +263,7 @@ export function IntegracoesDocumentacao() {
           ) : null}
 
           {activeTopic === "renderizacao" ? (
-            <Section id="renderizacao" title="Templates e renderização" description="Os eventos já possuem mensagens predefinidas. A integração externa controla o payload; o backend controla o texto final, mídia e CTA.">
+            <Section id="renderizacao" title="Templates e renderização" description="Os eventos já possuem mensagens predefinidas. A integração externa controla o payload; o backend controla mídia, tipo final, fallback e envio.">
               <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
                 <Panel className="p-5">
                   <h2 className="text-base font-semibold text-slate-950 dark:text-slate-50">Como os templates funcionam</h2>
@@ -305,6 +308,32 @@ export function IntegracoesDocumentacao() {
                       </div>
                       <p className="mt-4 text-sm leading-6 text-slate-600 dark:text-slate-400"><span className="font-semibold text-slate-900 dark:text-slate-50">Fallback:</span> {item.fallback}</p>
                     </div>
+                  ))}
+                </div>
+              </Panel>
+            </Section>
+          ) : null}
+
+          {activeTopic === "texto-customizado" ? (
+            <Section id="texto-customizado" title="Texto customizado opcional" description="Use esta opção quando a ferramenta externa já monta o texto final que deve aparecer para o cliente, sem alterar a mecânica técnica do envio.">
+              <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+                <Panel className="p-5">
+                  <h2 className="text-base font-semibold text-slate-950 dark:text-slate-50">Contrato permitido</h2>
+                  <ul className="mt-4 space-y-3 text-sm leading-6 text-slate-600 dark:text-slate-400">
+                    {INTEGRATION_CUSTOM_MESSAGE_RULES.map((rule) => <li key={rule}>{rule}</li>)}
+                  </ul>
+                </Panel>
+                <div className="space-y-4">
+                  <CodeBlock language="json" code={INTEGRATION_CUSTOM_MESSAGE_EXAMPLE} />
+                  <CodeBlock language="json" code={INTEGRATION_CUSTOM_PIX_FOLLOWUP_EXAMPLE} />
+                </div>
+              </div>
+
+              <Panel className="mt-4 p-5">
+                <h2 className="text-base font-semibold text-slate-950 dark:text-slate-50">O que continua sob controle do NexusZAP</h2>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {["Tipo final da mensagem", "Imagem ou documento", "Instância autorizada", "Provider WhatsApp", "Retry e fallback", "Payload técnico Baileys"].map((item) => (
+                    <div key={item} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-900 dark:border-slate-800 dark:bg-slate-950/45 dark:text-slate-50">{item}</div>
                   ))}
                 </div>
               </Panel>

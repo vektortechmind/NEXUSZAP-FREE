@@ -241,6 +241,7 @@ Permite:
 
 - criar instancias WhatsApp;
 - gerar QR Code e conectar;
+- habilitar ou desabilitar a IA por instancia WhatsApp;
 - configurar o singleton do Telegram;
 - abrir detalhes operacionais de cada canal;
 - desconectar ou remover quando aplicavel.
@@ -289,7 +290,7 @@ Campos principais do body:
 - `event`: slug do evento suportado;
 - `instanceId`: precisa pertencer a mesma credencial autenticada;
 - `timestamp`: entra na replay window operacional;
-- `dedupKey`: chave idempotente obrigatoria por credencial;
+- `dedupKey`: chave idempotente obrigatoria por credencial, com ate 180 caracteres;
 - `payload`: contexto operacional usado para normalizacao e renderizacao.
 
 Eventos suportados atualmente:
@@ -316,6 +317,21 @@ Tipos de mensagem usados pelo runtime:
 - `document`
 
 A documentacao publica completa desse endpoint fica dentro do proprio painel, em `Integracoes -> Documentacao`.
+
+Regras operacionais importantes:
+
+- rate limit atual: `120` requisicoes por minuto por IP;
+- replay window padrao: `300000 ms`, com tolerancia futura de `30000 ms`;
+- telefones devem vir preferencialmente em E.164 com DDI, por exemplo `+5511998765432` ou `+14155552671`;
+- `202 accepted`, `SENT` e `providerMessageId` indicam aceite/submissao operacional ao runtime/provider, nao entrega, leitura ou visualizacao final no WhatsApp;
+- falhas temporarias de instancia offline ou envio podem entrar em retry operacional quando registradas como retryable.
+
+Texto customizado opcional:
+
+- `payload.message.body` pode substituir o texto visivel/caption do template com texto final ja renderizado pela ferramenta externa;
+- `payload.message.pix_followup_body` pode personalizar a segunda mensagem do Pix, somente no evento `pix_gerado`;
+- cada um desses campos aceita string nao vazia com ate `4000` caracteres; esse limite vale apenas para cada texto customizado, nao para o payload inteiro;
+- campos tecnicos em `payload.message`, como `caption`, `messageType`, `providerPayload`, `buttons` ou `relayMessage`, sao rejeitados com `INTEGRATION_CUSTOM_MESSAGE_INVALID`.
 
 ## Credenciais de integracao
 
