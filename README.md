@@ -95,6 +95,7 @@ http://SEU_DOMINIO/criar-admin?token=SEU_TOKEN
 ```
 
 Essa etapa substitui a senha temporaria gerada na instalacao e bloqueia nova criacao publica de administrador.
+Enquanto `ADMIN_SETUP_REQUIRED="true"`, o login no painel fica bloqueado ate o primeiro administrador ser criado pela rota `/criar-admin`.
 
 URLs padrao na VPS com Docker:
 
@@ -154,7 +155,7 @@ SETUP_COMPLETED="false"
 GITHUB_REPO="vektortechmind/NEXUSZAP-FREE"
 ```
 
-Em producao, ajuste `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `APP_URL` e `CORS_ORIGINS` para o dominio real do painel.
+Em producao, ajuste `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `APP_URL` e `CORS_ORIGINS` pelo fluxo inicial de setup. O login so e liberado apos `ADMIN_SETUP_REQUIRED` virar `false` na criacao do primeiro administrador.
 
 `APP_URL` deve apontar para a URL publica real que expoe o backend/API. Sem isso, o painel nao inventa `endpointUrl` para integracoes em ambiente publico.
 

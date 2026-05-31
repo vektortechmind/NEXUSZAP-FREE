@@ -343,9 +343,8 @@ EOF
   chmod 600 backend/.env
 
   echo "backend/.env criado automaticamente."
-  echo "Login inicial: admin@nexuszap.com"
-  echo "Senha inicial: $admin_password"
   echo "Token de setup: $setup_token"
+  echo "Use o link /criar-admin exibido ao final da instalacao para definir o primeiro administrador."
 }
 
 load_env() {

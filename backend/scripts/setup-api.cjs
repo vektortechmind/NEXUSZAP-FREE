@@ -51,6 +51,13 @@ const { buildServer } = require("../src/server");
   assert.ok(envContent.includes('CORS_ORIGINS="http://localhost,https://app.example.com"'));
   assert.equal(JSON.parse(docker.body).nextUrl, "https://app.example.com/criar-admin?token=test-setup-token-with-enough-length");
 
+  const tempLogin = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: { email: "admin@nexuszap.com", password: "TempPassword1!" }
+  });
+  assert.equal(tempLogin.statusCode, 403, tempLogin.body);
+
   const admin = await app.inject({
     method: "POST",
     url: "/api/setup/admin",

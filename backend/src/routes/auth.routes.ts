@@ -3,7 +3,7 @@ import { env } from "../config/env";
 import { z } from "zod";
 import { csrfCookieName, generateCsrfToken, verifyCsrf, verifyJwt } from "../security/middlewares";
 import { timingSafeEqual } from "crypto";
-import { getAdminCredentials } from "../services/setup.service";
+import { getAdminCredentials, isAdminSetupRequired } from "../services/setup.service";
 
 const loginSchema = z.object({
   email: z.string().trim().email().max(254),
@@ -35,6 +35,9 @@ export async function authRoutes(fastify: FastifyInstance) {
   }, async (request, reply) => {
     try {
       const { email, password } = loginSchema.parse(request.body);
+      if (isAdminSetupRequired()) {
+        return reply.status(403).send({ error: "Crie o primeiro administrador antes de entrar no painel." });
+      }
       
       const admin = getAdminCredentials();
       if (!safeEqual(email, admin.email) || !safeEqual(password, admin.password)) {
