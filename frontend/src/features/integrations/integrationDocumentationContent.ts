@@ -110,7 +110,7 @@ export const INTEGRATION_CONTEXT_FIELDS = [
 export const INTEGRATION_TEMPLATE_FLOW = [
   "O sistema externo envia apenas o evento, a autenticação e o payload operacional. Não existe envio de template livre no request.",
   "O backend normaliza telefone, cliente, produto, links, Pix, boleto e acesso antes de escolher a mensagem padrão do evento.",
-  "Cada evento já possui um template predefinido com tipo final de saída, texto base, caption e, quando aplicável, CTA real ou enriquecimento contextual.",
+  "Cada evento já possui um template predefinido com tipo final de saída, texto base, caption e, quando aplicável, links textuais ou enriquecimento contextual.",
   "A resposta HTTP 202 significa que o evento foi aceito para dispatch. O envio para o WhatsApp continua no runtime da instância conectada.",
 ] as const;
 
@@ -120,8 +120,8 @@ export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
     messageType: "template",
     requiredFields: ["customer.phone", "customer.name ou order.user.name", "order.product.name ou equivalente"],
     optionalFields: ["checkout_link ou checkoutLink", "order.product.image ou cover"],
-    generatedMessage: "Confirmação de pagamento com CTA real de acesso por botão nativo quando checkoutLink estiver disponível.",
-    fallback: "Sem checkoutLink, sem relayMessage ou com falha no relay, o runtime envia texto com a mesma mensagem e a URL visível no corpo.",
+    generatedMessage: "Confirmação de pagamento com texto e link visível no corpo da mensagem.",
+    fallback: "Sem checkoutLink, o texto continua sendo enviado sem link complementar.",
   },
   {
     event: "pedido_pendente",
@@ -184,8 +184,8 @@ export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
     messageType: "image",
     requiredFields: ["customer.phone", "customer.name ou order.user.name", "order.product.name ou equivalente"],
     optionalFields: ["access.url", "access.login", "access.email", "access.password", "access.instructions", "checkout_link ou checkoutLink", "order.product.image ou cover"],
-    generatedMessage: "Aviso de acesso liberado com CTA principal apontando para checkoutLink quando informado.",
-    fallback: "Sem imagem válida, o runtime envia texto. O objeto access é normalizado, mas o template atual não injeta todos os campos no corpo.",
+    generatedMessage: "Aviso de acesso liberado com dados do aluno no corpo e links textuais separados para acesso principal e link complementar quando disponíveis.",
+    fallback: "Sem imagem válida, o runtime envia texto mantendo os dados normalizados de acesso e os links visíveis no corpo.",
   },
   {
     event: "assinatura_criada",
@@ -226,8 +226,8 @@ export const INTEGRATION_RENDER_RULES = [
   "Eventos mapeados como image fazem download da imagem no runtime quando imageUrl for HTTP/HTTPS válida e acessível pelo backend.",
   "Quando a imagem estiver ausente, inválida ou falhar no download, o runtime troca o envio para texto sem interromper o dispatch e registra deliveryPath text_fallback_image.",
   "No evento pix_gerado, a primeira mensagem fecha com a chamada 'Codigo Pix copia e cola' e, quando pix.copy_paste ou pix.copyPaste estiver disponível, o runtime envia uma segunda mensagem textual contendo apenas o código bruto.",
-  "pedido_pago usa CTA real por templateMessage.hydratedTemplate com urlButton quando checkoutLink e relayMessage estiverem disponíveis.",
-  "Quando o CTA real não puder ser usado, o runtime envia texto com URL visível no corpo e registra deliveryPath text_fallback_button.",
+  "pedido_pago usa texto com link visível no corpo como caminho oficial e confiável.",
+  "Quando houver URL aplicável, o runtime mantém o link visível no corpo da mensagem.",
   "A telemetria do dispatch registra secondaryDispatchStatus para indicar se a segunda mensagem do Pix foi enviada, pulada por ausência do código ou falhou isoladamente.",
   "externalAdReply continua restrito aos fluxos text, document e aos fallbacks textuais dos eventos ricos; ele não é usado no caminho de imagem limpa nem substitui botão real.",
   "Boleto é o caso oficial de document e exige URL válida em boleto.pdf_url ou boleto.pdfUrl.",
@@ -319,8 +319,8 @@ export const INTEGRATION_TROUBLESHOOTING = [
   {
     title: "CTA real indisponível",
     steps: [
-      "No evento pedido_pago, o botão real depende de checkoutLink válido e de relayMessage disponível no runtime da instância.",
-      "Se esse caminho falhar, o backend degrada para texto com URL visível no corpo e registra deliveryPath text_fallback_button.",
+      "No evento pedido_pago, o comportamento oficial é mensagem textual com link visível no corpo quando checkoutLink existir.",
+      "Sem checkoutLink, a mensagem continua sendo enviada sem link complementar.",
     ],
   },
   {
@@ -385,7 +385,7 @@ export const INTEGRATION_CURL_EXAMPLE = `curl -X POST "$ENDPOINT_URL" \\
 export const INTEGRATION_CURL_EVENT_EXAMPLES = [
   {
     title: "pedido_pago",
-    description: "Pagamento aprovado com imagem do produto e CTA de acesso.",
+    description: "Pagamento aprovado com imagem do produto e link visível no corpo.",
     code: `curl -X POST "$ENDPOINT_URL" \\
   -H "Authorization: Bearer $SECRET_TOKEN" \\
   -H "Content-Type: application/json" \\
@@ -461,7 +461,7 @@ export const INTEGRATION_CURL_EVENT_EXAMPLES = [
   },
   {
     title: "envio_acesso",
-    description: "Acesso liberado com dados do aluno e CTA principal baseado em checkoutLink.",
+    description: "Acesso liberado com dados do aluno no corpo e links textuais separados.",
     code: `curl -X POST "$ENDPOINT_URL" \\
   -H "Authorization: Bearer $SECRET_TOKEN" \\
   -H "Content-Type: application/json" \\
@@ -472,7 +472,7 @@ export const INTEGRATION_CURL_EVENT_EXAMPLES = [
     "dedupKey": "acesso-321-enviado-20260530",
     "payload": {
       "customer": { "name": "Paula Rocha", "phone": "5511977776666" },
-      "checkoutLink": "https://checkout.exemplo.com/aluno/321",
+      "checkoutLink": "https://comunidade.exemplo.com/grupo/321",
       "order": {
         "product": {
           "name": "Comunidade Premium",
@@ -557,3 +557,4 @@ export const INTEGRATION_ERROR_RESPONSE_EXAMPLE = `{
     "message": "Payload ou headers inválidos para o contrato de integração."
   }
 }`;
+

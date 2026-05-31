@@ -92,6 +92,65 @@ function customerLabel(context: IntegrationNormalizedEventContext): string {
     || "cliente";
 }
 
+function accessRecord(context: IntegrationNormalizedEventContext): Record<string, unknown> | null {
+  return context.access && typeof context.access === "object" ? context.access as Record<string, unknown> : null;
+}
+
+function accessTextValue(context: IntegrationNormalizedEventContext, field: string): string | null {
+  const access = accessRecord(context);
+  const value = access?.[field];
+  return typeof value === "string" ? normalizeTextValue(value) || null : null;
+}
+
+function buildEnvioAcessoParagraphs(context: IntegrationNormalizedEventContext, customer: string, product: string): string[] {
+  const accessUrl = accessTextValue(context, "url");
+  const login = accessTextValue(context, "login")
+    || accessTextValue(context, "email")
+    || accessTextValue(context, "username");
+  const password = accessTextValue(context, "password")
+    || accessTextValue(context, "temporaryPassword");
+  const instructions = accessTextValue(context, "instructions");
+  const platform = accessTextValue(context, "platform") || product;
+  const expiresAt = accessTextValue(context, "expiresAt");
+  const checkoutLink = context.checkoutLink && context.checkoutLink !== accessUrl ? context.checkoutLink : null;
+
+  const paragraphs = [
+    `🔓 *ACESSO ${product.toUpperCase()}*`,
+    `👋 Olá ${customer}, tudo bem?`,
+    `✅ Seu acesso ao *${platform}* foi liberado com sucesso.`,
+  ];
+
+  if (login) {
+    paragraphs.push(`👤 *Usuário:* ${login}`);
+  }
+
+  if (password) {
+    paragraphs.push(`🔐 *Senha:* ${password}`);
+  }
+
+  if (expiresAt) {
+    paragraphs.push(`⏰ *Acesso disponível até:* ${expiresAt}`);
+  }
+
+  if (instructions) {
+    paragraphs.push(`⚠️ *Importante:* ${instructions}`);
+  }
+
+  const links: string[] = [];
+  if (accessUrl) {
+    links.push(`↗ *Acessar ${platform}*\n${accessUrl}`);
+  }
+  if (checkoutLink) {
+    links.push(`↗ *Acessar link complementar*\n${checkoutLink}`);
+  }
+
+  if (links.length > 0) {
+    paragraphs.push(`📲 *Acesso abaixo:*\n\n${links.join("\n\n")}`);
+  }
+
+  return paragraphs;
+}
+
 function ensureRequiredUrl(eventSlug: SupportedIntegrationEventSlug, fieldName: string, value: string | null): string {
   if (!value) {
     throw new MissingIntegrationTemplateUrlError(eventSlug, fieldName);
@@ -346,12 +405,8 @@ export function renderIntegrationDispatchTemplateFromContext(
         context,
         "Acesso liberado",
         context.productImage,
-        [
-          `🔓 *Olá ${customer}!*`,
-          `Seu acesso ao *${product}* foi liberado!`,
-          "Já pode assistir às aulas e começar sua jornada.",
-        ],
-        createExternalAdReply("Acessar agora", product, context.checkoutLink),
+        buildEnvioAcessoParagraphs(context, customer, product),
+        createExternalAdReply("Acesso liberado", product, accessTextValue(context, "url") ?? context.checkoutLink),
       );
 
     case "assinatura_criada":
@@ -404,3 +459,4 @@ export function createIntegrationDispatchTemplateService() {
 }
 
 export const integrationDispatchTemplateService = createIntegrationDispatchTemplateService();
+
