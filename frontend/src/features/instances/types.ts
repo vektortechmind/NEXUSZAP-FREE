@@ -12,6 +12,7 @@ export type InstanceStatus = {
   connected: boolean;
   available: boolean;
   occupied: boolean;
+  aiWhatsappEnabled: boolean;
   agent: { id: string; name: string } | null;
 };
 
@@ -36,6 +37,7 @@ export type WhatsappCard = {
   slot: number;
   occupied: boolean;
   available: boolean;
+  aiWhatsappEnabled: boolean;
   agent: { id: string; name: string } | null;
 };
 
