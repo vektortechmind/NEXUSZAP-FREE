@@ -16,6 +16,8 @@ const {
   createInMemoryIntegrationDispatchStore,
   createIntegrationDispatchLogService,
   createIntegrationDispatchRuntimeService,
+  DEFAULT_INTEGRATION_IMAGE_FETCH_TIMEOUT_MS,
+  downloadIntegrationImageAsset,
   INTEGRATION_DISPATCH_STATUS,
   IntegrationDispatchInstanceNotFoundError,
   IntegrationDispatchInstanceOfflineError,
@@ -79,6 +81,54 @@ function createDispatchService(options = {}) {
 }
 
 (async () => {
+  {
+    assert.equal(DEFAULT_INTEGRATION_IMAGE_FETCH_TIMEOUT_MS, 10000);
+  }
+
+  {
+    const originalFetch = global.fetch;
+    let receivedSignal = null;
+    global.fetch = async (_url, init) => {
+      receivedSignal = init.signal;
+      return {
+        ok: true,
+        headers: { get: () => "image/png" },
+        async arrayBuffer() {
+          return Buffer.from("downloaded-image");
+        },
+      };
+    };
+
+    try {
+      const asset = await downloadIntegrationImageAsset("https://cdn.example.com/image.png", { timeoutMs: 50 });
+      assert.equal(Buffer.compare(asset.buffer, Buffer.from("downloaded-image")), 0);
+      assert.equal(asset.mimeType, "image/png");
+      assert.equal(receivedSignal instanceof AbortSignal, true);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  }
+
+  {
+    const originalFetch = global.fetch;
+    global.fetch = async (_url, init) => new Promise((_resolve, reject) => {
+      init.signal.addEventListener("abort", () => {
+        const error = new Error("image fetch aborted by timeout");
+        error.name = "AbortError";
+        reject(error);
+      }, { once: true });
+    });
+
+    try {
+      await assert.rejects(
+        () => downloadIntegrationImageAsset("https://cdn.example.com/slow-image.png", { timeoutMs: 1 }),
+        (error) => error.name === "AbortError",
+      );
+    } finally {
+      global.fetch = originalFetch;
+    }
+  }
+
   {
     const sentPayloads = [];
     const { service, store } = createDispatchService({
@@ -210,6 +260,26 @@ function createDispatchService(options = {}) {
     assert.equal(sentPayloads[0].content.contextInfo, undefined);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":null'), true);
+  }
+
+  {
+    const { service, sentPayloads, store } = createDispatchService({
+      imageDownloader: async () => {
+        const error = new Error("image fetch aborted by timeout");
+        error.name = "AbortError";
+        throw error;
+      },
+    });
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pix_gerado",
+      dedupKey: "evt-image-timeout",
+      payload: createBasePayload(),
+    });
+    assert.equal(sentPayloads[0].content.text.includes("PIX"), true);
+    assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":"image_download_failed"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text_fallback_image"'), true);
   }
 
   {
