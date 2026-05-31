@@ -53,6 +53,7 @@ export type IntegrationNormalizedCtaUrlButton = {
   enabled: boolean;
   text: string | null;
   url: string | null;
+  buttons: Array<{ text: string; url: string }> | null;
 } | null;
 
 export type IntegrationNormalizedMessageOverride = {
@@ -354,7 +355,7 @@ function normalizeCtaUrlButton(value: unknown): IntegrationNormalizedCtaUrlButto
     throw new InvalidIntegrationCustomMessageError("message.cta_url_button deve ser objeto.");
   }
 
-  const allowedFields = new Set(["enabled", "text", "url"]);
+  const allowedFields = new Set(["enabled", "text", "url", "buttons"]);
   for (const field of Object.keys(config)) {
     if (!allowedFields.has(field)) {
       throw new InvalidIntegrationCustomMessageError(`Campo message.cta_url_button.${field} nao e aceito no contrato de integracao.`);
@@ -380,7 +381,29 @@ function normalizeCtaUrlButton(value: unknown): IntegrationNormalizedCtaUrlButto
     throw new InvalidIntegrationCustomMessageError("message.cta_url_button.url deve ser uma URL http/https valida.");
   }
 
-  return { enabled, text, url };
+  let buttons: Array<{ text: string; url: string }> | null = null;
+  if (config.buttons !== undefined) {
+    if (!Array.isArray(config.buttons) || config.buttons.length === 0 || config.buttons.length > 3) {
+      throw new InvalidIntegrationCustomMessageError("message.cta_url_button.buttons deve conter de 1 a 3 botoes.");
+    }
+    buttons = config.buttons.map((item, index) => {
+      const button = asRecord(item);
+      if (!button) {
+        throw new InvalidIntegrationCustomMessageError(`message.cta_url_button.buttons.${index} deve ser objeto.`);
+      }
+      const buttonText = normalizeCustomMessageText(button.text, `message.cta_url_button.buttons.${index}.text`);
+      if (buttonText.length > 60) {
+        throw new InvalidIntegrationCustomMessageError(`message.cta_url_button.buttons.${index}.text excede o limite de 60 caracteres.`);
+      }
+      const buttonUrl = normalizeUrl(button.url);
+      if (!buttonUrl) {
+        throw new InvalidIntegrationCustomMessageError(`message.cta_url_button.buttons.${index}.url deve ser uma URL http/https valida.`);
+      }
+      return { text: buttonText, url: buttonUrl };
+    });
+  }
+
+  return { enabled, text, url, buttons };
 }
 
 function normalizeMessageOverride(eventSlug: SupportedIntegrationEventSlug, payload: IntegrationPayload): IntegrationNormalizedMessageOverride {

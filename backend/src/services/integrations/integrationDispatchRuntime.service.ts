@@ -641,16 +641,17 @@ function buildDispatchFailurePayloadSummary(
   };
 }
 
-function getExperimentalCtaUrlConfig(template: IntegrationRenderedDispatchTemplate): { buttonText: string; url: string } | null {
+function getExperimentalCtaUrlConfig(template: IntegrationRenderedDispatchTemplate): { buttons: Array<{ text: string; url: string }> } | null {
   const cta = template.context.messageOverride?.ctaUrlButton;
   if (!cta?.enabled) return null;
+
+  if (cta.buttons?.length) return { buttons: cta.buttons };
 
   const url = cta.url ?? template.linkUrl ?? template.context.checkoutLink;
   if (!url) return null;
 
   return {
-    buttonText: cta.text ?? "Abrir link",
-    url,
+    buttons: [{ text: cta.text ?? "Abrir link", url }],
   };
 }
 
@@ -1025,8 +1026,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
         if (ctaUrlConfig && "text" in content && typeof content.text === "string") {
           interactiveResult = await sendCtaUrlInteractiveMessage(sock, effectiveRecipientJid, {
             body: content.text,
-            buttonText: ctaUrlConfig.buttonText,
-            url: ctaUrlConfig.url,
+            buttons: ctaUrlConfig.buttons,
           }, { fallbackText: content.text, sendFallbackAfterInteractiveSuccess: true });
           providerMessageId = interactiveResult.fallbackProviderMessageId ?? interactiveResult.providerMessageId ?? null;
         } else {

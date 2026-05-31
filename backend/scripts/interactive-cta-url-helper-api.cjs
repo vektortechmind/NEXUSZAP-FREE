@@ -63,14 +63,30 @@ function assertAdditionalNodesShape() {
 
   const qualityControl = biz.content.find((node) => node.tag === "quality_control");
   assert.ok(qualityControl, "deve incluir quality_control");
-  const decisionSource = qualityControl.content[0].content[0].content[0];
+  assert.ok(qualityControl.attrs.decision_id, "quality_control deve incluir decision_id");
+  assert.strictEqual(qualityControl.attrs.source_type, "third_party");
+  const decisionSource = qualityControl.content[0];
   assert.strictEqual(decisionSource.tag, "decision_source");
-  assert.ok(Buffer.isBuffer(decisionSource.content), "decision_source deve carregar Buffer");
+  assert.strictEqual(decisionSource.attrs.value, "df");
+}
+
+function assertMultipleCtaButtons() {
+  const payload = buildCtaUrlInteractivePayload({
+    body: baseInput.body,
+    buttons: [
+      { text: "Acessar academy", url: "https://app.example.com/academy" },
+      { text: "Acessar comunidade", url: "https://app.example.com/community" },
+    ],
+  });
+  const buttons = payload.message.interactiveMessage.nativeFlowMessage.buttons;
+  assert.strictEqual(buttons.length, 2);
+  assert.strictEqual(payload.summary.buttonCount, 2);
+  assert.strictEqual(JSON.parse(buttons[1].buttonParamsJson).display_text, "Acessar comunidade");
 }
 
 function assertValidation() {
   assert.throws(() => buildCtaUrlInteractivePayload({ ...baseInput, body: " " }), /body e obrigatorio/);
-  assert.throws(() => buildCtaUrlInteractivePayload({ ...baseInput, buttonText: "" }), /buttonText e obrigatorio/);
+  assert.throws(() => buildCtaUrlInteractivePayload({ ...baseInput, buttonText: "" }), /Ao menos um botao CTA URL/);
   assert.throws(() => buildCtaUrlInteractivePayload({ ...baseInput, url: "ftp://example.com" }), /http ou https/);
   assert.throws(() => buildCtaUrlInteractivePayload({ ...baseInput, rawPayload: {} }), /Campo nao permitido/);
   assert.strictEqual(buildCtaUrlFallbackText(baseInput), `${baseInput.body}\n\n${baseInput.url}`);
@@ -131,13 +147,14 @@ function assertPublicContractUnchanged() {
   assert.ok(!integrationRoute.includes("interactivePayloadHelper"), "endpoint publico nao deve importar helper experimental");
   assert.ok(!integrationRoute.includes("interactiveSender"), "endpoint publico nao deve importar sender experimental");
   assert.ok(runtimeService.includes("getExperimentalCtaUrlConfig"), "runtime deve manter CTA experimental atras de opt-in explicito");
-  assert.ok(eventCatalog.includes('new Set(["enabled", "text", "url"])'), "contrato publico deve aceitar apenas campos de negocio do botao");
+  assert.ok(eventCatalog.includes('new Set(["enabled", "text", "url", "buttons"])'), "contrato publico deve aceitar apenas campos de negocio do botao");
   assert.ok(!eventCatalog.includes("interactiveMessage"), "contrato publico nao deve aceitar payload tecnico do WhatsApp");
 }
 
 async function main() {
   assertBuilderShape();
   assertAdditionalNodesShape();
+  assertMultipleCtaButtons();
   assertValidation();
   await assertSenderRelay();
   await assertSenderFallback();
