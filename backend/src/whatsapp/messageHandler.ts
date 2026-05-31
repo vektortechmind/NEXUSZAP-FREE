@@ -1,5 +1,7 @@
 import {
   WASocket,
+  WAMessage,
+  WAMessageContent,
   WAMessageKey,
   proto,
   extractMessageContent,
@@ -24,14 +26,31 @@ import {
 } from "../services/knowledge/knowledge.service";
 import { safeLogError } from "../utils/redaction";
 
+type MediaDownloadContext = NonNullable<Parameters<typeof downloadMediaMessage>[3]>;
+
+function hasRequiredMessageKey(m: proto.IWebMessageInfo): m is WAMessage {
+  return Boolean(m.key);
+}
+
+const silentBaileysLogger: MediaDownloadContext["logger"] = {
+  level: "silent",
+  child: () => silentBaileysLogger,
+  trace(_obj: unknown, _msg?: string) {},
+  debug(_obj: unknown, _msg?: string) {},
+  info(_obj: unknown, _msg?: string) {},
+  warn(_obj: unknown, _msg?: string) {},
+  error(_obj: unknown, _msg?: string) {},
+};
+
 async function downloadAudioFromMessage(sock: WASocket, m: proto.IWebMessageInfo): Promise<Buffer | null> {
   try {
+    if (!hasRequiredMessageKey(m)) return null;
     const buffer = await downloadMediaMessage(
-      m as never,
+      m,
       "buffer",
       {},
       {
-        logger: { trace() {}, debug() {}, info() {}, warn() {}, error() {} } as never,
+        logger: silentBaileysLogger,
         reuploadRequest: sock.updateMediaMessage,
       }
     );
@@ -112,9 +131,9 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
       }
     }
 
-    const raw = m.message;
-    const norm = normalizeMessageContent(raw as never);
-    const content = extractMessageContent(norm as never) ?? norm;
+    const raw: WAMessageContent = m.message;
+    const norm = normalizeMessageContent(raw);
+    const content = extractMessageContent(norm) ?? norm;
     if (!content) return;
 
     const textMsg =

@@ -1,8 +1,9 @@
+import { type MessageChannel as PrismaMessageChannel, type MessageDirection as PrismaMessageDirection, Prisma } from "@prisma/client";
 import { prisma } from "../../database/prisma";
 import { safeLogError } from "../../utils/redaction";
 
-export type MessageChannel = "WHATSAPP" | "TELEGRAM";
-export type MessageDirection = "INBOUND" | "OUTBOUND";
+export type MessageChannel = PrismaMessageChannel;
+export type MessageDirection = PrismaMessageDirection;
 
 type RecordMessageEventInput = {
   instanceId: string;
@@ -30,7 +31,7 @@ type DashboardMessagePoint = {
 
 export async function recordMessageEvent(input: RecordMessageEventInput) {
   try {
-    await (prisma as any).messageEvent.create({
+    await prisma.messageEvent.create({
       data: {
         instanceId: input.instanceId,
         channel: input.channel,
@@ -45,10 +46,7 @@ export async function recordMessageEvent(input: RecordMessageEventInput) {
 }
 
 export async function getDashboardStats(filters: DashboardFilter) {
-  const whereClause: {
-    createdAt?: { gte?: Date; lte?: Date };
-    channel?: MessageChannel;
-  } = {};
+  const whereClause: Prisma.MessageEventWhereInput = {};
 
   if (filters.startDate || filters.endDate) {
     whereClause.createdAt = {};
@@ -67,15 +65,16 @@ export async function getDashboardStats(filters: DashboardFilter) {
   }
 
   const [events, totalKnowledgeFiles] = await Promise.all([
-    (prisma as any).messageEvent.findMany({
+    prisma.messageEvent.findMany({
       where: whereClause,
       orderBy: { createdAt: "asc" },
-    }) as Promise<Array<{
-      createdAt: Date;
-      channel: MessageChannel;
-      direction: MessageDirection;
-      usedAi: boolean;
-    }>>,
+      select: {
+        createdAt: true,
+        channel: true,
+        direction: true,
+        usedAi: true,
+      },
+    }),
     prisma.file.count({
       where: filters.channel ? { channel: filters.channel } : undefined,
     }),
