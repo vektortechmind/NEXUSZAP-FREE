@@ -8,7 +8,7 @@ import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { InlineAlert } from "../components/ui/InlineAlert";
 import { ThemeToggle } from "../components/ThemeToggle";
-import nexusLogo from "../assets/branding/nexus.png";
+import { BrandLogo } from "../components/BrandLogo";
 
 function loginErrorMessage(err: unknown): string {
   if (!isAxiosError(err)) {
@@ -70,8 +70,8 @@ export function Login() {
       <main className="mx-auto flex min-h-screen w-full max-w-7xl items-center justify-center px-4 py-20 sm:px-6 lg:px-8">
         <section className="flex w-full items-center justify-center" aria-labelledby="login-title">
           <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-8">
-            <div className="mb-8">
-              <img src={nexusLogo} alt="NexusZAP" className="mb-5 h-14 w-auto max-w-[220px] object-contain" />
+            <div className="mb-8 text-center">
+              <BrandLogo className="mx-auto mb-6 h-[4.5rem] w-auto max-w-[280px] object-contain sm:h-20 sm:max-w-[320px]" />
               <h2 id="login-title" className="text-2xl font-semibold tracking-normal text-slate-950 dark:text-slate-50">
                 Entrar no painel
               </h2>

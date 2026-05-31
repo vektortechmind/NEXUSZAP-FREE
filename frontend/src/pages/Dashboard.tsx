@@ -10,7 +10,7 @@ import { Skeleton } from "../components/ui/Skeleton";
 import { StatusDot } from "../components/ui/StatusDot";
 import { Toolbar } from "../components/ui/Toolbar";
 import { useToast } from "../contexts/ToastContext";
-import nexusLogo from "../assets/branding/nexus.png";
+import { BrandLogo } from "../components/BrandLogo";
 
 type MessageStats = {
   date: string;
@@ -244,8 +244,8 @@ export function Dashboard() {
             <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950 dark:text-slate-50 sm:text-3xl">Visão consolidada de canais, IA e base ativa</h2>
             <p className="mt-3 text-sm leading-7 text-slate-700 dark:text-slate-300">Acompanhe o volume do período, a atividade por canal e o uso operacional do runtime em um único painel.</p>
           </div>
-          <div className="rounded-3xl border border-white/70 bg-white/70 p-4 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-950/55">
-            <img src={nexusLogo} alt="NexusZAP" className="h-20 w-auto max-w-[240px] object-contain sm:h-24" />
+          <div className="flex justify-center rounded-3xl border border-white/70 bg-white/70 p-5 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-950/55">
+            <BrandLogo className="mx-auto h-24 w-auto max-w-[280px] object-contain sm:h-28 sm:max-w-[320px]" />
           </div>
         </div>
       </Panel>

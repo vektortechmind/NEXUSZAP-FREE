@@ -103,7 +103,7 @@ export function UpdateSection() {
     <Section
       title="Update Center"
       description="Status e execução do update remoto."
-      actions={
+      actions={status ? (
         <div className="flex flex-wrap gap-2">
           <Button variant="secondary" size="sm" onClick={() => void checkUpdate()} disabled={loading} loading={loading}>
             <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
@@ -116,7 +116,7 @@ export function UpdateSection() {
             </Button>
           )}
         </div>
-      }
+      ) : undefined}
     >
       <Panel className="p-3">
         {error && (
