@@ -9,7 +9,7 @@ export function useInstancesOverview(addToast: (message: string, tone?: "success
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
-  const [busyAction, setBusyAction] = useState<"connect" | "disconnect" | "delete" | "token" | "remove-token" | null>(null);
+  const [busyAction, setBusyAction] = useState<"connect" | "disconnect" | "delete" | "token" | "remove-token" | "ai-toggle" | null>(null);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [token, setToken] = useState("");
   const [showTelegramToken, setShowTelegramToken] = useState(false);
@@ -88,6 +88,7 @@ export function useInstancesOverview(addToast: (message: string, tone?: "success
       slot: instance.slot,
       occupied: instance.occupied,
       available: instance.available,
+      aiWhatsappEnabled: instance.aiWhatsappEnabled,
       agent: instance.agent,
     }));
 
@@ -277,6 +278,23 @@ export function useInstancesOverview(addToast: (message: string, tone?: "success
     }
   }, [addToast, clearPairingIntent, loadData, markPairingIntent, openDetails]);
 
+  const handleWhatsappAiToggle = useCallback(async (card: WhatsappCard) => {
+    const nextEnabled = !card.aiWhatsappEnabled;
+    setBusyKey(card.key);
+    setBusyAction("ai-toggle");
+    try {
+      await api.put(`/agent/instances/${card.id}/config`, { aiWhatsappEnabled: nextEnabled });
+      addToast(`IA da instância ${card.name} ${nextEnabled ? "habilitada" : "desabilitada"}`, "success");
+      await loadData();
+    } catch (err: unknown) {
+      const errorObj = err as { response?: { data?: { error?: string } } };
+      addToast(errorObj?.response?.data?.error || "Erro ao alterar a IA da instância", "error");
+    } finally {
+      setBusyKey(null);
+      setBusyAction(null);
+    }
+  }, [addToast, loadData]);
+
   const handleDeleteInstance = useCallback(async (card: ChannelCard) => {
     if (card.channel === "WHATSAPP" && card.agent) {
       addToast(`Exclua o agente ${card.agent.name} antes de remover a instância ${card.name}.`, "warning");
@@ -399,6 +417,7 @@ export function useInstancesOverview(addToast: (message: string, tone?: "success
     handleCreateWhatsappFlow,
     handleSaveTelegramFromModal,
     handleWhatsappToggle,
+    handleWhatsappAiToggle,
     handleDeleteInstance,
     handleSaveTelegramToken,
     handleStartTelegram,
