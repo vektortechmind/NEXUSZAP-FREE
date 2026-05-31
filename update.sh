@@ -52,6 +52,30 @@ print_migration_summary() {
   echo "Migrations Prisma verificadas com sucesso."
 }
 
+update_panel_job_state() {
+  local status="$1"
+  local summary="$2"
+  local error="${3:-}"
+
+  if [[ -z "${UPDATE_JOB_FILE:-}" || -z "${UPDATE_JOB_ID:-}" || ! -f "${UPDATE_JOB_FILE:-}" ]]; then
+    return 0
+  fi
+
+  node - "$UPDATE_JOB_FILE" "$UPDATE_JOB_ID" "$status" "$summary" "$error" <<'NODE'
+const fs = require("fs");
+const [file, jobId, status, summary, error] = process.argv.slice(2);
+const job = JSON.parse(fs.readFileSync(file, "utf8"));
+if (job.id !== jobId) process.exit(0);
+job.status = status;
+job.summary = summary;
+job.error = error || null;
+if (status === "success" || status === "failed") {
+  job.finishedAt = new Date().toISOString();
+}
+fs.writeFileSync(file, `${JSON.stringify(job, null, 2)}\n`);
+NODE
+}
+
 run_backend_migrations_local() {
   local status_output=""
   local deploy_output=""
@@ -312,40 +336,10 @@ else
   CHANGED_FILES="$(git diff --name-only "$old_rev" "$new_rev")"
 fi
 
-echo ""
-echo "[2/5] Atualizando dependencias da raiz..."
-if [[ -f package-lock.json ]]; then
-  npm ci
-else
-  npm install
-fi
-
-echo ""
-echo "[3/5] Atualizando backend..."
-pushd backend >/dev/null
-if [[ -f package-lock.json ]]; then
-  npm ci
-else
-  npm install
-fi
-npm run db:generate
-popd >/dev/null
-
-echo ""
-echo "[4/5] Atualizando frontend..."
-pushd frontend >/dev/null
-if [[ -f package-lock.json ]]; then
-  npm ci
-else
-  npm install
-fi
-popd >/dev/null
-
-echo ""
-echo "[5/5] Build e restart Docker seletivo, se disponivel..."
-npm run build
-
 if docker_compose_available; then
+  echo ""
+  echo "[2/5] Ambiente Docker detectado. Dependencias e build serao feitos pelos Dockerfiles."
+
   load_env
   ensure_frontend_port
   ensure_bootstrap_app_url
@@ -368,24 +362,76 @@ if docker_compose_available; then
     fi
   fi
 
+  echo ""
+  echo "[3/5] Build Docker seletivo..."
   if [[ "$update_stack" == "true" ]]; then
-    docker_compose up -d --build
+    docker_compose build
   else
     if [[ "$update_backend" == "true" || "$update_frontend" == "true" ]]; then
-      docker_compose up -d --build backend frontend
+      docker_compose build backend frontend
+    else
+      echo "Nenhum build Docker necessario."
+    fi
+  fi
+
+  echo ""
+  echo "[4/5] Verificando migrations..."
+  run_backend_migrations_docker
+
+  echo ""
+  echo "[5/5] Restart Docker seletivo..."
+  if [[ "$update_stack" == "true" ]]; then
+    update_panel_job_state "running" "Build e migrations concluídos. Recriando stack Docker para finalizar o update."
+    docker_compose up -d
+  else
+    if [[ "$update_backend" == "true" || "$update_frontend" == "true" ]]; then
+      update_panel_job_state "running" "Build e migrations concluídos. Recriando containers para finalizar o update."
+      docker_compose up -d backend frontend
     fi
     if [[ "$update_backend" != "true" && "$update_frontend" != "true" && -n "$CHANGED_FILES" ]]; then
       echo "Mudancas sem impacto em containers. Nenhum restart Docker necessario."
     fi
   fi
 
-  run_backend_migrations_docker
-
   if [[ "$update_backend" == "true" || "$update_stack" == "true" ]]; then
     docker_compose ps backend
   fi
+  update_panel_job_state "success" "Atualização concluída com sucesso."
   echo "Stack Docker atualizada."
 else
+  echo ""
+  echo "[2/5] Atualizando dependencias da raiz..."
+  if [[ -f package-lock.json ]]; then
+    npm ci
+  else
+    npm install
+  fi
+
+  echo ""
+  echo "[3/5] Atualizando backend..."
+  pushd backend >/dev/null
+  if [[ -f package-lock.json ]]; then
+    npm ci
+  else
+    npm install
+  fi
+  npm run db:generate
+  popd >/dev/null
+
+  echo ""
+  echo "[4/5] Atualizando frontend..."
+  pushd frontend >/dev/null
+  if [[ -f package-lock.json ]]; then
+    npm ci
+  else
+    npm install
+  fi
+  popd >/dev/null
+
+  echo ""
+  echo "[5/5] Build local..."
+  npm run build
+
   load_env
   ensure_bootstrap_app_url
   run_backend_migrations_local

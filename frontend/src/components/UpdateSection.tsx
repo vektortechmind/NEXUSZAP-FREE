@@ -36,6 +36,7 @@ type UpdateJob = {
 
 export function UpdateSection() {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
+  const [jobSnapshot, setJobSnapshot] = useState<UpdateJob | null>(null);
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,6 +47,7 @@ export function UpdateSection() {
     try {
       const res = await api.get<UpdateStatus>("/update/status");
       setStatus(res.data);
+      setJobSnapshot(res.data.job);
       setRunning(Boolean(res.data.job?.active));
     } catch (err) {
       const message = isAxiosError(err)
@@ -67,8 +69,9 @@ export function UpdateSection() {
     setRunning(true);
     setError(null);
     try {
-      await api.post<{ success: boolean; message: string; job: UpdateJob }>("/update/apply");
-      await checkUpdate();
+      const res = await api.post<{ success: boolean; message: string; job: UpdateJob }>("/update/apply");
+      setJobSnapshot(res.data.job);
+      setStatus((current) => current ? { ...current, job: res.data.job } : current);
     } catch (err) {
       const message = isAxiosError(err)
         ? (err.response?.data as { error?: string } | undefined)?.error ?? "Não foi possível iniciar a atualização"
@@ -77,9 +80,20 @@ export function UpdateSection() {
       setRunning(false);
       console.error(err);
     }
-  }, [checkUpdate, status]);
+  }, [status]);
 
-  const job = status?.job ?? null;
+  const refreshJob = useCallback(async () => {
+    try {
+      const res = await api.get<{ job: UpdateJob | null }>("/update/job");
+      setJobSnapshot(res.data.job);
+      setStatus((current) => current ? { ...current, job: res.data.job } : current);
+      setRunning(Boolean(res.data.job?.active));
+    } catch (err) {
+      console.error(err);
+    }
+  }, []);
+
+  const job = status?.job ?? jobSnapshot;
   const updateInProgress = Boolean(job?.active || running);
   const jobTone = job?.status === "success" ? "success" : job?.status === "failed" ? "danger" : "warning";
   const jobLabel = job?.status === "queued"
@@ -95,10 +109,18 @@ export function UpdateSection() {
   useEffect(() => {
     if (!running) return;
     const timer = window.setTimeout(() => {
-      void checkUpdate();
+      void refreshJob();
     }, 2500);
     return () => window.clearTimeout(timer);
-  }, [checkUpdate, running, job?.status]);
+  }, [refreshJob, running, job?.status]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      void refreshJob();
+      void checkUpdate();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [checkUpdate, refreshJob]);
 
   return (
     <Section
@@ -135,7 +157,7 @@ export function UpdateSection() {
           </InlineAlert>
         )}
 
-        {!status ? (
+        {!status && !job ? (
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="min-w-0">
               <p className="text-sm font-semibold text-slate-950 dark:text-slate-50">Atualizações ainda não verificadas</p>
@@ -148,39 +170,43 @@ export function UpdateSection() {
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="grid gap-2 md:grid-cols-[repeat(3,minmax(0,1fr))_auto]">
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/45">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Atual</p>
-                <p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{status.currentVersion}</p>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/45">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Última</p>
-                <p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{status.latestVersion}</p>
-              </div>
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/45">
-                <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Estado</p>
-                <p className="mt-1 inline-flex items-center gap-2 text-sm font-semibold text-slate-950 dark:text-slate-50">
-                  <StatusDot tone={status.hasUpdate ? "warning" : "success"} pulse={status.hasUpdate} />
-                  {status.hasUpdate ? "Update disponível" : "Atualizado"}
-                </p>
-              </div>
-              <Button variant="ghost" size="sm" onClick={() => window.open(status.releaseUrl, "_blank", "noopener,noreferrer")} className="w-full md:w-auto">
-                <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
-                Release
-              </Button>
-            </div>
-
-            {status.hasUpdate ? (
-              <InlineAlert tone="warning" icon={<Shield size={16} aria-hidden="true" />} title="Update disponível">
-                <div className="space-y-2">
-                  <p className="text-sm">O backend executa o script controlado e mantém status do job.</p>
-                  {status.changelog && <pre className="max-h-28 overflow-y-auto rounded-lg bg-white/70 p-2 text-[11px] text-slate-700 dark:bg-slate-900/65 dark:text-slate-300">{status.changelog}</pre>}
+            {status && (
+              <>
+                <div className="grid gap-2 md:grid-cols-[repeat(3,minmax(0,1fr))_auto]">
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/45">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Atual</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{status.currentVersion}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/45">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Última</p>
+                    <p className="mt-1 text-sm font-semibold text-slate-950 dark:text-slate-50">{status.latestVersion}</p>
+                  </div>
+                  <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 dark:border-slate-800 dark:bg-slate-950/45">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Estado</p>
+                    <p className="mt-1 inline-flex items-center gap-2 text-sm font-semibold text-slate-950 dark:text-slate-50">
+                      <StatusDot tone={status.hasUpdate ? "warning" : "success"} pulse={status.hasUpdate} />
+                      {status.hasUpdate ? "Update disponível" : "Atualizado"}
+                    </p>
+                  </div>
+                  <Button variant="ghost" size="sm" onClick={() => window.open(status.releaseUrl, "_blank", "noopener,noreferrer")} className="w-full md:w-auto">
+                    <ExternalLink className="mr-2 h-4 w-4" aria-hidden="true" />
+                    Release
+                  </Button>
                 </div>
-              </InlineAlert>
-            ) : (
-              <InlineAlert tone="success" icon={<Check size={16} aria-hidden="true" />}>
-                {status.githubRepo} já está na versão mais recente.
-              </InlineAlert>
+
+                {status.hasUpdate ? (
+                  <InlineAlert tone="warning" icon={<Shield size={16} aria-hidden="true" />} title="Update disponível">
+                    <div className="space-y-2">
+                      <p className="text-sm">O backend executa o script controlado e mantém status do job.</p>
+                      {status.changelog && <pre className="max-h-28 overflow-y-auto rounded-lg bg-white/70 p-2 text-[11px] text-slate-700 dark:bg-slate-900/65 dark:text-slate-300">{status.changelog}</pre>}
+                    </div>
+                  </InlineAlert>
+                ) : (
+                  <InlineAlert tone="success" icon={<Check size={16} aria-hidden="true" />}>
+                    {status.githubRepo} já está na versão mais recente.
+                  </InlineAlert>
+                )}
+              </>
             )}
 
             {job && (

@@ -48,9 +48,9 @@ type UpdateStatusPayload = UpdateInfo & {
 function readVersionFile(): string | null {
   const candidates = [
     process.env.UPDATE_VERSION_FILE,
+    process.env.UPDATE_WORKSPACE_DIR ? path.resolve(process.env.UPDATE_WORKSPACE_DIR, "backend", "VERSION") : null,
     path.resolve(process.cwd(), "VERSION"),
     path.resolve(__dirname, "..", "..", "VERSION"),
-    process.env.UPDATE_WORKSPACE_DIR ? path.resolve(process.env.UPDATE_WORKSPACE_DIR, "backend", "VERSION") : null,
   ];
 
   for (const filePath of candidates) {

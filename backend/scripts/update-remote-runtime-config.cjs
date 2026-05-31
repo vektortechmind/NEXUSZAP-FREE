@@ -28,6 +28,8 @@ assert.ok(serviceSource.includes("UPDATE_STORAGE_DIR"), "update.service deve sup
 assert.ok(serviceSource.includes("reconcileRecoveredJob"), "update.service deve reconciliar jobs apos reinicio");
 
 assert.ok(updateScript.includes("docker_compose_available()"), "update.sh deve suportar docker compose ou docker-compose");
-assert.ok(updateScript.includes("docker_compose up -d --build"), "update.sh deve usar wrapper de compose no deploy");
+assert.ok(updateScript.includes("docker_compose build"), "update.sh deve fazer build Docker pelo wrapper de compose");
+assert.ok(updateScript.includes("docker_compose up -d"), "update.sh deve usar wrapper de compose no deploy");
+assert.ok(updateScript.includes("update_panel_job_state"), "update.sh deve persistir progresso do job antes do restart Docker");
 
 console.log("update-remote-runtime-config: OK");
