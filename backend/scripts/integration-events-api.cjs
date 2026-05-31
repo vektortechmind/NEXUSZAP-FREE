@@ -263,6 +263,27 @@ function validPayload(overrides = {}) {
 
   {
     const { app, logStore } = createApp(async () => ({
+      credential: { id: "cred-invalid-message" },
+      requestTimestamp: new Date("2026-05-29T14:00:00.000Z"),
+    }));
+    await app.ready();
+    const invalid = validPayload({ dedupKey: "evt-invalid-message" });
+    invalid.payload.message = { body: "   " };
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/integrations/events",
+      headers: { authorization: "Bearer valid-token" },
+      payload: invalid,
+    });
+    assert.equal(response.statusCode, 422, response.body);
+    assert.equal(JSON.parse(response.body).error.code, "INTEGRATION_CUSTOM_MESSAGE_INVALID");
+    const stored = Array.from(logStore.logs.values())[0];
+    assert.equal(stored.status, INTEGRATION_INGRESS_STATUS.REJECTED_CONTRACT);
+    assert.equal(stored.failureCode, "INTEGRATION_CUSTOM_MESSAGE_INVALID");
+    await app.close();
+  }
+  {
+    const { app, logStore } = createApp(async () => ({
       credential: { id: "cred-accepted" },
       requestTimestamp: new Date("2026-05-29T14:00:00.000Z"),
     }));

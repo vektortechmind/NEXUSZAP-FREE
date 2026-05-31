@@ -16,6 +16,7 @@ import {
 } from "../services/integrations/integrationIngress.service";
 import {
   UnsupportedIntegrationEventError,
+  InvalidIntegrationCustomMessageError,
   integrationEventCatalogService,
 } from "../services/integrations/integrationEventCatalog.service";
 import {
@@ -115,7 +116,7 @@ function requestSummary(request: FastifyRequest) {
 }
 
 function authFailureMessage(error: Error): { statusCode: number; code: string; message: string } {
-  if (error instanceof UnsupportedIntegrationEventError) {
+  if (error instanceof UnsupportedIntegrationEventError || error instanceof InvalidIntegrationCustomMessageError) {
     return { statusCode: error.statusCode, code: error.code, message: error.message };
   }
   if (error instanceof InvalidIntegrationTokenError) {

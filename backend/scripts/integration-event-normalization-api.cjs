@@ -17,6 +17,7 @@ const {
   getProductImage,
   normalizeIntegrationEventContext,
   UnsupportedIntegrationEventError,
+  InvalidIntegrationCustomMessageError,
 } = require("../src/services/integrations/integrationEventCatalog.service.ts");
 
 function createBasePayload() {
@@ -112,6 +113,7 @@ function expectPhoneContext(context, digits) {
     assert.equal(context.name, context.customer.name);
     assert.equal(context.email, context.customer.email);
     assert.equal(typeof context.productImage === "string" || context.productImage === null, true);
+    assert.equal(context.messageOverride, null);
 
     if (eventSlug === "carrinho_abandonado") {
       assert.equal(context.product.name, "Produto do Carrinho");
@@ -379,6 +381,49 @@ function expectPhoneContext(context, digits) {
     assert.equal(getProductImage(payload, "https://files.example.com"), "https://files.example.com/storage/products/curso-premium/capa.jpg");
   }
 
+  {
+    const payload = createBasePayload();
+    payload.message = { body: "  Texto customizado final  " };
+    const context = normalizeIntegrationEventContext("pedido_pago", payload);
+    assert.deepEqual(context.messageOverride, {
+      body: "Texto customizado final",
+      pixFollowupBody: null,
+      bodyLength: "Texto customizado final".length,
+      pixFollowupBodyLength: null,
+    });
+  }
+
+  {
+    const payload = createBasePayload();
+    payload.message = { body: "Mensagem Pix", pix_followup_body: "Pix copia e cola customizado" };
+    const context = normalizeIntegrationEventContext("pix_gerado", payload);
+    assert.equal(context.messageOverride.body, "Mensagem Pix");
+    assert.equal(context.messageOverride.pixFollowupBody, "Pix copia e cola customizado");
+  }
+
+  for (const invalidMessage of [
+    { body: "   " },
+    { body: 123 },
+    { body: "Texto undefined invalido" },
+    { caption: "nao aceito" },
+    { body: "ok", messageType: "button" },
+  ]) {
+    const payload = createBasePayload();
+    payload.message = invalidMessage;
+    assert.throws(
+      () => normalizeIntegrationEventContext("pedido_pago", payload),
+      (error) => error instanceof InvalidIntegrationCustomMessageError && error.code === "INTEGRATION_CUSTOM_MESSAGE_INVALID",
+    );
+  }
+
+  {
+    const payload = createBasePayload();
+    payload.message = { pix_followup_body: "Nao pode fora de Pix" };
+    assert.throws(
+      () => normalizeIntegrationEventContext("pedido_pago", payload),
+      (error) => error instanceof InvalidIntegrationCustomMessageError && error.code === "INTEGRATION_CUSTOM_MESSAGE_INVALID",
+    );
+  }
   {
     assert.throws(
       () => normalizeIntegrationEventContext("webhook.test", createBasePayload()),
