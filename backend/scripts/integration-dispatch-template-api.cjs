@@ -155,6 +155,11 @@ function assertNoRawLeak(template) {
       assert.equal(rendered.mimeType, "application/pdf");
       assert.equal(rendered.caption, rendered.body);
       assert.equal(rendered.externalAdReply.title, "Baixar boleto");
+      assert.equal(rendered.body.includes("34191.79001"), false);
+      assert.equal(rendered.body.includes("Linha digitável"), true);
+      assert.equal(rendered.body.includes("logo abaixo"), true);
+      assert.equal(rendered.followup.type, "boleto_barcode_text");
+      assert.equal(rendered.followup.body, "34191.79001 01043.510047 91020.150008 5 87470026000");
     }
 
     if (externalReplyEvents.has(eventSlug)) {
@@ -177,6 +182,7 @@ function assertNoRawLeak(template) {
     const rendered = renderIntegrationDispatchTemplate("pagamento_recusado", payloadForEvent("pagamento_recusado"));
     assert.equal(rendered.messageType, "text");
     assert.equal(rendered.body.includes("• Cartão sem limite"), true);
+    assert.equal(rendered.body.includes("↗ *Tentar novamente*\nhttps://checkout.example.com/c/123"), true);
     assert.equal(rendered.externalAdReply.title, "Tentar novamente");
     assert.equal(rendered.linkUrl, "https://checkout.example.com/c/123");
   }

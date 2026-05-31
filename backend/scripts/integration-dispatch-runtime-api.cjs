@@ -364,12 +364,13 @@ function createDispatchService(options = {}) {
       payload: createBasePayload(),
     });
     assert.equal(sentPayloads[0].content.text.includes("Tente novamente"), true);
+    assert.equal(sentPayloads[0].content.text.includes("↗ *Tentar novamente*\nhttps://checkout.example.com/c/123"), true);
     assert.equal(sentPayloads[0].content.contextInfo.externalAdReply.title, "Tentar novamente");
     assert.equal(sentPayloads[0].content.contextInfo.externalAdReply.sourceUrl, "https://checkout.example.com/c/123");
   }
 
   {
-    const { service, sentPayloads } = createDispatchService();
+    const { service, sentPayloads, store } = createDispatchService();
     await service.dispatchEvent({
       instanceId: "instance-a",
       eventSlug: "boleto_gerado",
@@ -383,7 +384,12 @@ function createDispatchService(options = {}) {
       caption: sentPayloads[0].content.caption,
       contextInfo: sentPayloads[0].content.contextInfo,
     });
+    assert.equal(sentPayloads[0].content.caption.includes("34191.79001"), false);
+    assert.equal(sentPayloads[0].content.caption.includes("Linha digitável"), true);
+    assert.equal(sentPayloads[1].content.text, "123456");
     assert.equal(sentPayloads[0].content.contextInfo.externalAdReply.title, "Baixar boleto");
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"secondaryDispatchStatus":"sent"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"secondaryDispatchKind":"boleto_barcode_text"'), true);
   }
 
   {

@@ -129,7 +129,7 @@ export function IntegrationOperationsOverview({ overview, refreshing, onRefresh 
                           <DetailField label="Próximo retry" value={entry.nextRetryAt ? formatDateTime(entry.nextRetryAt) : null} />
                           <DetailField label="Retry esgotado" value={entry.retryExhaustedAt ? formatDateTime(entry.retryExhaustedAt) : null} />
                           <DetailField label="Último erro retry" value={entry.lastRetryError} />
-                          <DetailField label="Pix secundário" value={formatSecondaryDispatchStatus(entry.payloadSummary?.secondaryDispatchStatus)} />
+                          <DetailField label="Mensagem secundária" value={formatSecondaryDispatchStatus(entry.payloadSummary?.secondaryDispatchStatus)} />
                           <DetailField label="Provider ID secundário" value={entry.payloadSummary?.secondaryProviderMessageId} mono />
                           <DetailField label="Falha secundária" value={entry.payloadSummary?.secondaryDispatchFailureCode} />
                           <DetailField label="Lookup WhatsApp" value={entry.payloadSummary?.whatsappLookupStatus} />

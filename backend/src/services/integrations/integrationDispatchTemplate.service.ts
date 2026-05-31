@@ -16,7 +16,7 @@ export type IntegrationRenderedExternalAdReply = {
 };
 
 export type IntegrationRenderedDispatchFollowup = {
-  type: "pix_copy_paste_text";
+  type: "pix_copy_paste_text" | "boleto_barcode_text";
   messageType: "text";
   body: string;
 };
@@ -272,6 +272,7 @@ function renderDocumentTemplate(
   paragraphs: Array<string | null | undefined>,
   fieldName: string,
   externalAdReply?: IntegrationRenderedExternalAdReply | null,
+  followup?: IntegrationRenderedDispatchFollowup | null,
 ): IntegrationRenderedDispatchTemplate {
   const requiredUrl = ensureRequiredUrl(context.eventSlug, fieldName, documentUrl);
   const body = assertRenderedText(joinParagraphs(paragraphs), context.eventSlug);
@@ -288,7 +289,7 @@ function renderDocumentTemplate(
     fileName: "boleto.pdf",
     mimeType: "application/pdf",
     externalAdReply: externalAdReply ?? null,
-    followup: null,
+    followup: followup ?? null,
     context,
   };
 }
@@ -330,6 +331,16 @@ function createPixCopyPasteFollowup(context: IntegrationNormalizedEventContext):
   };
 }
 
+function createBoletoBarcodeFollowup(context: IntegrationNormalizedEventContext): IntegrationRenderedDispatchFollowup | null {
+  if (!context.boletoBarcode) return null;
+
+  return {
+    type: "boleto_barcode_text",
+    messageType: "text",
+    body: assertRenderedText(context.boletoBarcode, context.eventSlug),
+  };
+}
+
 function renderDefaultIntegrationDispatchTemplateFromContext(
   context: IntegrationNormalizedEventContext,
 ): IntegrationRenderedDispatchTemplate {
@@ -366,6 +377,7 @@ function renderDefaultIntegrationDispatchTemplateFromContext(
           `❌ *${customer}*, o pagamento do *${product}* foi recusado.`,
           "Isso pode ter ocorrido por:\n• Cartão sem limite\n• Dados incorretos\n• Bloqueio da operadora",
           "👉 Tente novamente com outro cartão ou forma de pagamento:",
+          visibleActionLink("Tentar novamente", context.checkoutLink),
         ],
         createExternalAdReply("Tentar novamente", product, context.checkoutLink),
         context.checkoutLink,
@@ -407,10 +419,11 @@ function renderDefaultIntegrationDispatchTemplateFromContext(
           `📄 *${customer}*, o boleto do *${product}* foi gerado!`,
           context.boletoAmount ? `📋 *Valor:* R$ ${context.boletoAmount}` : null,
           context.boletoExpire ? `📅 *Vencimento:* ${context.boletoExpire}` : null,
-          context.boletoBarcode ? `🔢 *Linha digitável:* ${context.boletoBarcode}` : null,
+          context.boletoBarcode ? "🔢 *Linha digitável:* logo abaixo." : null,
         ],
         "boletoUrl",
         createExternalAdReply("Baixar boleto", product, context.boletoUrl),
+        createBoletoBarcodeFollowup(context),
       );
 
     case "carrinho_abandonado":
