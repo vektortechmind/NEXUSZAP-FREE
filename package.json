@@ -20,5 +20,6 @@
   "devDependencies": {
     "concurrently": "^9.2.1",
     "tsx": "^4.22.3"
-  }
+  },
+  "license": "SEE LICENSE IN LICENSE.md"
 }

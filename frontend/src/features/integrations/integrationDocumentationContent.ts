@@ -233,10 +233,10 @@ export const INTEGRATION_RENDER_RULES = [
   "Quando a Baileys emitir messages.update para um providerMessageId conhecido, a auditoria registra recibo pós-envio observacional como SUBMITTED, DELIVERED, READ, PLAYED ou FAILED_AFTER_SUBMIT; ausência desse recibo não é falha automática.",
   "No evento pix_gerado, quando pix.copy_paste ou pix.copyPaste estiver disponível, o runtime tenta usar botão de copiar código Pix. Se o relay interativo for aceito, a segunda mensagem textual do Pix não é enviada.",
   "No evento boleto_gerado, quando boleto.pdf_url existir, o runtime tenta usar botão para abrir boleto; quando boleto.barcode existir, tenta usar botão para copiar a linha digitável. Se o relay interativo for aceito, a segunda mensagem textual da linha digitável não é enviada.",
-  "Para boleto_gerado, o backend baixa/valida boleto.pdf_url antes do envio. Se o PDF não estiver acessível, o dispatch cai para texto com link visível do boleto e registra deliveryPath text_fallback_document com documentFallbackReason.",
-  "pedido_pago usa texto com link visível no corpo como caminho oficial e confiável.",
-  "pagamento_recusado exibe o checkoutLink no corpo da mensagem e também pode manter o preview do link quando o provider renderizar externalAdReply.",
-  "carrinho_abandonado, assinatura_criada e assinatura_em_atraso mantêm messageType image, mas exibem checkoutLink no corpo/caption quando a URL é informada.",
+  "Para boleto_gerado, boleto.pdf_url precisa ser uma URL HTTP/HTTPS pública. O runtime pode enviar botão para abrir boleto; se o caminho interativo ou o download do PDF falhar tecnicamente, o fallback textual mantém o link visível e registra o caminho operacional na auditoria.",
+  "pedido_pago pode usar botão CTA URL quando checkoutLink existir; se o interativo falhar ou não estiver disponível, o fallback textual mantém o link visível.",
+  "pagamento_recusado pode usar botão CTA URL para nova tentativa quando checkoutLink existir; em fallback textual, o link continua visível no corpo.",
+  "carrinho_abandonado, assinatura_criada e assinatura_em_atraso podem usar botão CTA URL quando checkoutLink existir; em fallback textual, o link continua visível.",
   "Quando houver URL aplicável nos eventos com ação consolidada, o runtime pode renderizar botão CTA URL. Em falha técnica do interativo, o fallback textual mantém o link visível.",
   "A telemetria do dispatch registra deliveryPath, interactiveButtonKinds, interactiveButtonCount e secondaryDispatchStatus para diferenciar interativo aceito, fallback textual e segunda mensagem Pix/boleto.",
   "externalAdReply continua restrito aos fluxos text, document e aos fallbacks textuais dos eventos ricos; ele não é usado no caminho de imagem limpa nem substitui botão real.",
@@ -393,7 +393,7 @@ export const INTEGRATION_MINIMAL_PAYLOAD_EXAMPLES = [
   },
   {
     event: "pix_gerado",
-    description: "Pix gerado; copy_paste habilita a segunda mensagem com código copia e cola.",
+    description: "Pix gerado; copy_paste permite botão de copiar código Pix e fallback textual quando necessário.",
     code: `{
   "event": "pix_gerado",
   "instanceId": "$INSTANCE_ID",
@@ -413,7 +413,7 @@ export const INTEGRATION_MINIMAL_PAYLOAD_EXAMPLES = [
   },
   {
     event: "boleto_gerado",
-    description: "Boleto gerado; boleto.pdf_url ou boleto.pdfUrl é obrigatório, e boleto.barcode permite enviar a linha digitável como segunda mensagem.",
+    description: "Boleto gerado; boleto.pdf_url ou boleto.pdfUrl é obrigatório, e boleto.barcode permite botão de copiar linha digitável e fallback textual quando necessário.",
     code: `{
   "event": "boleto_gerado",
   "instanceId": "$INSTANCE_ID",
@@ -602,17 +602,17 @@ export const INTEGRATION_TROUBLESHOOTING = [
     ],
   },
   {
-    title: "Segunda mensagem do Pix não saiu",
+    title: "Botão ou fallback do Pix não saiu",
     steps: [
       "Confirme se payload.pix.copy_paste ou payload.pix.copyPaste foi enviado com valor textual válido.",
       "Revise a auditoria do dispatch para secondaryDispatchStatus: sent, skipped_missing_pix_code, skipped_interactive_button ou failed_send.",
     ],
   },
   {
-    title: "CTA real indisponível",
+    title: "Botão CTA indisponível",
     steps: [
-      "No evento pedido_pago, o comportamento oficial é mensagem textual com link visível no corpo quando checkoutLink existir.",
-      "Nos eventos carrinho_abandonado, assinatura_criada e assinatura_em_atraso, o checkoutLink aparece no corpo/caption quando informado.",
+      "No evento pedido_pago, checkoutLink pode virar botão CTA URL; se o interativo falhar, o link aparece no fallback textual.",
+      "Nos eventos carrinho_abandonado, assinatura_criada e assinatura_em_atraso, checkoutLink pode virar botão CTA URL; em fallback, o link aparece como texto.",
       "Sem checkoutLink, a mensagem continua sendo enviada sem link complementar.",
     ],
   },
@@ -621,8 +621,8 @@ export const INTEGRATION_TROUBLESHOOTING = [
     steps: [
       "Para boleto_gerado, envie boleto.pdf_url ou boleto.pdfUrl com URL pública HTTP/HTTPS do PDF.",
       "Sem essa URL, o template falha com erro 422 antes do envio ao WhatsApp.",
-      "Se a URL existir, mas o backend não conseguir baixar o PDF, o dispatch segue como texto com link visível e registra deliveryPath text_fallback_document e documentFallbackReason na auditoria.",
-      "Envie boleto.barcode quando quiser que a linha digitável seja enviada em segunda mensagem textual.",
+      "Se a URL existir, mas o botão/documento não puder ser usado tecnicamente, o dispatch segue com fallback textual contendo link visível e registra o caminho operacional na auditoria.",
+      "Envie boleto.barcode quando quiser habilitar botão de copiar linha digitável e fallback textual em falha técnica.",
     ],
   },
   {
@@ -688,7 +688,7 @@ export const INTEGRATION_CURL_EXAMPLE = `curl -X POST "$ENDPOINT_URL" \\
 export const INTEGRATION_CURL_EVENT_EXAMPLES = [
   {
     title: "pedido_pago",
-    description: "Pagamento aprovado com texto e link visível no corpo.",
+    description: "Pagamento aprovado com botão CTA URL quando checkoutLink existir e fallback textual com link visível.",
     code: `curl -X POST "$ENDPOINT_URL" \\
   -H "Authorization: Bearer $SECRET_TOKEN" \\
   -H "Content-Type: application/json" \\
@@ -793,7 +793,7 @@ export const INTEGRATION_CURL_EVENT_EXAMPLES = [
   },
   {
     title: "carrinho_abandonado",
-    description: "Recuperação de carrinho com produto, telefone e link de retomada visível no corpo/caption.",
+    description: "Recuperação de carrinho com produto, telefone, botão CTA URL quando checkoutLink existir e fallback textual com link visível.",
     code: `curl -X POST "$ENDPOINT_URL" \\
   -H "Authorization: Bearer $SECRET_TOKEN" \\
   -H "Content-Type: application/json" \\
@@ -816,7 +816,7 @@ export const INTEGRATION_CURL_EVENT_EXAMPLES = [
   },
   {
     title: "assinatura_criada",
-    description: "Entrada de assinatura com produto recorrente, próxima cobrança opcional e link de acesso visível no corpo/caption.",
+    description: "Entrada de assinatura com produto recorrente, próxima cobrança opcional, botão CTA URL quando checkoutLink existir e fallback textual com link visível.",
     code: `curl -X POST "$ENDPOINT_URL" \\
   -H "Authorization: Bearer $SECRET_TOKEN" \\
   -H "Content-Type: application/json" \\
@@ -841,7 +841,7 @@ export const INTEGRATION_CURL_EVENT_EXAMPLES = [
   },
   {
     title: "assinatura_em_atraso",
-    description: "Regularização de assinatura com produto recorrente e link de pagamento visível no corpo/caption.",
+    description: "Regularização de assinatura com produto recorrente, botão CTA URL quando checkoutLink existir e fallback textual com link visível.",
     code: `curl -X POST "$ENDPOINT_URL" \\
   -H "Authorization: Bearer $SECRET_TOKEN" \\
   -H "Content-Type: application/json" \\
