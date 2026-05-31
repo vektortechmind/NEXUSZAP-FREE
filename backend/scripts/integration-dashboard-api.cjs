@@ -75,10 +75,24 @@ function createOverviewService() {
         id: "dispatch-a-1",
         instanceId: "instance-a",
         eventSlug: "pedido_pago",
+        recipientJid: "5511999999999@s.whatsapp.net",
         messageType: "text",
         dispatchStatus: "SENT",
         failureCode: null,
         providerMessageId: "wamid.123",
+        payloadSummaryJson: JSON.stringify({
+          rawPhone: "+55 11 99999-9999",
+          normalizedPhone: "5511999999999",
+          recipientJid: "5511999999999@s.whatsapp.net",
+          dispatchedMessageType: "text",
+          deliveryPath: "text",
+          secondaryDispatchStatus: "not_applicable",
+        }),
+        retryable: false,
+        retryAttemptCount: 1,
+        nextRetryAt: null,
+        lastRetryError: null,
+        retryExhaustedAt: null,
         createdAt: new Date("2026-05-29T11:58:03.000Z"),
         processedAt: new Date("2026-05-29T11:58:04.000Z"),
       },
@@ -86,10 +100,23 @@ function createOverviewService() {
         id: "dispatch-c-1",
         instanceId: "instance-c",
         eventSlug: "boleto_gerado",
+        recipientJid: "5511888888888@s.whatsapp.net",
         messageType: "document",
         dispatchStatus: "FAILED_INSTANCE_OFFLINE",
         failureCode: "INTEGRATION_DISPATCH_INSTANCE_OFFLINE",
         providerMessageId: null,
+        payloadSummaryJson: JSON.stringify({
+          rawPhone: "5511888888888",
+          normalizedPhone: "5511888888888",
+          recipientJid: "5511888888888@s.whatsapp.net",
+          dispatchedMessageType: "document",
+          deliveryPath: "document",
+        }),
+        retryable: true,
+        retryAttemptCount: 2,
+        nextRetryAt: new Date("2026-05-29T10:02:03.000Z"),
+        lastRetryError: "INTEGRATION_DISPATCH_INSTANCE_OFFLINE",
+        retryExhaustedAt: null,
         createdAt: new Date("2026-05-29T10:00:03.000Z"),
         processedAt: new Date("2026-05-29T10:00:04.000Z"),
       },
@@ -125,9 +152,17 @@ function createOverviewService() {
     assert.equal(overview.auditLogs[0].entryType, "dispatch");
     assert.equal(overview.auditLogs[0].status, "SENT");
     assert.equal(overview.auditLogs[0].providerMessageId, "wamid.123");
+    assert.equal(overview.auditLogs[0].recipientJid, "5511999999999@s.whatsapp.net");
+    assert.equal(overview.auditLogs[0].payloadSummary.rawPhone, "+55 11 99999-9999");
+    assert.equal(overview.auditLogs[0].payloadSummary.normalizedPhone, "5511999999999");
+    assert.equal(overview.auditLogs[0].payloadSummary.deliveryPath, "text");
+    assert.equal(overview.auditLogs[0].retryable, false);
+    assert.equal(overview.auditLogs[0].retryAttemptCount, 1);
     assert.equal(overview.auditLogs[1].entryType, "ingress");
     assert.equal(overview.auditLogs[1].instanceName, "Vendas");
     assert.equal(overview.auditLogs[3].failureCode, "INTEGRATION_DISPATCH_INSTANCE_OFFLINE");
+    assert.equal(overview.integrations[1].lastDispatch.retryable, true);
+    assert.equal(overview.integrations[1].lastDispatch.nextRetryAt, "2026-05-29T10:02:03.000Z");
     assert.ok(!("secretToken" in overview.integrations[0]));
   }
 
@@ -147,10 +182,25 @@ function createOverviewService() {
       id: `dispatch-limit-${index}` ,
       instanceId: "instance-a",
       eventSlug: "pix_gerado",
+      recipientJid: "5511999999999@s.whatsapp.net",
       messageType: "text",
       dispatchStatus: "SENT",
       failureCode: null,
       providerMessageId: `wamid.limit.${index}` ,
+      payloadSummaryJson: JSON.stringify({
+        rawPhone: "+55 11 99999-9999",
+        normalizedPhone: "5511999999999",
+        recipientJid: "5511999999999@s.whatsapp.net",
+        dispatchedMessageType: "text",
+        deliveryPath: "text",
+        secondaryDispatchStatus: "sent",
+        secondaryProviderMessageId: `wamid.secondary.${index}`,
+      }),
+      retryable: false,
+      retryAttemptCount: 1,
+      nextRetryAt: null,
+      lastRetryError: null,
+      retryExhaustedAt: null,
       createdAt: new Date(Date.UTC(2026, 4, 29, 10, index, 0, index)),
       processedAt: new Date(Date.UTC(2026, 4, 29, 10, index, 1, index)),
     }));
@@ -192,9 +242,14 @@ function createOverviewService() {
     assert.equal(payload.documentation.path, "/integracoes/documentacao");
     assert.equal(payload.documentation.endpointUrl, "https://painel.exemplo.com/api/integrations/events");
     assert.equal(payload.integrations[0].recentDispatches[0].providerMessageId, "wamid.123");
+    assert.equal(payload.integrations[0].recentDispatches[0].recipientJid, "5511999999999@s.whatsapp.net");
+    assert.equal(payload.integrations[0].recentDispatches[0].payloadSummary.normalizedPhone, "5511999999999");
+    assert.equal(payload.integrations[0].recentDispatches[0].payloadSummary.deliveryPath, "text");
     assert.equal(payload.integrations[1].lastDispatch.failureCode, "INTEGRATION_DISPATCH_INSTANCE_OFFLINE");
+    assert.equal(payload.integrations[1].lastDispatch.retryAttemptCount, 2);
     assert.equal(payload.integrations[2].tokenPreview, "nz_live_xyz***");
     assert.equal(payload.auditLogs[0].identifier, "dispatch-a-1");
+    assert.equal(payload.auditLogs[0].recipientJid, "5511999999999@s.whatsapp.net");
     assert.equal(payload.auditLogs[1].entryType, "ingress");
     assert.equal(payload.auditLogs[2].eventSlug, "boleto_gerado");
     assert.equal(payload.integrations.some((item) => Object.prototype.hasOwnProperty.call(item, "encryptedToken")), false);

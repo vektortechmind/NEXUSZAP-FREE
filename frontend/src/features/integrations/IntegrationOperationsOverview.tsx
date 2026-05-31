@@ -8,6 +8,8 @@ import {
   formatAuditEntryType,
   formatAuditMeta,
   formatAuditStatus,
+  formatDispatchDeliveryPath,
+  formatSecondaryDispatchStatus,
   getVisibleAuditLogs,
   INTEGRATION_AUDIT_SCROLL_CONTAINER_CLASSNAME,
   INTEGRATION_AUDIT_VISIBLE_LIMIT,
@@ -22,6 +24,20 @@ function formatDateTime(value: string): string {
     hour: "2-digit",
     minute: "2-digit",
   }).format(date);
+}
+
+function DetailField({ label, value, mono = false }: { label: string; value: string | number | null | undefined; mono?: boolean }) {
+  const content = value === undefined || value === null || value === "" ? "N/D" : String(value);
+  return (
+    <div>
+      <p className="font-semibold text-slate-950 dark:text-slate-50">{label}</p>
+      {mono ? (
+        <code className="break-all font-mono text-[11px] text-slate-700 dark:text-slate-200">{content}</code>
+      ) : (
+        <p className="break-words">{content}</p>
+      )}
+    </div>
+  );
 }
 
 type IntegrationOperationsOverviewProps = {
@@ -84,19 +100,36 @@ export function IntegrationOperationsOverview({ overview, refreshing, onRefresh 
 
                   <details className="mt-2 rounded-lg border border-slate-200 bg-white/80 p-2 dark:border-slate-800 dark:bg-slate-900/70">
                     <summary className="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Detalhes</summary>
+                    {entry.entryType === "dispatch" && entry.status === "SENT" ? (
+                      <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2 py-1.5 text-xs text-amber-900 dark:border-amber-900/70 dark:bg-amber-950/35 dark:text-amber-200">
+                        SENT indica que o runtime submeteu a mensagem ao provider. Isso não confirma entrega, leitura ou recebimento no aparelho final.
+                      </p>
+                    ) : null}
                     <div className="mt-2 grid gap-2 text-xs text-slate-600 dark:text-slate-400 md:grid-cols-3">
-                      <div>
-                        <p className="font-semibold text-slate-950 dark:text-slate-50">Timestamp</p>
-                        <p>{formatDateTime(entry.timestamp)}</p>
-                      </div>
-                      <div>
-                        <p className="font-semibold text-slate-950 dark:text-slate-50">Identificador</p>
-                        <code className="break-all font-mono text-[11px] text-slate-700 dark:text-slate-200">{entry.identifier}</code>
-                      </div>
-                      <div>
-                        <p className="font-semibold text-slate-950 dark:text-slate-50">Meta</p>
-                        <p className="break-all">{formatAuditMeta(entry)}</p>
-                      </div>
+                      <DetailField label="Timestamp" value={formatDateTime(entry.timestamp)} />
+                      <DetailField label="Identificador" value={entry.identifier} mono />
+                      <DetailField label="Meta" value={formatAuditMeta(entry)} />
+                      {entry.entryType === "dispatch" ? (
+                        <>
+                          <DetailField label="Destinatário" value={entry.recipientJid ?? entry.payloadSummary?.recipientJid} mono />
+                          <DetailField label="Telefone recebido" value={entry.payloadSummary?.rawPhone} />
+                          <DetailField label="Telefone normalizado" value={entry.payloadSummary?.normalizedPhone} mono />
+                          <DetailField label="Tipo de mensagem" value={entry.payloadSummary?.dispatchedMessageType ?? entry.messageType} />
+                          <DetailField label="Caminho" value={formatDispatchDeliveryPath(entry.payloadSummary?.deliveryPath)} />
+                          <DetailField label="Provider ID" value={entry.providerMessageId} mono />
+                          <DetailField label="Falha" value={entry.failureCode} />
+                          <DetailField label="Retry" value={entry.retryable ? "Sim" : "Não"} />
+                          <DetailField label="Tentativas" value={entry.retryAttemptCount} />
+                          <DetailField label="Próximo retry" value={entry.nextRetryAt ? formatDateTime(entry.nextRetryAt) : null} />
+                          <DetailField label="Retry esgotado" value={entry.retryExhaustedAt ? formatDateTime(entry.retryExhaustedAt) : null} />
+                          <DetailField label="Último erro retry" value={entry.lastRetryError} />
+                          <DetailField label="Pix secundário" value={formatSecondaryDispatchStatus(entry.payloadSummary?.secondaryDispatchStatus)} />
+                          <DetailField label="Provider ID secundário" value={entry.payloadSummary?.secondaryProviderMessageId} mono />
+                          <DetailField label="Falha secundária" value={entry.payloadSummary?.secondaryDispatchFailureCode} />
+                          <DetailField label="Lookup WhatsApp" value={entry.payloadSummary?.whatsappLookupStatus} />
+                          <DetailField label="JID lookup" value={entry.payloadSummary?.whatsappLookupJid} mono />
+                        </>
+                      ) : null}
                     </div>
                   </details>
                 </article>

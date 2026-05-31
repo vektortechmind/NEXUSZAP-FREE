@@ -37,14 +37,35 @@ export type IntegrationDashboardIngressRecord = {
   processedAt: Date | null;
 };
 
+export type IntegrationDashboardDispatchSummary = {
+  rawPhone: string | null;
+  normalizedPhone: string | null;
+  recipientJid: string | null;
+  intendedMessageType: string | null;
+  dispatchedMessageType: string | null;
+  deliveryPath: string | null;
+  secondaryDispatchStatus: string | null;
+  secondaryProviderMessageId: string | null;
+  secondaryDispatchFailureCode: string | null;
+  whatsappLookupStatus: string | null;
+  whatsappLookupJid: string | null;
+};
+
 export type IntegrationDashboardDispatchRecord = {
   id: string;
   instanceId: string | null;
   eventSlug: string | null;
+  recipientJid: string | null;
   messageType: string | null;
   dispatchStatus: IntegrationDispatchStatus;
   failureCode: string | null;
   providerMessageId: string | null;
+  payloadSummaryJson: string | null;
+  retryable: boolean;
+  retryAttemptCount: number;
+  nextRetryAt: Date | null;
+  lastRetryError: string | null;
+  retryExhaustedAt: Date | null;
   createdAt: Date;
   processedAt: Date | null;
 };
@@ -98,10 +119,17 @@ export type IntegrationDashboardOverview = {
     lastDispatch: {
       id: string;
       eventSlug: string | null;
+      recipientJid: string | null;
       messageType: string | null;
       dispatchStatus: string;
       failureCode: string | null;
       providerMessageId: string | null;
+      payloadSummary: IntegrationDashboardDispatchSummary;
+      retryable: boolean;
+      retryAttemptCount: number;
+      nextRetryAt: string | null;
+      lastRetryError: string | null;
+      retryExhaustedAt: string | null;
       createdAt: string;
       processedAt: string | null;
     } | null;
@@ -118,10 +146,17 @@ export type IntegrationDashboardOverview = {
     recentDispatches: Array<{
       id: string;
       eventSlug: string | null;
+      recipientJid: string | null;
       messageType: string | null;
       dispatchStatus: string;
       failureCode: string | null;
       providerMessageId: string | null;
+      payloadSummary: IntegrationDashboardDispatchSummary;
+      retryable: boolean;
+      retryAttemptCount: number;
+      nextRetryAt: string | null;
+      lastRetryError: string | null;
+      retryExhaustedAt: string | null;
       createdAt: string;
       processedAt: string | null;
     }>;
@@ -136,6 +171,14 @@ export type IntegrationDashboardOverview = {
     timestamp: string;
     failureCode: string | null;
     providerMessageId: string | null;
+    recipientJid: string | null;
+    payloadSummary: IntegrationDashboardDispatchSummary | null;
+    messageType: string | null;
+    retryable: boolean | null;
+    retryAttemptCount: number | null;
+    nextRetryAt: string | null;
+    lastRetryError: string | null;
+    retryExhaustedAt: string | null;
   }>;
 };
 
@@ -177,6 +220,68 @@ function pushLimited<T>(items: T[], item: T, max: number) {
   if (items.length < max) {
     items.push(item);
   }
+}
+
+function asStringOrNull(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value : null;
+}
+
+function parseDispatchSummary(payloadSummaryJson: string | null): IntegrationDashboardDispatchSummary {
+  const empty: IntegrationDashboardDispatchSummary = {
+    rawPhone: null,
+    normalizedPhone: null,
+    recipientJid: null,
+    intendedMessageType: null,
+    dispatchedMessageType: null,
+    deliveryPath: null,
+    secondaryDispatchStatus: null,
+    secondaryProviderMessageId: null,
+    secondaryDispatchFailureCode: null,
+    whatsappLookupStatus: null,
+    whatsappLookupJid: null,
+  };
+
+  if (!payloadSummaryJson) return empty;
+
+  try {
+    const parsed = JSON.parse(payloadSummaryJson) as Record<string, unknown>;
+    return {
+      rawPhone: asStringOrNull(parsed.rawPhone),
+      normalizedPhone: asStringOrNull(parsed.normalizedPhone),
+      recipientJid: asStringOrNull(parsed.recipientJid),
+      intendedMessageType: asStringOrNull(parsed.intendedMessageType),
+      dispatchedMessageType: asStringOrNull(parsed.dispatchedMessageType),
+      deliveryPath: asStringOrNull(parsed.deliveryPath),
+      secondaryDispatchStatus: asStringOrNull(parsed.secondaryDispatchStatus),
+      secondaryProviderMessageId: asStringOrNull(parsed.secondaryProviderMessageId),
+      secondaryDispatchFailureCode: asStringOrNull(parsed.secondaryDispatchFailureCode),
+      whatsappLookupStatus: asStringOrNull(parsed.whatsappLookupStatus),
+      whatsappLookupJid: asStringOrNull(parsed.whatsappLookupJid),
+    };
+  } catch {
+    return empty;
+  }
+}
+
+function toDispatchSnapshot(log: IntegrationDashboardDispatchRecord) {
+  const payloadSummary = parseDispatchSummary(log.payloadSummaryJson);
+  return {
+    id: log.id,
+    eventSlug: log.eventSlug,
+    recipientJid: log.recipientJid,
+    messageType: log.messageType,
+    dispatchStatus: log.dispatchStatus,
+    failureCode: log.failureCode,
+    providerMessageId: log.providerMessageId,
+    payloadSummary,
+    retryable: log.retryable ?? false,
+    retryAttemptCount: log.retryAttemptCount ?? 0,
+    nextRetryAt: toIso(log.nextRetryAt),
+    lastRetryError: log.lastRetryError ?? null,
+    retryExhaustedAt: toIso(log.retryExhaustedAt),
+    createdAt: log.createdAt.toISOString(),
+    processedAt: toIso(log.processedAt),
+  };
 }
 
 export function createPrismaIntegrationDashboardStore(): IntegrationDashboardStore {
@@ -223,10 +328,17 @@ export function createPrismaIntegrationDashboardStore(): IntegrationDashboardSto
           id: true,
           instanceId: true,
           eventSlug: true,
+          recipientJid: true,
           messageType: true,
           dispatchStatus: true,
           failureCode: true,
           providerMessageId: true,
+          payloadSummaryJson: true,
+          retryable: true,
+          retryAttemptCount: true,
+          nextRetryAt: true,
+          lastRetryError: true,
+          retryExhaustedAt: true,
           createdAt: true,
           processedAt: true,
         },
@@ -385,16 +497,7 @@ export function createIntegrationDashboardService(store: IntegrationDashboardSto
             receivedAt: lastIngress.receivedAt.toISOString(),
             processedAt: toIso(lastIngress.processedAt),
           } : null,
-          lastDispatch: lastDispatch ? {
-            id: lastDispatch.id,
-            eventSlug: lastDispatch.eventSlug,
-            messageType: lastDispatch.messageType,
-            dispatchStatus: lastDispatch.dispatchStatus,
-            failureCode: lastDispatch.failureCode,
-            providerMessageId: lastDispatch.providerMessageId,
-            createdAt: lastDispatch.createdAt.toISOString(),
-            processedAt: toIso(lastDispatch.processedAt),
-          } : null,
+          lastDispatch: lastDispatch ? toDispatchSnapshot(lastDispatch) : null,
           recentIngresses: recentIngresses.map((log) => ({
             id: log.id,
             eventSlug: log.eventSlug,
@@ -405,16 +508,7 @@ export function createIntegrationDashboardService(store: IntegrationDashboardSto
             receivedAt: log.receivedAt.toISOString(),
             processedAt: toIso(log.processedAt),
           })),
-          recentDispatches: recentDispatches.map((log) => ({
-            id: log.id,
-            eventSlug: log.eventSlug,
-            messageType: log.messageType,
-            dispatchStatus: log.dispatchStatus,
-            failureCode: log.failureCode,
-            providerMessageId: log.providerMessageId,
-            createdAt: log.createdAt.toISOString(),
-            processedAt: toIso(log.processedAt),
-          })),
+          recentDispatches: recentDispatches.map(toDispatchSnapshot),
         };
       }).sort((a, b) => {
         const left = latestIso([
@@ -444,6 +538,14 @@ export function createIntegrationDashboardService(store: IntegrationDashboardSto
             timestamp: log.receivedAt.toISOString(),
             failureCode: log.failureCode,
             providerMessageId: null,
+            recipientJid: null,
+            payloadSummary: null,
+            messageType: null,
+            retryable: null,
+            retryAttemptCount: null,
+            nextRetryAt: null,
+            lastRetryError: null,
+            retryExhaustedAt: null,
           };
         }),
         ...dispatchLogs.filter((log) => log.instanceId).map((log) => {
@@ -459,6 +561,14 @@ export function createIntegrationDashboardService(store: IntegrationDashboardSto
             timestamp: log.createdAt.toISOString(),
             failureCode: log.failureCode,
             providerMessageId: log.providerMessageId,
+            recipientJid: log.recipientJid,
+            payloadSummary: parseDispatchSummary(log.payloadSummaryJson),
+            messageType: log.messageType,
+            retryable: log.retryable ?? false,
+            retryAttemptCount: log.retryAttemptCount ?? 0,
+            nextRetryAt: toIso(log.nextRetryAt),
+            lastRetryError: log.lastRetryError ?? null,
+            retryExhaustedAt: toIso(log.retryExhaustedAt),
           };
         }),
       ].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, recentLogLimit);
