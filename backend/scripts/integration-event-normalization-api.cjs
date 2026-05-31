@@ -205,9 +205,59 @@ function expectPhoneContext(context, digits) {
 
   {
     const payload = createBasePayload();
+    payload.customer.phone = "+55 (11) 98765-4321";
+    const context = normalizeIntegrationEventContext("pedido_pago", payload);
+    expectPhoneContext(context, "5511987654321");
+  }
+
+  {
+    const payload = createBasePayload();
+    payload.customer.phone = "+1 (415) 555-2671";
+    const context = normalizeIntegrationEventContext("pedido_pago", payload);
+    expectPhoneContext(context, "14155552671");
+  }
+
+  {
+    const payload = createBasePayload();
+    payload.customer.phone = "14155552671";
+    const context = normalizeIntegrationEventContext("pedido_pago", payload);
+    expectPhoneContext(context, "14155552671");
+  }
+
+  {
+    const payload = createBasePayload();
+    payload.customer.phone = "+351 912 345 678";
+    const context = normalizeIntegrationEventContext("pedido_pago", payload);
+    expectPhoneContext(context, "351912345678");
+  }
+
+  {
+    const payload = createBasePayload();
+    payload.customer.phone = "+54 9 11 2345-6789";
+    const context = normalizeIntegrationEventContext("pedido_pago", payload);
+    expectPhoneContext(context, "5491123456789");
+  }
+
+  {
+    const payload = createBasePayload();
+    payload.customer.phone = "351912345678";
+    const context = normalizeIntegrationEventContext("pedido_pago", payload);
+    expectPhoneContext(context, "351912345678");
+  }
+
+  {
+    const payload = createBasePayload();
     payload.customer.phone = "12345";
     const context = normalizeIntegrationEventContext("pedido_pago", payload);
     assert.equal(context.phone, "12345");
+    expectPhoneContext(context, null);
+  }
+
+  for (const invalidPhone of ["+1 415 555 2671 ext 9", "+1 415 ABC 2671", "++14155552671", "0014155552671", "1234567", "1234567890123456"]) {
+    const payload = createBasePayload();
+    payload.customer.phone = invalidPhone;
+    const context = normalizeIntegrationEventContext("pedido_pago", payload);
+    assert.equal(context.phone, invalidPhone);
     expectPhoneContext(context, null);
   }
 

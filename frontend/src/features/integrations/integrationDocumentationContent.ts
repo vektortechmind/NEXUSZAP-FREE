@@ -300,8 +300,9 @@ export const INTEGRATION_TROUBLESHOOTING = [
   {
     title: "Destinatário ausente",
     steps: [
-      "Envie telefone válido em um dos caminhos aceitos pelo normalizador.",
-      "O backend converte telefones nacionais de 10 ou 11 dígitos para o formato com prefixo 55. Valores fora desse padrão são descartados.",
+      "Envie telefone válido em um dos caminhos aceitos pelo normalizador, preferencialmente em E.164 com DDI, como +14155552671 ou +5511998765432.",
+      "O backend aceita números internacionais com DDI explícito e mantém compatibilidade com telefones brasileiros locais de 10 ou 11 dígitos, adicionando o prefixo 55 nesses casos legados.",
+      "Valores com letras, ramais, zero inicial internacional, comprimento inválido ou sem DDI claro fora da exceção BR legada são descartados.",
     ],
   },
   {
@@ -350,7 +351,7 @@ export const INTEGRATION_REQUEST_EXAMPLE = `{
   "payload": {
     "customer": {
       "name": "Maria Silva",
-      "phone": "5511998765432",
+      "phone": "+5511998765432",
       "email": "maria@example.com"
     },
     "checkoutLink": "https://checkout.exemplo.com/pedido/abc123",
@@ -373,7 +374,7 @@ export const INTEGRATION_CURL_EXAMPLE = `curl -X POST "$ENDPOINT_URL" \\
     "timestamp": "2026-05-30T14:30:00.000Z",
     "dedupKey": "pedido-123-pago-20260530",
     "payload": {
-      "customer": { "name": "Maria Silva", "phone": "5511998765432" },
+      "customer": { "name": "Maria Silva", "phone": "+5511998765432" },
       "checkoutLink": "https://checkout.exemplo.com/pedido/abc123",
       "order": {
         "product": {
