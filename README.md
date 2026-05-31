@@ -42,7 +42,7 @@ git --version
 
 ## Instalacao com um comando
 
-Em uma VPS Linux, rode a instalacao completa com um unico comando:
+Em uma VPS Debian/Ubuntu, rode a instalacao completa com um unico comando:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/vektortechmind/NEXUSZAP-FREE/main/install.sh)"
@@ -105,7 +105,7 @@ URLs padrao na VPS com Docker:
 
 ## Update na VPS
 
-Dentro da pasta do projeto na VPS/Linux:
+Dentro da pasta do projeto na VPS Debian/Ubuntu:
 
 ```bash
 ./update.sh
@@ -356,8 +356,8 @@ Regras principais:
 
 | Script | Descricao |
 |--------|-----------|
-| `install.sh` | Instalacao completa em VPS/Linux |
-| `update.sh` | Atualizacao em VPS/Linux pelo repositorio oficial |
+| `install.sh` | Instalacao completa em VPS Debian/Ubuntu |
+| `update.sh` | Atualizacao em VPS Debian/Ubuntu pelo repositorio oficial |
 | `npm run dev` | Frontend e backend em desenvolvimento |
 | `npm run build` | Build de backend e frontend |
 | `npm run lint` | Lint do frontend |
