@@ -1,4 +1,4 @@
-import { BookOpenText, Cable, KeyRound } from "lucide-react";
+import { BookOpenText } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Panel } from "../../components/ui/Panel";
 import { Section } from "../../components/ui/Section";
@@ -7,7 +7,6 @@ import { type IntegrationCredentialDetail, type IntegrationCredentialsWorkspace 
 import { INTEGRATION_DOCUMENTATION_ROUTE } from "./integrationDocumentationContent";
 import { IntegrationCredentialsSection } from "./IntegrationCredentialsSection";
 import { IntegrationOperationsOverview } from "./IntegrationOperationsOverview";
-import { INTEGRATION_WORKSPACE_SECTIONS } from "./workspace";
 
 type IntegrationWorkspacePageProps = {
   overview: IntegrationDashboardResponse;
@@ -69,22 +68,6 @@ export function IntegrationWorkspacePage({
           </Link>
         </div>
       </Panel>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        {INTEGRATION_WORKSPACE_SECTIONS.map((section) => {
-          const Icon = section.id === "credenciais" ? KeyRound : Cable;
-          return (
-            <Panel key={section.id} className="p-5">
-              <div className="flex items-center gap-3">
-                <div className="rounded-2xl bg-emerald-50 p-3 text-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-300">
-                  <Icon size={20} aria-hidden="true" />
-                </div>
-                <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">{section.label}</h2>
-              </div>
-            </Panel>
-          );
-        })}
-      </div>
 
       <Section id="credenciais" title="Credenciais" description="Cards compactos por instância com emissão guiada, rotação explícita e detalhamento sob demanda do `secretToken`.">
         <IntegrationCredentialsSection

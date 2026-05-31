@@ -8,6 +8,7 @@ export const INTEGRATION_DOCUMENTATION_TOPICS = [
   { id: "autenticacao-request", label: "Request" },
   { id: "eventos", label: "Eventos" },
   { id: "renderizacao", label: "Templates" },
+  { id: "texto-customizado", label: "Texto" },
   { id: "respostas-http", label: "Respostas" },
   { id: "troubleshooting", label: "Troubleshooting" },
 ] as const;
@@ -222,7 +223,7 @@ export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
 ] as const;
 
 export const INTEGRATION_RENDER_RULES = [
-  "O backend define a mensagem a partir do event e do payload normalizado; a ferramenta externa não escolhe corpo, caption nem tipo final manualmente.",
+  "O backend define a mensagem a partir do event e do payload normalizado. A ferramenta externa pode enviar texto visível final em payload.message.body, mas não escolhe tipo final, mídia, provider ou payload técnico do WhatsApp.",
   "Eventos mapeados como image fazem download da imagem no runtime quando imageUrl for HTTP/HTTPS válida e acessível pelo backend.",
   "Quando a imagem estiver ausente, inválida ou falhar no download, o runtime troca o envio para texto sem interromper o dispatch e registra deliveryPath text_fallback_image.",
   "O status técnico SENT nos logs de dispatch significa que o sendMessage retornou e o provider aceitou a tentativa operacional; não significa entrega confirmada no WhatsApp.",
@@ -234,6 +235,56 @@ export const INTEGRATION_RENDER_RULES = [
   "externalAdReply continua restrito aos fluxos text, document e aos fallbacks textuais dos eventos ricos; ele não é usado no caminho de imagem limpa nem substitui botão real.",
   "Boleto é o caso oficial de document e exige URL válida em boleto.pdf_url ou boleto.pdfUrl.",
 ] as const;
+
+export const INTEGRATION_CUSTOM_MESSAGE_RULES = [
+  "payload.message é opcional. Se ele não for enviado, o NexusZAP usa o template padrão do evento.",
+  "payload.message.body e payload.message.pix_followup_body, quando enviados, devem ser strings não vazias com até 4000 caracteres cada. Esse limite vale só para o texto customizado visível, não para o payload inteiro.",
+  "O backend não processa placeholders como {{nome}}; envie o texto final já renderizado pela ferramenta externa.",
+  "Em eventos image, payload.message.body substitui o corpo visível e também vira a caption da imagem. Se a imagem falhar, o mesmo texto segue no fallback textual.",
+  "Em boleto_gerado, o texto customizado substitui o body/caption visível, mas não altera document.url, fileName ou mimetype do PDF.",
+  "payload.message.pix_followup_body só é aceito em pix_gerado e personaliza apenas a segunda mensagem textual do Pix copia e cola.",
+  "Campos técnicos dentro de payload.message são rejeitados. Não envie caption, messageType, providerPayload, relayMessage, buttons, templateMessage ou interactiveMessage.",
+  "O conteúdo customizado não é salvo nos summaries de auditoria; o painel registra apenas flags e tamanhos, como customBodyUsed e customBodyLength.",
+] as const;
+
+export const INTEGRATION_CUSTOM_MESSAGE_EXAMPLE = `{
+  "event": "pedido_pago",
+  "instanceId": "$INSTANCE_ID",
+  "timestamp": "2026-05-30T14:30:00.000Z",
+  "dedupKey": "pedido-123-pago-20260530",
+  "payload": {
+    "customer": { "name": "Maria Silva", "phone": "+5511998765432" },
+    "checkoutLink": "https://checkout.exemplo.com/pedido/abc123",
+    "order": {
+      "product": { "name": "Curso Premium" },
+      "total": "297.00"
+    },
+    "message": {
+      "body": "Olá Maria, seu pagamento foi aprovado. Acesse seu produto em https://checkout.exemplo.com/pedido/abc123"
+    }
+  }
+}`;
+
+export const INTEGRATION_CUSTOM_PIX_FOLLOWUP_EXAMPLE = `{
+  "event": "pix_gerado",
+  "instanceId": "$INSTANCE_ID",
+  "timestamp": "2026-05-30T14:35:00.000Z",
+  "dedupKey": "pix-456-gerado-20260530",
+  "payload": {
+    "customer": { "name": "João Lima", "phone": "+5511987654321" },
+    "order": {
+      "product": { "name": "Curso Premium" },
+      "total": "199.90"
+    },
+    "pix": {
+      "copy_paste": "00020126580014BR.GOV.BCB.PIX0136pix-456-chave-dinamica"
+    },
+    "message": {
+      "body": "João, seu Pix foi gerado. Pague até o vencimento para garantir o acesso.",
+      "pix_followup_body": "Pix copia e cola:\n00020126580014BR.GOV.BCB.PIX0136pix-456-chave-dinamica"
+    }
+  }
+}`;
 
 export const INTEGRATION_IMAGE_RESOLUTION_RULES = [
   "A imagem pode vir como URL absoluta em thumbnail_url, thumbnailUrl, image ou cover do produto.",
@@ -263,6 +314,7 @@ export const INTEGRATION_RESPONSE_CODES = [
   { status: "422", code: "INTEGRATION_DISPATCH_RECIPIENT_MISSING", meaning: "Nenhum telefone válido foi normalizado do payload." },
   { status: "422", code: "INTEGRATION_TEMPLATE_REQUIRED_URL_MISSING", meaning: "O template exigia URL obrigatória, como boleto.pdf_url, e ela não foi fornecida." },
   { status: "422", code: "INTEGRATION_DISPATCH_TEMPLATE_RENDER_ERROR", meaning: "O template do evento não pôde ser renderizado." },
+  { status: "422", code: "INTEGRATION_CUSTOM_MESSAGE_INVALID", meaning: "payload.message trouxe texto inválido, vazio, longo demais, pix_followup_body fora de pix_gerado ou campo técnico não permitido." },
   { status: "500", code: "INTEGRATION_INGRESS_INTERNAL_ERROR", meaning: "Erro interno inesperado no processamento." },
 ] as const;
 
@@ -332,6 +384,14 @@ export const INTEGRATION_TROUBLESHOOTING = [
     steps: [
       "Para boleto_gerado, envie boleto.pdf_url ou boleto.pdfUrl com URL pública válida do PDF.",
       "Sem essa URL, o template falha com erro 422 antes do envio ao WhatsApp.",
+    ],
+  },
+  {
+    title: "Texto customizado rejeitado",
+    steps: [
+      "Use apenas payload.message.body e, no evento pix_gerado, payload.message.pix_followup_body.",
+      "Garanta que os valores sejam strings não vazias com até 4000 caracteres cada; esse limite vale apenas para cada texto customizado.",
+      "Não envie campos técnicos em payload.message, como caption, messageType, providerPayload, buttons ou relayMessage.",
     ],
   },
   {
