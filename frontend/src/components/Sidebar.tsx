@@ -2,7 +2,7 @@ import { Link, useLocation } from "react-router-dom";
 import { LogOut, X } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { APP_NAV_GROUPS } from "../features/navigation/appNavigation";
-import nexusLogo from "../assets/branding/nexus.png";
+import { BrandLogo } from "./BrandLogo";
 
 type SidebarProps = {
   mobileOpen: boolean;
@@ -19,22 +19,22 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
       {mobileOpen && (
         <button
           type="button"
-          className="fixed inset-0 z-30 cursor-pointer bg-slate-950/50 backdrop-blur-sm lg:hidden"
+          className="fixed inset-0 z-30 cursor-pointer bg-slate-950/50 backdrop-blur-sm xl:hidden"
           onClick={onCloseMobile}
           aria-label="Fechar menu lateral"
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-slate-200/80 bg-white/94 shadow-[0_18px_80px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-transform duration-200 dark:border-slate-800/80 dark:bg-slate-950/94 dark:shadow-[0_18px_80px_rgba(2,6,23,0.5)] lg:translate-x-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
+        className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-slate-200/80 bg-white/94 shadow-[0_18px_80px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-transform duration-200 dark:border-slate-800/80 dark:bg-slate-950/94 dark:shadow-[0_18px_80px_rgba(2,6,23,0.5)] xl:translate-x-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
-        <div className="flex items-center justify-between px-5 py-5">
-          <div className="flex items-center gap-3">
-            <img src={nexusLogo} alt="NexusZAP" className="h-11 w-auto max-w-[164px] object-contain" />
+        <div className="relative flex items-center justify-center px-5 py-5">
+          <div className="flex items-center justify-center">
+            <BrandLogo className="mx-auto h-12 w-auto max-w-[188px] object-contain" />
           </div>
           <button
             type="button"
             onClick={onCloseMobile}
-            className="inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-slate-300 text-slate-600 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 lg:hidden"
+            className="absolute right-5 inline-flex h-9 w-9 cursor-pointer items-center justify-center rounded-xl border border-slate-300 text-slate-600 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800 xl:hidden"
             aria-label="Fechar menu"
           >
             <X size={16} />
@@ -90,3 +90,4 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
     </>
   );
 }
+
