@@ -31,6 +31,11 @@ export type IntegrationDispatchPayloadSummary = {
   providerSendErrorCode: string | null;
   providerSendErrorType: string | null;
   providerSendErrorMessage: string | null;
+  deliveryReceiptStatus: string | null;
+  deliveryReceiptObservedAt: string | null;
+  deliveryReceiptSource: string | null;
+  deliveryReceiptProviderStatus: string | null;
+  deliveryReceiptRemoteJid: string | null;
 };
 
 export type IntegrationIngressSnapshot = IntegrationLogSnapshot & {

@@ -230,6 +230,7 @@ export const INTEGRATION_RENDER_RULES = [
   "O status técnico SENT nos logs de dispatch significa que o sendMessage retornou e o provider aceitou a tentativa operacional; não significa entrega confirmada no WhatsApp.",
   "Antes do envio, quando o socket permitir, o runtime registra um lookup WhatsApp informativo: found, not_found, error ou unavailable. Esse lookup ajuda diagnóstico, mas não bloqueia envio nem confirma entrega/leitura.",
   "Quando o sendMessage falhar, a auditoria registra erro sanitizado do provider/socket quando disponível, preservando failureCode estável e sem expor tokens, Authorization, cookies ou stack trace bruto.",
+  "Quando a Baileys emitir messages.update para um providerMessageId conhecido, a auditoria registra recibo pós-envio observacional como SUBMITTED, DELIVERED, READ, PLAYED ou FAILED_AFTER_SUBMIT; ausência desse recibo não é falha automática.",
   "No evento pix_gerado, a primeira mensagem fecha com a chamada 'Codigo Pix copia e cola' e, quando pix.copy_paste ou pix.copyPaste estiver disponível, o runtime envia uma segunda mensagem textual contendo apenas o código bruto.",
   "pedido_pago usa texto com link visível no corpo como caminho oficial e confiável.",
   "carrinho_abandonado, assinatura_criada e assinatura_em_atraso mantêm messageType image, mas exibem checkoutLink no corpo/caption quando a URL é informada.",

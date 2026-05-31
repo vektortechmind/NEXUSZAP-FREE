@@ -114,6 +114,11 @@ function createOverviewService() {
           providerSendErrorCode: "ETIMEDOUT",
           providerSendErrorType: "ProviderTimeoutError",
           providerSendErrorMessage: "send failed with provider timeout",
+          deliveryReceiptStatus: "DELIVERED",
+          deliveryReceiptObservedAt: "2026-05-29T10:00:05.000Z",
+          deliveryReceiptSource: "baileys.messages.update",
+          deliveryReceiptProviderStatus: "DELIVERY_ACK",
+          deliveryReceiptRemoteJid: "5511888888888@s.whatsapp.net",
         }),
         retryable: true,
         retryAttemptCount: 2,
@@ -169,6 +174,9 @@ function createOverviewService() {
     assert.equal(overview.integrations[1].lastDispatch.payloadSummary.providerSendErrorCode, "ETIMEDOUT");
     assert.equal(overview.integrations[1].lastDispatch.payloadSummary.providerSendErrorType, "ProviderTimeoutError");
     assert.equal(overview.integrations[1].lastDispatch.payloadSummary.providerSendErrorMessage, "send failed with provider timeout");
+    assert.equal(overview.integrations[1].lastDispatch.payloadSummary.deliveryReceiptStatus, "DELIVERED");
+    assert.equal(overview.integrations[1].lastDispatch.payloadSummary.deliveryReceiptObservedAt, "2026-05-29T10:00:05.000Z");
+    assert.equal(overview.integrations[1].lastDispatch.payloadSummary.deliveryReceiptProviderStatus, "DELIVERY_ACK");
     assert.ok(!("secretToken" in overview.integrations[0]));
   }
 
