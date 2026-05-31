@@ -187,6 +187,11 @@ function createExternalAdReply(
   };
 }
 
+function visibleActionLink(label: string, linkUrl: string | null): string | null {
+  if (!linkUrl) return null;
+  return `↗ *${label}*\n${linkUrl}`;
+}
+
 function renderTextTemplate(
   context: IntegrationNormalizedEventContext,
   title: string,
@@ -396,6 +401,7 @@ export function renderIntegrationDispatchTemplateFromContext(
           `🛒 *${customer}*, você deixou o *${product}* no carrinho!`,
           "🔥 Não perca esta oportunidade!",
           "👉 Finalize sua compra agora e garanta seu acesso.",
+          visibleActionLink("Finalizar compra", context.checkoutLink),
         ],
         createExternalAdReply("Finalizar Compra", product, context.checkoutLink),
       );
@@ -417,6 +423,7 @@ export function renderIntegrationDispatchTemplateFromContext(
         [
           `🔄 *${customer}*, sua assinatura do *${product}* foi criada com sucesso!`,
           "Bem-vindo(a) à nossa plataforma! 🎉",
+          visibleActionLink("Acessar assinatura", context.checkoutLink),
         ],
         createExternalAdReply("Acessar agora", product, context.checkoutLink),
       );
@@ -441,6 +448,7 @@ export function renderIntegrationDispatchTemplateFromContext(
         [
           `⚠️ *${customer}*, sua assinatura do *${product}* está *atrasada*!`,
           "Regularize agora para não perder o acesso.",
+          visibleActionLink("Regularizar assinatura", context.checkoutLink),
         ],
         createExternalAdReply("Pagar agora", product, context.checkoutLink),
       );

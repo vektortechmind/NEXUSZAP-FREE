@@ -190,6 +190,29 @@ function assertNoRawLeak(template) {
     assert.equal(rendered.followup.body, "000201PIX-COPIA-COLA");
   }
 
+  for (const [eventSlug, label] of [
+    ["carrinho_abandonado", "Finalizar compra"],
+    ["assinatura_criada", "Acessar assinatura"],
+    ["assinatura_em_atraso", "Regularizar assinatura"],
+  ]) {
+    const rendered = renderIntegrationDispatchTemplate(eventSlug, payloadForEvent(eventSlug));
+    assert.equal(rendered.messageType, "image");
+    assert.equal(rendered.caption, rendered.body);
+    assert.equal(rendered.body.includes(`↗ *${label}*\nhttps://checkout.example.com/c/123`), true);
+    assert.equal(rendered.linkUrl, "https://checkout.example.com/c/123");
+  }
+
+  for (const eventSlug of ["carrinho_abandonado", "assinatura_criada", "assinatura_em_atraso"]) {
+    const payload = payloadForEvent(eventSlug);
+    delete payload.checkout_link;
+    const rendered = renderIntegrationDispatchTemplate(eventSlug, payload);
+    assert.equal(rendered.messageType, "image");
+    assert.equal(rendered.externalAdReply, null);
+    assert.equal(rendered.linkUrl, null);
+    assert.equal(rendered.body.includes("https://checkout.example.com/c/123"), false);
+    assertNoRawLeak(rendered);
+  }
+
   {
     const payload = payloadForEvent("pedido_pago");
     delete payload.customer.name;
