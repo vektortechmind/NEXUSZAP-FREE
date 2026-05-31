@@ -596,12 +596,13 @@ function buildDispatchFailurePayloadSummary(
   context: IntegrationNormalizedEventContext,
   whatsappLookup: IntegrationWhatsappLookupSummary | null,
   providerSendError: IntegrationProviderSendErrorSummary | null = null,
+  recipientJid: string | null = context.recipientJid,
 ) {
   return {
     eventSlug: context.eventSlug,
     rawPhone: context.phone,
     normalizedPhone: context.phoneDigits,
-    recipientJid: context.recipientJid,
+    recipientJid,
     ...buildWhatsappLookupPayloadSummary(whatsappLookup),
     ...buildProviderSendErrorPayloadSummary(providerSendError),
   };
@@ -649,6 +650,7 @@ function buildPayloadSummary(
   secondaryProviderMessageId: string | null,
   secondaryDispatchFailureCode: IntegrationSecondaryDispatchFailureCode | null,
   whatsappLookup: IntegrationWhatsappLookupSummary | null,
+  recipientJid: string | null = template.context.recipientJid,
 ) {
   const secondaryDispatchStatus: IntegrationSecondaryDispatchStatus = template.followup
     ? secondaryDispatchFailureCode
@@ -664,7 +666,7 @@ function buildPayloadSummary(
     eventSlug: template.eventSlug,
     rawPhone: template.context.phone,
     normalizedPhone: template.context.phoneDigits,
-    recipientJid: template.context.recipientJid,
+    recipientJid,
     ...buildWhatsappLookupPayloadSummary(whatsappLookup),
     ...buildProviderSendErrorPayloadSummary(null),
     intendedMessageType: template.messageType,
@@ -689,6 +691,15 @@ function buildPayloadSummary(
     secondaryProviderMessageId,
     secondaryDispatchFailureCode,
   };
+}
+
+function resolveEffectiveRecipientJid(
+  fallbackRecipientJid: string,
+  whatsappLookup: IntegrationWhatsappLookupSummary | null,
+): string {
+  if (whatsappLookup?.whatsappLookupStatus !== "found") return fallbackRecipientJid;
+  const lookupJid = whatsappLookup.whatsappLookupJid?.trim();
+  return lookupJid || fallbackRecipientJid;
 }
 
 function extractProviderMessageId(message: WAMessage | null | undefined): string | null {
@@ -826,6 +837,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
   }) {
     const context = eventCatalogService.normalizeEventContext(input.eventSlug, input.payload) as IntegrationNormalizedEventContext;
     let whatsappLookup: IntegrationWhatsappLookupSummary | null = null;
+    let effectiveRecipientJid = context.recipientJid;
 
     try {
       if (!context.recipientJid) {
@@ -843,9 +855,10 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
       }
 
       whatsappLookup = await lookupWhatsappRecipient(sock, context.recipientJid);
+      effectiveRecipientJid = resolveEffectiveRecipientJid(context.recipientJid, whatsappLookup);
       await logService.updateLog(input.dispatchLog.id, {
-        recipientJid: context.recipientJid,
-        payloadSummary: buildDispatchFailurePayloadSummary(context, whatsappLookup),
+        recipientJid: effectiveRecipientJid,
+        payloadSummary: buildDispatchFailurePayloadSummary(context, whatsappLookup, null, effectiveRecipientJid),
       });
 
       let template: IntegrationRenderedDispatchTemplate;
@@ -887,13 +900,13 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
         let providerMessageId: string | null;
         let secondaryProviderMessageId: string | null = null;
         let secondaryDispatchFailureCode: IntegrationSecondaryDispatchFailureCode | null = null;
-        const sentMessage = await sock.sendMessage(context.recipientJid, content);
+        const sentMessage = await sock.sendMessage(effectiveRecipientJid, content);
         providerMessageId = extractProviderMessageId(sentMessage as WAMessage | null | undefined);
 
         const followupPayload = buildFollowupPayload(template);
         if (followupPayload) {
           try {
-            const followupMessage = await sock.sendMessage(context.recipientJid, followupPayload);
+            const followupMessage = await sock.sendMessage(effectiveRecipientJid, followupPayload);
             secondaryProviderMessageId = extractProviderMessageId(followupMessage as WAMessage | null | undefined);
           } catch {
             secondaryDispatchFailureCode = "send_failed";
@@ -901,7 +914,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
         }
 
         const finalLog = await logService.updateLog(input.dispatchLog.id, {
-          recipientJid: context.recipientJid,
+          recipientJid: effectiveRecipientJid,
           messageType: resolveDispatchedMessageType(template, content),
           dispatchStatus: INTEGRATION_DISPATCH_STATUS.SENT,
           failureCode: null,
@@ -911,7 +924,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
           lastRetryError: null,
           retryLockedAt: null,
           retryExhaustedAt: null,
-          payloadSummary: buildPayloadSummary(template, content, imageAsset, imageFallbackReason, secondaryProviderMessageId, secondaryDispatchFailureCode, whatsappLookup),
+          payloadSummary: buildPayloadSummary(template, content, imageAsset, imageFallbackReason, secondaryProviderMessageId, secondaryDispatchFailureCode, whatsappLookup, effectiveRecipientJid),
         });
 
         return {
@@ -931,7 +944,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
         const providerSendError = error instanceof IntegrationDispatchSendFailedError ? error.providerSendError : null;
         const retryState = resolveRetryState(error, input.attemptCount, new Date());
         await logService.updateLog(input.dispatchLog.id, {
-          recipientJid: context.recipientJid,
+          recipientJid: effectiveRecipientJid,
           dispatchStatus: error.dispatchStatus,
           failureCode: error.code,
           retryable: retryState.retryable,
@@ -940,7 +953,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
           lastRetryError: retryState.lastRetryError,
           retryLockedAt: retryState.retryLockedAt,
           retryExhaustedAt: retryState.retryExhaustedAt,
-          payloadSummary: buildDispatchFailurePayloadSummary(context, whatsappLookup, providerSendError),
+          payloadSummary: buildDispatchFailurePayloadSummary(context, whatsappLookup, providerSendError, effectiveRecipientJid),
         });
         throw error;
       }
@@ -953,7 +966,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
       );
       const retryState = resolveRetryState(runtimeError, input.attemptCount, new Date());
       await logService.updateLog(input.dispatchLog.id, {
-        recipientJid: context.recipientJid,
+        recipientJid: effectiveRecipientJid,
         dispatchStatus: INTEGRATION_DISPATCH_STATUS.ERROR,
         failureCode: runtimeError.code,
         retryable: retryState.retryable,
@@ -962,7 +975,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
         lastRetryError: retryState.lastRetryError,
         retryLockedAt: retryState.retryLockedAt,
         retryExhaustedAt: retryState.retryExhaustedAt,
-        payloadSummary: buildDispatchFailurePayloadSummary(context, whatsappLookup),
+        payloadSummary: buildDispatchFailurePayloadSummary(context, whatsappLookup, null, effectiveRecipientJid),
       });
       throw error;
     }

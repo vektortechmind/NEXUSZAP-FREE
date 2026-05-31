@@ -193,9 +193,41 @@ function createDispatchService(options = {}) {
     });
     const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
     assert.equal(sentPayloads.length, 1);
+    assert.equal(sentPayloads[0].jid, "5511998765432@s.whatsapp.net");
     assert.equal(summary.includes('"whatsappLookupStatus":"found"'), true);
     assert.equal(summary.includes('"whatsappLookupJid":"5511998765432@s.whatsapp.net"'), true);
     assert.equal(summary.includes('"whatsappLookupExists":true'), true);
+  }
+
+  {
+    const sentPayloads = [];
+    const { service, store } = createDispatchService({
+      sentPayloads,
+      sock: {
+        user: { id: "5511911111111@s.whatsapp.net" },
+        async onWhatsApp(jid) {
+          assert.equal(jid, "5511998765432@s.whatsapp.net");
+          return [{ exists: true, jid: "551198765432@s.whatsapp.net" }];
+        },
+        async sendMessage(jid, content) {
+          sentPayloads.push({ jid, content });
+          return { key: { id: "wamid.lookup-canonical" } };
+        },
+      },
+    });
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pedido_pago",
+      dedupKey: "evt-lookup-canonical",
+      payload: createBasePayload(),
+    });
+    const log = Array.from(store.logs.values())[0];
+    const summary = log.payloadSummaryJson;
+    assert.equal(sentPayloads.length, 1);
+    assert.equal(sentPayloads[0].jid, "551198765432@s.whatsapp.net");
+    assert.equal(log.recipientJid, "551198765432@s.whatsapp.net");
+    assert.equal(summary.includes('"recipientJid":"551198765432@s.whatsapp.net"'), true);
+    assert.equal(summary.includes('"whatsappLookupJid":"551198765432@s.whatsapp.net"'), true);
   }
 
   {
