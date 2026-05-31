@@ -17,6 +17,7 @@ import {
   INTEGRATION_PAYLOAD_FIELDS,
   INTEGRATION_PHONE_FIELD_PRIORITY,
   INTEGRATION_IMAGE_RESOLUTION_RULES,
+  INTEGRATION_MINIMAL_PAYLOAD_EXAMPLES,
   INTEGRATION_OPERATION_LIMITS,
   INTEGRATION_RENDER_RULES,
   INTEGRATION_TEMPLATE_FLOW,
@@ -259,6 +260,24 @@ export function IntegracoesDocumentacao() {
                   ))}
                 </div>
               </Panel>
+            </Section>
+          ) : null}
+
+          {activeTopic === "payloads-minimos" ? (
+            <Section id="payloads-minimos" title="Payloads mínimos por evento" description="Use estes exemplos como ponto de partida. Troque instanceId, timestamp, dedupKey, telefone, produto e URLs pelos valores reais da sua integração.">
+              <div className="space-y-4">
+                {INTEGRATION_MINIMAL_PAYLOAD_EXAMPLES.map((example) => (
+                  <Panel key={example.event} className="p-5">
+                    <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <code className="rounded bg-slate-100 px-2 py-1 font-mono text-xs font-semibold text-slate-900 dark:bg-slate-800 dark:text-slate-50">{example.event}</code>
+                        <p className="mt-2 text-sm leading-6 text-slate-600 dark:text-slate-400">{example.description}</p>
+                      </div>
+                    </div>
+                    <CodeBlock language="json" code={example.code} />
+                  </Panel>
+                ))}
+              </div>
             </Section>
           ) : null}
 

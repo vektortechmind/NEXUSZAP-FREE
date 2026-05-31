@@ -7,6 +7,7 @@ export const INTEGRATION_DOCUMENTATION_TOPICS = [
   { id: "credenciais", label: "Credenciais" },
   { id: "autenticacao-request", label: "Request" },
   { id: "eventos", label: "Eventos" },
+  { id: "payloads-minimos", label: "Payloads" },
   { id: "renderizacao", label: "Templates" },
   { id: "texto-customizado", label: "Texto" },
   { id: "respostas-http", label: "Respostas" },
@@ -285,6 +286,236 @@ export const INTEGRATION_CUSTOM_PIX_FOLLOWUP_EXAMPLE = `{
     }
   }
 }`;
+
+export const INTEGRATION_MINIMAL_PAYLOAD_EXAMPLES = [
+  {
+    event: "pedido_pendente",
+    description: "Pedido criado ou aguardando confirmação de pagamento.",
+    code: `{
+  "event": "pedido_pendente",
+  "instanceId": "$INSTANCE_ID",
+  "timestamp": "2026-05-30T14:00:00.000Z",
+  "dedupKey": "pedido-100-pendente-20260530",
+  "payload": {
+    "customer": { "name": "Maria Silva", "phone": "+5511998765432" },
+    "order": {
+      "total": "297.00",
+      "product": { "name": "Curso Premium" }
+    }
+  }
+}`,
+  },
+  {
+    event: "pedido_pago",
+    description: "Pagamento aprovado; use checkoutLink quando quiser mostrar link de acesso/checkout no corpo.",
+    code: `{
+  "event": "pedido_pago",
+  "instanceId": "$INSTANCE_ID",
+  "timestamp": "2026-05-30T14:10:00.000Z",
+  "dedupKey": "pedido-100-pago-20260530",
+  "payload": {
+    "customer": { "name": "Maria Silva", "phone": "+5511998765432" },
+    "checkoutLink": "https://checkout.exemplo.com/pedido/100",
+    "order": {
+      "total": "297.00",
+      "product": { "name": "Curso Premium" }
+    }
+  }
+}`,
+  },
+  {
+    event: "envio_acesso",
+    description: "Acesso liberado; access pode trazer URL, login, senha ou instruções visíveis.",
+    code: `{
+  "event": "envio_acesso",
+  "instanceId": "$INSTANCE_ID",
+  "timestamp": "2026-05-30T14:20:00.000Z",
+  "dedupKey": "acesso-100-enviado-20260530",
+  "payload": {
+    "customer": { "name": "Maria Silva", "phone": "+5511998765432" },
+    "order": { "product": { "name": "Curso Premium" } },
+    "access": {
+      "url": "https://portal.exemplo.com/aluno/100",
+      "login": "maria@example.com",
+      "password": "senha-temporaria"
+    }
+  }
+}`,
+  },
+  {
+    event: "pagamento_recusado",
+    description: "Pagamento recusado; checkoutLink permite orientar nova tentativa.",
+    code: `{
+  "event": "pagamento_recusado",
+  "instanceId": "$INSTANCE_ID",
+  "timestamp": "2026-05-30T14:30:00.000Z",
+  "dedupKey": "pedido-100-recusado-20260530",
+  "payload": {
+    "customer": { "name": "Maria Silva", "phone": "+5511998765432" },
+    "checkoutLink": "https://checkout.exemplo.com/pedido/100/tentar-novamente",
+    "order": { "product": { "name": "Curso Premium" } }
+  }
+}`,
+  },
+  {
+    event: "pedido_cancelado",
+    description: "Pedido cancelado; payload mínimo usa cliente e produto.",
+    code: `{
+  "event": "pedido_cancelado",
+  "instanceId": "$INSTANCE_ID",
+  "timestamp": "2026-05-30T14:40:00.000Z",
+  "dedupKey": "pedido-100-cancelado-20260530",
+  "payload": {
+    "customer": { "name": "Maria Silva", "phone": "+5511998765432" },
+    "order": { "product": { "name": "Curso Premium" } }
+  }
+}`,
+  },
+  {
+    event: "reembolso",
+    description: "Reembolso processado; payload mínimo usa cliente e produto.",
+    code: `{
+  "event": "reembolso",
+  "instanceId": "$INSTANCE_ID",
+  "timestamp": "2026-05-30T14:50:00.000Z",
+  "dedupKey": "pedido-100-reembolso-20260530",
+  "payload": {
+    "customer": { "name": "Maria Silva", "phone": "+5511998765432" },
+    "order": { "product": { "name": "Curso Premium" } }
+  }
+}`,
+  },
+  {
+    event: "pix_gerado",
+    description: "Pix gerado; copy_paste habilita a segunda mensagem com código copia e cola.",
+    code: `{
+  "event": "pix_gerado",
+  "instanceId": "$INSTANCE_ID",
+  "timestamp": "2026-05-30T15:00:00.000Z",
+  "dedupKey": "pix-100-gerado-20260530",
+  "payload": {
+    "customer": { "name": "Maria Silva", "phone": "+5511998765432" },
+    "order": {
+      "total": "297.00",
+      "product": { "name": "Curso Premium" }
+    },
+    "pix": {
+      "copy_paste": "00020126580014BR.GOV.BCB.PIX0136pix-100-chave-dinamica"
+    }
+  }
+}`,
+  },
+  {
+    event: "boleto_gerado",
+    description: "Boleto gerado; boleto.pdf_url ou boleto.pdfUrl é obrigatório para enviar o documento.",
+    code: `{
+  "event": "boleto_gerado",
+  "instanceId": "$INSTANCE_ID",
+  "timestamp": "2026-05-30T15:10:00.000Z",
+  "dedupKey": "boleto-100-gerado-20260530",
+  "payload": {
+    "customer": { "name": "Maria Silva", "phone": "+5511998765432" },
+    "order": { "product": { "name": "Curso Premium" } },
+    "boleto": {
+      "pdf_url": "https://cdn.exemplo.com/boletos/boleto-100.pdf",
+      "amount": "297.00",
+      "expire_at": "2026-06-05",
+      "barcode": "23793381286008200009301000012304570660000029700"
+    }
+  }
+}`,
+  },
+  {
+    event: "carrinho_abandonado",
+    description: "Carrinho abandonado; checkout_session.product é a origem principal do produto neste fluxo.",
+    code: `{
+  "event": "carrinho_abandonado",
+  "instanceId": "$INSTANCE_ID",
+  "timestamp": "2026-05-30T15:20:00.000Z",
+  "dedupKey": "carrinho-100-abandonado-20260530",
+  "payload": {
+    "customer": { "name": "Maria Silva", "phone": "+5511998765432" },
+    "checkoutLink": "https://checkout.exemplo.com/retomar/100",
+    "checkout_session": {
+      "product": { "name": "Curso Premium" }
+    }
+  }
+}`,
+  },
+  {
+    event: "assinatura_criada",
+    description: "Assinatura criada; subscription.product é a origem principal do produto/plano.",
+    code: `{
+  "event": "assinatura_criada",
+  "instanceId": "$INSTANCE_ID",
+  "timestamp": "2026-05-30T15:30:00.000Z",
+  "dedupKey": "assinatura-100-criada-20260530",
+  "payload": {
+    "customer": { "name": "Maria Silva", "phone": "+5511998765432" },
+    "checkoutLink": "https://checkout.exemplo.com/assinaturas/100",
+    "subscription": {
+      "status": "active",
+      "next_billing": "2026-06-30",
+      "product": { "name": "Plano Premium" }
+    }
+  }
+}`,
+  },
+  {
+    event: "assinatura_renovada",
+    description: "Assinatura renovada; payload mínimo usa cliente e subscription.product.",
+    code: `{
+  "event": "assinatura_renovada",
+  "instanceId": "$INSTANCE_ID",
+  "timestamp": "2026-05-30T15:40:00.000Z",
+  "dedupKey": "assinatura-100-renovada-20260530",
+  "payload": {
+    "customer": { "name": "Maria Silva", "phone": "+5511998765432" },
+    "subscription": {
+      "status": "active",
+      "next_billing": "2026-07-30",
+      "product": { "name": "Plano Premium" }
+    }
+  }
+}`,
+  },
+  {
+    event: "assinatura_cancelada",
+    description: "Assinatura cancelada; payload mínimo usa cliente e subscription.product.",
+    code: `{
+  "event": "assinatura_cancelada",
+  "instanceId": "$INSTANCE_ID",
+  "timestamp": "2026-05-30T15:50:00.000Z",
+  "dedupKey": "assinatura-100-cancelada-20260530",
+  "payload": {
+    "customer": { "name": "Maria Silva", "phone": "+5511998765432" },
+    "subscription": {
+      "status": "canceled",
+      "product": { "name": "Plano Premium" }
+    }
+  }
+}`,
+  },
+  {
+    event: "assinatura_em_atraso",
+    description: "Assinatura em atraso; checkoutLink pode apontar para regularização.",
+    code: `{
+  "event": "assinatura_em_atraso",
+  "instanceId": "$INSTANCE_ID",
+  "timestamp": "2026-05-30T16:00:00.000Z",
+  "dedupKey": "assinatura-100-atraso-20260530",
+  "payload": {
+    "customer": { "name": "Maria Silva", "phone": "+5511998765432" },
+    "checkoutLink": "https://checkout.exemplo.com/assinaturas/100/regularizar",
+    "subscription": {
+      "status": "past_due",
+      "next_billing": "2026-05-30",
+      "product": { "name": "Plano Premium" }
+    }
+  }
+}`,
+  },
+] as const;
 
 export const INTEGRATION_IMAGE_RESOLUTION_RULES = [
   "A imagem pode vir como URL absoluta em thumbnail_url, thumbnailUrl, image ou cover do produto.",
