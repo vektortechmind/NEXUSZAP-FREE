@@ -25,11 +25,11 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
         />
       )}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex w-72 flex-col border-r border-slate-200/80 bg-white/94 shadow-[0_18px_80px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-transform duration-200 dark:border-slate-800/80 dark:bg-slate-950/94 dark:shadow-[0_18px_80px_rgba(2,6,23,0.5)] xl:translate-x-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
+        className={`group/sidebar fixed inset-y-0 left-0 z-40 flex flex-col border-r border-slate-200/80 bg-white/94 shadow-[0_18px_80px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-all duration-300 dark:border-slate-800/80 dark:bg-slate-950/94 dark:shadow-[0_18px_80px_rgba(2,6,23,0.5)] xl:translate-x-0 xl:w-24 xl:hover:w-72 ${mobileOpen ? "translate-x-0 w-72" : "-translate-x-full w-72"}`}
       >
-        <div className="relative flex items-center justify-center px-5 py-5">
-          <div className="flex items-center justify-center">
-            <BrandLogo className="mx-auto h-12 w-auto max-w-[188px] object-contain" />
+        <div className="relative flex items-center justify-center px-4 py-5 xl:min-h-[92px] xl:px-3">
+          <div className="flex w-full items-center justify-center overflow-hidden xl:justify-start">
+            <BrandLogo className="mx-auto h-14 w-auto max-w-[210px] object-contain transition-all duration-300 xl:mx-0 xl:h-16 xl:max-w-none xl:scale-90 xl:opacity-0 xl:group-hover/sidebar:scale-100 xl:group-hover/sidebar:opacity-100" />
           </div>
           <button
             type="button"
@@ -53,17 +53,17 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
                   onClick={onCloseMobile}
                   aria-current={isActive ? "page" : undefined}
                   title={nav.name}
-                  className={`group relative flex min-h-12 items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+                  className={`group relative flex min-h-12 items-center rounded-2xl py-3 text-sm font-medium transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 xl:justify-center xl:px-0 xl:group-hover/sidebar:justify-start xl:group-hover/sidebar:px-4 ${
                     isActive
                       ? "bg-emerald-50 text-emerald-800 shadow-[inset_0_0_0_1px_rgba(52,211,153,0.45)] dark:bg-emerald-950/35 dark:text-emerald-300"
                       : "text-slate-600 hover:bg-slate-100 hover:text-slate-950 dark:text-slate-400 dark:hover:bg-slate-900 dark:hover:text-slate-50"
                   }`}
                 >
                   <span className={`absolute left-0 top-1/2 h-7 w-1 -translate-y-1/2 rounded-r-full ${isActive ? "bg-emerald-500" : "bg-transparent group-hover:bg-slate-300 dark:group-hover:bg-slate-700"}`} aria-hidden="true" />
-                  <span className={isActive ? "text-emerald-700 dark:text-emerald-400" : "text-slate-500 dark:text-slate-400"}>
+                  <span className={`shrink-0 ${isActive ? "text-emerald-700 dark:text-emerald-400" : "text-slate-500 dark:text-slate-400"}`}>
                     <Icon size={20} strokeWidth={1.85} />
                   </span>
-                  <span className="truncate">{nav.name}</span>
+                  <span className="ml-3 truncate transition-all duration-200 xl:max-w-0 xl:overflow-hidden xl:opacity-0 xl:group-hover/sidebar:max-w-[160px] xl:group-hover/sidebar:opacity-100">{nav.name}</span>
                 </Link>
               );
             })}
@@ -71,23 +71,20 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
         </nav>
 
         <div className="border-t border-slate-200/80 px-3 py-4 dark:border-slate-800/80">
-          <div>
-            <button
-              type="button"
-              onClick={() => {
-                onCloseMobile();
-                logout();
-              }}
-              title="Sair"
-              className="flex w-full cursor-pointer items-center gap-3 rounded-2xl px-4 py-3 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 dark:text-red-400 dark:hover:bg-red-950/35"
-            >
-              <LogOut size={20} strokeWidth={1.85} className="shrink-0" />
-              <span>Sair</span>
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              onCloseMobile();
+              logout();
+            }}
+            title="Sair"
+            className="flex w-full cursor-pointer items-center rounded-2xl py-3 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 dark:text-red-400 dark:hover:bg-red-950/35 xl:justify-center xl:px-0 xl:group-hover/sidebar:justify-start xl:group-hover/sidebar:px-4"
+          >
+            <LogOut size={20} strokeWidth={1.85} className="shrink-0" />
+            <span className="ml-3 truncate transition-all duration-200 xl:max-w-0 xl:overflow-hidden xl:opacity-0 xl:group-hover/sidebar:max-w-[120px] xl:group-hover/sidebar:opacity-100">Sair</span>
+          </button>
         </div>
       </aside>
     </>
   );
 }
-
