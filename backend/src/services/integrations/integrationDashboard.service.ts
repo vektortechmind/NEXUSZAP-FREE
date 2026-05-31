@@ -44,6 +44,8 @@ export type IntegrationDashboardDispatchSummary = {
   intendedMessageType: string | null;
   dispatchedMessageType: string | null;
   deliveryPath: string | null;
+  documentUrl: string | null;
+  documentFallbackReason: string | null;
   secondaryDispatchStatus: string | null;
   secondaryProviderMessageId: string | null;
   secondaryDispatchFailureCode: string | null;
@@ -248,6 +250,8 @@ function parseDispatchSummary(payloadSummaryJson: string | null): IntegrationDas
     intendedMessageType: null,
     dispatchedMessageType: null,
     deliveryPath: null,
+    documentUrl: null,
+    documentFallbackReason: null,
     secondaryDispatchStatus: null,
     secondaryProviderMessageId: null,
     secondaryDispatchFailureCode: null,
@@ -276,6 +280,8 @@ function parseDispatchSummary(payloadSummaryJson: string | null): IntegrationDas
       intendedMessageType: asStringOrNull(parsed.intendedMessageType),
       dispatchedMessageType: asStringOrNull(parsed.dispatchedMessageType),
       deliveryPath: asStringOrNull(parsed.deliveryPath),
+      documentUrl: asStringOrNull(parsed.documentUrl),
+      documentFallbackReason: asStringOrNull(parsed.documentFallbackReason),
       secondaryDispatchStatus: asStringOrNull(parsed.secondaryDispatchStatus),
       secondaryProviderMessageId: asStringOrNull(parsed.secondaryProviderMessageId),
       secondaryDispatchFailureCode: asStringOrNull(parsed.secondaryDispatchFailureCode),

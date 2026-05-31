@@ -233,13 +233,14 @@ export const INTEGRATION_RENDER_RULES = [
   "Quando a Baileys emitir messages.update para um providerMessageId conhecido, a auditoria registra recibo pós-envio observacional como SUBMITTED, DELIVERED, READ, PLAYED ou FAILED_AFTER_SUBMIT; ausência desse recibo não é falha automática.",
   "No evento pix_gerado, a primeira mensagem fecha com a chamada 'Codigo Pix copia e cola' e, quando pix.copy_paste ou pix.copyPaste estiver disponível, o runtime envia uma segunda mensagem textual contendo apenas o código bruto.",
   "No evento boleto_gerado, a primeira mensagem envia o PDF/caption e, quando boleto.barcode estiver disponível, o runtime envia uma segunda mensagem textual contendo apenas a linha digitável.",
+  "Para boleto_gerado, o backend baixa/valida boleto.pdf_url antes do envio. Se o PDF não estiver acessível, o dispatch cai para texto com link visível do boleto e registra deliveryPath text_fallback_document com documentFallbackReason.",
   "pedido_pago usa texto com link visível no corpo como caminho oficial e confiável.",
   "pagamento_recusado exibe o checkoutLink no corpo da mensagem e também pode manter o preview do link quando o provider renderizar externalAdReply.",
   "carrinho_abandonado, assinatura_criada e assinatura_em_atraso mantêm messageType image, mas exibem checkoutLink no corpo/caption quando a URL é informada.",
   "Quando houver URL aplicável, o runtime mantém o link visível no corpo, caption ou fallback textual da mensagem.",
   "A telemetria do dispatch registra secondaryDispatchStatus para indicar se a segunda mensagem do Pix ou boleto foi enviada, pulada por ausência do código/linha digitável ou falhou isoladamente.",
   "externalAdReply continua restrito aos fluxos text, document e aos fallbacks textuais dos eventos ricos; ele não é usado no caminho de imagem limpa nem substitui botão real.",
-  "Boleto é o caso oficial de document e exige URL válida em boleto.pdf_url ou boleto.pdfUrl.",
+  "Boleto é o caso oficial de document e exige URL pública válida em boleto.pdf_url ou boleto.pdfUrl.",
 ] as const;
 
 export const INTEGRATION_CUSTOM_MESSAGE_RULES = [

@@ -122,6 +122,8 @@ export function IntegrationOperationsOverview({ overview, refreshing, onRefresh 
                           <DetailField label="Telefone normalizado" value={entry.payloadSummary?.normalizedPhone} mono />
                           <DetailField label="Tipo de mensagem" value={entry.payloadSummary?.dispatchedMessageType ?? entry.messageType} />
                           <DetailField label="Caminho" value={formatDispatchDeliveryPath(entry.payloadSummary?.deliveryPath)} />
+                          <DetailField label="URL documento" value={entry.payloadSummary?.documentUrl} />
+                          <DetailField label="Fallback documento" value={entry.payloadSummary?.documentFallbackReason} />
                           <DetailField label="Provider ID" value={entry.providerMessageId} mono />
                           <DetailField label="Falha" value={entry.failureCode} />
                           <DetailField label="Retry" value={entry.retryable ? "Sim" : "Não"} />

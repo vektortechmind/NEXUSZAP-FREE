@@ -117,12 +117,22 @@ export type IntegrationDownloadedImageAsset = {
   mimeType: string | null;
 };
 
+export type IntegrationDownloadedDocumentAsset = {
+  buffer: Buffer;
+  mimeType: string | null;
+};
+
 export const DEFAULT_INTEGRATION_IMAGE_FETCH_TIMEOUT_MS = 10_000;
 
 export type IntegrationImageFallbackReason =
   | "missing_image_url"
   | "invalid_image_url"
   | "image_download_failed";
+
+export type IntegrationDocumentFallbackReason =
+  | "missing_document_url"
+  | "invalid_document_url"
+  | "document_download_failed";
 
 export type IntegrationSecondaryDispatchStatus =
   | "not_applicable"
@@ -135,6 +145,7 @@ export type IntegrationSecondaryDispatchFailureCode = "send_failed";
 export type IntegrationDispatchDeliveryPath =
   | "image_clean"
   | "text_fallback_image"
+  | "text_fallback_document"
   | "document"
   | "link"
   | "text";
@@ -427,6 +438,7 @@ export type IntegrationDispatchServiceDeps = {
   instanceLookup?: (instanceId: string) => Promise<IntegrationDispatchInstanceRecord | null>;
   socketLookup?: (instanceId: string) => WASocket | null;
   imageDownloader?: (imageUrl: string) => Promise<IntegrationDownloadedImageAsset>;
+  documentDownloader?: (documentUrl: string) => Promise<IntegrationDownloadedDocumentAsset>;
 };
 
 const integrationEventCatalogServiceBridge = {
@@ -443,6 +455,10 @@ function buildLinkBody(template: IntegrationRenderedDispatchTemplate): string {
 
 function buildImageFallbackBody(template: IntegrationRenderedDispatchTemplate): string {
   return template.linkUrl ? buildLinkBody(template) : template.body;
+}
+
+function buildDocumentFallbackBody(template: IntegrationRenderedDispatchTemplate): string {
+  return template.documentUrl ? `${template.body}\n\n↗ *Abrir boleto*\n${template.documentUrl}`.trim() : template.body;
 }
 
 function buildTextLinkBody(template: IntegrationRenderedDispatchTemplate): string {
@@ -470,10 +486,12 @@ function resolveDeliveryPath(
   template: IntegrationRenderedDispatchTemplate,
   content: IntegrationDispatchTransportPayload,
   imageFallbackReason: IntegrationImageFallbackReason | null,
+  documentFallbackReason: IntegrationDocumentFallbackReason | null = null,
 ): IntegrationDispatchDeliveryPath {
   if ("image" in content) return "image_clean";
   if ("document" in content) return "document";
   if (imageFallbackReason) return "text_fallback_image";
+  if (documentFallbackReason) return "text_fallback_document";
   if (template.messageType === "link") return "link";
   return "text";
 }
@@ -494,6 +512,8 @@ export function buildBaileysDispatchPayload(
   options: {
     imageBuffer?: Buffer | null;
     imageMimeType?: string | null;
+    documentBuffer?: Buffer | null;
+    documentMimeType?: string | null;
   } = {},
 ): AnyMessageContent {
   if (template.messageType === "image") {
@@ -527,11 +547,18 @@ export function buildBaileysDispatchPayload(
     };
   }
 
+  if (options.documentBuffer) {
+    return {
+      document: options.documentBuffer,
+      mimetype: options.documentMimeType ?? template.mimeType!,
+      fileName: template.fileName ?? undefined,
+      caption: template.caption ?? undefined,
+      contextInfo,
+    };
+  }
+
   return {
-    document: { url: template.documentUrl! },
-    mimetype: template.mimeType!,
-    fileName: template.fileName ?? undefined,
-    caption: template.caption ?? undefined,
+    text: buildDocumentFallbackBody(template),
     contextInfo,
   };
 }
@@ -647,6 +674,8 @@ function buildPayloadSummary(
   content: IntegrationDispatchTransportPayload,
   imageAsset: IntegrationDownloadedImageAsset | null,
   imageFallbackReason: IntegrationImageFallbackReason | null,
+  documentAsset: IntegrationDownloadedDocumentAsset | null,
+  documentFallbackReason: IntegrationDocumentFallbackReason | null,
   secondaryProviderMessageId: string | null,
   secondaryDispatchFailureCode: IntegrationSecondaryDispatchFailureCode | null,
   whatsappLookup: IntegrationWhatsappLookupSummary | null,
@@ -671,7 +700,7 @@ function buildPayloadSummary(
     ...buildProviderSendErrorPayloadSummary(null),
     intendedMessageType: template.messageType,
     dispatchedMessageType: resolveDispatchedMessageType(template, content),
-    deliveryPath: resolveDeliveryPath(template, content, imageFallbackReason),
+    deliveryPath: resolveDeliveryPath(template, content, imageFallbackReason, documentFallbackReason),
     title: template.title,
     linkUrl: template.linkUrl,
     documentUrl: template.documentUrl,
@@ -685,6 +714,8 @@ function buildPayloadSummary(
     hasExternalAdReply: Boolean(template.externalAdReply),
     fallbackWithoutImage: template.messageType === "image" && !imageAsset,
     imageFallbackReason,
+    fallbackWithoutDocument: template.messageType === "document" && !documentAsset,
+    documentFallbackReason,
     secondaryDispatchKind: template.followup?.type ?? null,
     secondaryDispatchMessageType: template.followup?.messageType ?? null,
     secondaryDispatchStatus,
@@ -770,6 +801,51 @@ export async function downloadIntegrationImageAsset(
   };
 }
 
+export async function downloadIntegrationDocumentAsset(
+  documentUrl: string,
+  options: { timeoutMs?: number } = {},
+): Promise<IntegrationDownloadedDocumentAsset> {
+  if (!isHttpUrl(documentUrl)) {
+    throw new Error("Invalid integration document URL");
+  }
+
+  const timeoutMs = options.timeoutMs ?? DEFAULT_INTEGRATION_IMAGE_FETCH_TIMEOUT_MS;
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    throw new Error("Integration document fetch timeout must be a positive number");
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  let response: Response;
+
+  try {
+    response = await fetch(documentUrl, {
+      headers: {
+        Accept: "application/pdf,application/octet-stream,*/*;q=0.8",
+      },
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!response.ok) {
+    throw new Error(`Document download failed with status ${response.status}`);
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+  if (!buffer.byteLength) {
+    throw new Error("Downloaded integration document is empty");
+  }
+
+  const mimeType = response.headers.get("content-type");
+  return {
+    buffer,
+    mimeType: mimeType && mimeType.trim() ? mimeType : null,
+  };
+}
+
 function resolveDispatchedMessageType(
   template: IntegrationRenderedDispatchTemplate,
   content: IntegrationDispatchTransportPayload,
@@ -827,6 +903,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
   const instanceLookup = deps.instanceLookup ?? (async (instanceId: string) => prisma.instance.findUnique({ where: { id: instanceId }, select: { id: true, status: true } }));
   const socketLookup = deps.socketLookup ?? ((instanceId: string) => InstanceManager.get(instanceId));
   const imageDownloader = deps.imageDownloader ?? downloadIntegrationImageAsset;
+  const documentDownloader = deps.documentDownloader ?? downloadIntegrationDocumentAsset;
 
   async function executeDispatch(input: {
     dispatchLog: IntegrationDispatchLogRecord;
@@ -873,6 +950,8 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
 
       let imageAsset: IntegrationDownloadedImageAsset | null = null;
       let imageFallbackReason: IntegrationImageFallbackReason | null = null;
+      let documentAsset: IntegrationDownloadedDocumentAsset | null = null;
+      let documentFallbackReason: IntegrationDocumentFallbackReason | null = null;
       const shouldUseTextLinkPath = shouldUseTextLinkDispatch(template);
 
       if (template.messageType === "image" && !shouldUseTextLinkPath) {
@@ -889,11 +968,27 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
         }
       }
 
+      if (template.messageType === "document") {
+        if (!template.documentUrl) {
+          documentFallbackReason = "missing_document_url";
+        } else if (!isHttpUrl(template.documentUrl)) {
+          documentFallbackReason = "invalid_document_url";
+        } else {
+          try {
+            documentAsset = await documentDownloader(template.documentUrl);
+          } catch {
+            documentFallbackReason = "document_download_failed";
+          }
+        }
+      }
+
       const content = shouldUseTextLinkPath
         ? buildTextLinkPayload(template)
         : buildBaileysDispatchPayload(template, {
           imageBuffer: imageAsset?.buffer ?? null,
           imageMimeType: imageAsset?.mimeType ?? null,
+          documentBuffer: documentAsset?.buffer ?? null,
+          documentMimeType: documentAsset?.mimeType ?? null,
         });
 
       try {
@@ -924,7 +1019,7 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
           lastRetryError: null,
           retryLockedAt: null,
           retryExhaustedAt: null,
-          payloadSummary: buildPayloadSummary(template, content, imageAsset, imageFallbackReason, secondaryProviderMessageId, secondaryDispatchFailureCode, whatsappLookup, effectiveRecipientJid),
+          payloadSummary: buildPayloadSummary(template, content, imageAsset, imageFallbackReason, documentAsset, documentFallbackReason, secondaryProviderMessageId, secondaryDispatchFailureCode, whatsappLookup, effectiveRecipientJid),
         });
 
         return {

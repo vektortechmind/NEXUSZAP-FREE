@@ -25,6 +25,8 @@ export function formatDispatchDeliveryPath(value: string | null | undefined): st
       return "Imagem limpa";
     case "text_fallback_image":
       return "Texto por fallback de imagem";
+    case "text_fallback_document":
+      return "Texto por fallback de documento";
     case "document":
       return "Documento";
     case "link":

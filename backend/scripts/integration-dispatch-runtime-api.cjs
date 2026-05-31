@@ -17,6 +17,7 @@ const {
   createIntegrationDispatchLogService,
   createIntegrationDispatchRuntimeService,
   DEFAULT_INTEGRATION_IMAGE_FETCH_TIMEOUT_MS,
+  downloadIntegrationDocumentAsset,
   downloadIntegrationImageAsset,
   INTEGRATION_DISPATCH_STATUS,
   IntegrationDispatchInstanceNotFoundError,
@@ -75,6 +76,7 @@ function createDispatchService(options = {}) {
     instanceLookup: options.instanceLookup ?? (async (instanceId) => ({ id: instanceId, status: "CONNECTED" })),
     socketLookup: options.socketLookup ?? (() => sock),
     imageDownloader: options.imageDownloader ?? (async () => ({ buffer: Buffer.from("image-data"), mimeType: "image/jpeg" })),
+    documentDownloader: options.documentDownloader ?? (async () => ({ buffer: Buffer.from("document-data"), mimeType: "application/pdf" })),
     templateService: options.templateService,
   });
 
@@ -125,6 +127,26 @@ function createDispatchService(options = {}) {
         () => downloadIntegrationImageAsset("https://cdn.example.com/slow-image.png", { timeoutMs: 1 }),
         (error) => error.name === "AbortError",
       );
+    } finally {
+      global.fetch = originalFetch;
+    }
+  }
+
+  {
+    const originalFetch = global.fetch;
+    global.fetch = async (_url, init) => ({
+      ok: true,
+      headers: { get: () => "application/pdf" },
+      async arrayBuffer() {
+        assert.equal(init.headers.Accept.includes("application/pdf"), true);
+        return Buffer.from("downloaded-document");
+      },
+    });
+
+    try {
+      const asset = await downloadIntegrationDocumentAsset("https://checkout.example.com/boleto.pdf", { timeoutMs: 50 });
+      assert.equal(Buffer.compare(asset.buffer, Buffer.from("downloaded-document")), 0);
+      assert.equal(asset.mimeType, "application/pdf");
     } finally {
       global.fetch = originalFetch;
     }
@@ -378,7 +400,7 @@ function createDispatchService(options = {}) {
       payload: createBasePayload(),
     });
     assert.deepEqual(sentPayloads[0].content, {
-      document: { url: "https://checkout.example.com/boleto.pdf" },
+      document: Buffer.from("document-data"),
       mimetype: "application/pdf",
       fileName: "boleto.pdf",
       caption: sentPayloads[0].content.caption,
@@ -390,6 +412,27 @@ function createDispatchService(options = {}) {
     assert.equal(sentPayloads[0].content.contextInfo.externalAdReply.title, "Baixar boleto");
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"secondaryDispatchStatus":"sent"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"secondaryDispatchKind":"boleto_barcode_text"'), true);
+  }
+
+  {
+    const { service, sentPayloads, store } = createDispatchService({
+      documentDownloader: async () => {
+        throw new Error("document fetch failed");
+      },
+    });
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "boleto_gerado",
+      dedupKey: "evt-doc-fallback",
+      payload: createBasePayload(),
+    });
+    const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
+    assert.equal(sentPayloads[0].content.text.includes("Abrir boleto"), true);
+    assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/boleto.pdf"), true);
+    assert.equal(sentPayloads[1].content.text, "123456");
+    assert.equal(summary.includes('"deliveryPath":"text_fallback_document"'), true);
+    assert.equal(summary.includes('"documentFallbackReason":"document_download_failed"'), true);
+    assert.equal(summary.includes('"secondaryDispatchStatus":"sent"'), true);
   }
 
   {

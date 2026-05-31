@@ -21,6 +21,8 @@ export type IntegrationDispatchPayloadSummary = {
   intendedMessageType: string | null;
   dispatchedMessageType: string | null;
   deliveryPath: string | null;
+  documentUrl: string | null;
+  documentFallbackReason: string | null;
   secondaryDispatchStatus: string | null;
   secondaryProviderMessageId: string | null;
   secondaryDispatchFailureCode: string | null;
