@@ -27,12 +27,13 @@ const {
 const {
   IntegrationDispatchRecipientMissingError,
 } = require("../src/services/integrations/integrationDispatchRuntime.service.ts");
+const { integrationEventCatalogService } = require("../src/services/integrations/integrationEventCatalog.service.ts");
 const { createIntegrationRoutes } = require("../src/routes/integration.routes.ts");
 
 function createApp(authBehavior, dispatchBehavior = async () => ({
   dispatchLog: { id: "dispatch-1" },
   providerMessageId: "wamid.123",
-})) {
+}), eventCatalogBehavior = integrationEventCatalogService.normalizeEventContext) {
   const app = Fastify();
   const logStore = createInMemoryIntegrationIngressStore();
   const ingressService = createIntegrationIngressService(logStore);
@@ -42,6 +43,9 @@ function createApp(authBehavior, dispatchBehavior = async () => ({
       authorizeRequest: authBehavior,
     },
     ingressService,
+    eventCatalogService: {
+      normalizeEventContext: eventCatalogBehavior,
+    },
     dispatchRuntimeService: {
       dispatchEvent: dispatchBehavior,
     },
@@ -84,8 +88,12 @@ function validPayload(overrides = {}) {
   }
 
   {
+    let catalogCalled = false;
     const { app, logStore } = createApp(async () => {
       throw new InvalidIntegrationTokenError();
+    }, undefined, () => {
+      catalogCalled = true;
+      throw new Error("catalog should not run before auth");
     });
     await app.ready();
     const response = await app.inject({
@@ -96,7 +104,58 @@ function validPayload(overrides = {}) {
     });
     assert.equal(response.statusCode, 401, response.body);
     assert.equal(JSON.parse(response.body).error.code, "INVALID_INTEGRATION_TOKEN");
-    assert.equal(Array.from(logStore.logs.values())[0].status, INTEGRATION_INGRESS_STATUS.REJECTED_AUTH);
+    const stored = Array.from(logStore.logs.values())[0];
+    assert.equal(stored.status, INTEGRATION_INGRESS_STATUS.REJECTED_AUTH);
+    assert.equal(stored.payloadJson, null);
+    assert.equal(catalogCalled, false);
+    await app.close();
+  }
+
+  {
+    let catalogCalled = false;
+    const { app, logStore } = createApp(async () => {
+      throw new InactiveIntegrationCredentialError();
+    }, undefined, () => {
+      catalogCalled = true;
+      throw new Error("catalog should not run before auth");
+    });
+    await app.ready();
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/integrations/events",
+      headers: { authorization: "Bearer inactive-token" },
+      payload: validPayload({ dedupKey: "evt-inactive" }),
+    });
+    assert.equal(response.statusCode, 403, response.body);
+    assert.equal(JSON.parse(response.body).error.code, "INACTIVE_INTEGRATION_CREDENTIAL");
+    const stored = Array.from(logStore.logs.values())[0];
+    assert.equal(stored.status, INTEGRATION_INGRESS_STATUS.REJECTED_AUTH);
+    assert.equal(stored.payloadJson, null);
+    assert.equal(catalogCalled, false);
+    await app.close();
+  }
+
+  {
+    let catalogCalled = false;
+    const { app, logStore } = createApp(async () => {
+      throw new InvalidIntegrationTokenError();
+    }, undefined, () => {
+      catalogCalled = true;
+      throw new Error("catalog should not run before auth");
+    });
+    await app.ready();
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/integrations/events",
+      headers: { authorization: "Bearer invalid-token" },
+      payload: validPayload({ event: "webhook.test" }),
+    });
+    assert.equal(response.statusCode, 401, response.body);
+    assert.equal(JSON.parse(response.body).error.code, "INVALID_INTEGRATION_TOKEN");
+    const stored = Array.from(logStore.logs.values())[0];
+    assert.equal(stored.status, INTEGRATION_INGRESS_STATUS.REJECTED_AUTH);
+    assert.equal(stored.payloadJson, null);
+    assert.equal(catalogCalled, false);
     await app.close();
   }
 
@@ -119,8 +178,12 @@ function validPayload(overrides = {}) {
   }
 
   {
+    let catalogCalled = false;
     const { app, logStore } = createApp(async () => {
       throw new IntegrationInstanceMismatchError();
+    }, undefined, () => {
+      catalogCalled = true;
+      throw new Error("catalog should not run before auth");
     });
     await app.ready();
     const response = await app.inject({
@@ -131,7 +194,10 @@ function validPayload(overrides = {}) {
     });
     assert.equal(response.statusCode, 403, response.body);
     assert.equal(JSON.parse(response.body).error.code, "INTEGRATION_INSTANCE_MISMATCH");
-    assert.equal(Array.from(logStore.logs.values())[0].status, INTEGRATION_INGRESS_STATUS.REJECTED_AUTH);
+    const stored = Array.from(logStore.logs.values())[0];
+    assert.equal(stored.status, INTEGRATION_INGRESS_STATUS.REJECTED_AUTH);
+    assert.equal(stored.payloadJson, null);
+    assert.equal(catalogCalled, false);
     await app.close();
   }
 
@@ -187,8 +253,10 @@ function validPayload(overrides = {}) {
     });
     assert.equal(response.statusCode, 400, response.body);
     assert.equal(JSON.parse(response.body).error.code, "UNSUPPORTED_INTEGRATION_EVENT");
-    assert.equal(authCalled, false);
-    assert.equal(Array.from(logStore.logs.values())[0].status, INTEGRATION_INGRESS_STATUS.REJECTED_CONTRACT);
+    assert.equal(authCalled, true);
+    const stored = Array.from(logStore.logs.values())[0];
+    assert.equal(stored.status, INTEGRATION_INGRESS_STATUS.REJECTED_CONTRACT);
+    assert.equal(stored.credentialId, "cred-unsupported");
     await app.close();
   }
 

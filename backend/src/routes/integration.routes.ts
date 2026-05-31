@@ -175,24 +175,6 @@ export function createIntegrationRoutes(deps: IntegrationRouteDeps = {}) {
       const body = request.body;
       const token = extractBearerToken(request.headers.authorization);
 
-      try {
-        eventCatalogService.normalizeEventContext(body.event, body.payload);
-      } catch (error) {
-        const mapped = authFailureMessage(error as Error);
-        await ingressService.persistLog({
-          instanceId: body.instanceId,
-          eventSlug: body.event,
-          dedupKey: body.dedupKey,
-          requestTimestamp: parseOptionalDate(body.timestamp),
-          status: INTEGRATION_INGRESS_STATUS.REJECTED_CONTRACT,
-          failureCode: mapped.code,
-          payload: body.payload,
-        });
-
-        fastify.log.warn({ ingress: requestSummary(request), err: safeLogError(error) }, "integration ingress event rejected by catalog");
-        return sendError(reply, mapped.statusCode, mapped.code, mapped.message);
-      }
-
       let authorization: AuthorizedIntegrationRequest | null = null;
       try {
         authorization = await authService.authorizeRequest({
@@ -219,10 +201,29 @@ export function createIntegrationRoutes(deps: IntegrationRouteDeps = {}) {
           requestTimestamp: parseOptionalDate(body.timestamp),
           status,
           failureCode: mapped.code,
-          payload: body.payload,
+          payload: status === INTEGRATION_INGRESS_STATUS.REJECTED_AUTH ? undefined : body.payload,
         });
 
         fastify.log.warn({ ingress: requestSummary(request), err: safeLogError(error) }, "integration ingress request rejected");
+        return sendError(reply, mapped.statusCode, mapped.code, mapped.message);
+      }
+
+      try {
+        eventCatalogService.normalizeEventContext(body.event, body.payload);
+      } catch (error) {
+        const mapped = authFailureMessage(error as Error);
+        await ingressService.persistLog({
+          credentialId: authorization.credential.id,
+          instanceId: body.instanceId,
+          eventSlug: body.event,
+          dedupKey: body.dedupKey,
+          requestTimestamp: authorization.requestTimestamp,
+          status: INTEGRATION_INGRESS_STATUS.REJECTED_CONTRACT,
+          failureCode: mapped.code,
+          payload: body.payload,
+        });
+
+        fastify.log.warn({ ingress: requestSummary(request), credentialId: authorization.credential.id, err: safeLogError(error) }, "integration ingress event rejected by catalog");
         return sendError(reply, mapped.statusCode, mapped.code, mapped.message);
       }
 
