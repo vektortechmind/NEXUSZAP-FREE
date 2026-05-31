@@ -1027,8 +1027,8 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
             body: content.text,
             buttonText: ctaUrlConfig.buttonText,
             url: ctaUrlConfig.url,
-          }, { fallbackText: content.text });
-          providerMessageId = interactiveResult.providerMessageId ?? interactiveResult.fallbackProviderMessageId ?? null;
+          }, { fallbackText: content.text, sendFallbackAfterInteractiveSuccess: true });
+          providerMessageId = interactiveResult.fallbackProviderMessageId ?? interactiveResult.providerMessageId ?? null;
         } else {
           const sentMessage = await sock.sendMessage(effectiveRecipientJid, content);
           providerMessageId = extractProviderMessageId(sentMessage as WAMessage | null | undefined);
