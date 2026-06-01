@@ -396,7 +396,7 @@ As doacoes ajudam a manter:
 
 🚀 evolucao continua do projeto  
 🛠️ correcoes, melhorias e novas funcionalidades  
-☁️ custos com servidores, testes e infraestrutura  
+☁️ infraestrutura de testes, demonstracoes e validacao em ambiente real  
 📚 documentacao, exemplos e suporte para a comunidade  
 
 <br />
