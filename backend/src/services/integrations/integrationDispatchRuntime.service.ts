@@ -843,7 +843,9 @@ function buildPayloadSummary(
     ...buildProviderSendErrorPayloadSummary(null),
     intendedMessageType: template.messageType,
     dispatchedMessageType: resolveDispatchedMessageType(template, content),
-    deliveryPath: interactiveResult?.deliveryPath ?? resolveDeliveryPath(template, content, imageFallbackReason, documentFallbackReason),
+    deliveryPath: "image" in content
+      ? resolveDeliveryPath(template, content, imageFallbackReason, documentFallbackReason)
+      : interactiveResult?.deliveryPath ?? resolveDeliveryPath(template, content, imageFallbackReason, documentFallbackReason),
     title: template.title,
     linkUrl: template.linkUrl,
     documentUrl: template.documentUrl,
@@ -1146,8 +1148,20 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
         let secondaryDispatchFailureCode: IntegrationSecondaryDispatchFailureCode | null = null;
         let interactiveResult: SendCtaUrlInteractiveResult | SendNativeInteractiveResult | null = null;
         const nativeInteractiveConfig = getRuntimeNativeInteractiveConfig(template, content);
+        const shouldPreservePrimaryMedia = "image" in content;
 
-        if (nativeInteractiveConfig) {
+        if (nativeInteractiveConfig && shouldPreservePrimaryMedia) {
+          const sentMessage = await sock.sendMessage(effectiveRecipientJid, content);
+          providerMessageId = extractProviderMessageId(sentMessage as WAMessage | null | undefined);
+
+          if (typeof sock.relayMessage === "function") {
+            interactiveResult = await sendNativeInteractiveMessage(sock, effectiveRecipientJid, {
+              body: nativeInteractiveConfig.body,
+              buttons: nativeInteractiveConfig.buttons,
+            }, { fallbackText: nativeInteractiveConfig.fallbackText });
+            secondaryProviderMessageId = interactiveResult.providerMessageId ?? interactiveResult.fallbackProviderMessageId ?? null;
+          }
+        } else if (nativeInteractiveConfig) {
           if (nativeInteractiveConfig.automatic) {
             interactiveResult = await sendNativeInteractiveMessage(sock, effectiveRecipientJid, {
               body: nativeInteractiveConfig.body,

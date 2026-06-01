@@ -242,6 +242,7 @@ export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
 export const INTEGRATION_RENDER_RULES = [
   "O backend define a mensagem a partir do event e do payload normalizado. A ferramenta externa pode enviar texto visível final em payload.message.body, mas não escolhe tipo final, mídia, provider ou payload técnico do WhatsApp.",
   "Eventos mapeados como image fazem download da imagem no runtime quando imageUrl for HTTP/HTTPS válida e acessível pelo backend.",
+  "Quando um evento image também gerar botões automáticos, a imagem válida continua sendo enviada como mensagem principal e os botões são tratados como complemento interativo quando suportado pelo provider.",
   "Quando a imagem estiver ausente, inválida ou falhar no download, o runtime troca o envio para texto sem interromper o dispatch e registra deliveryPath text_fallback_image.",
   "O status técnico SENT nos logs de dispatch significa que o sendMessage retornou e o provider aceitou a tentativa operacional; não significa entrega confirmada no WhatsApp.",
   "Antes do envio, quando o socket permitir, o runtime registra um lookup WhatsApp informativo: found, not_found, error ou unavailable. Esse lookup ajuda diagnóstico, mas não bloqueia envio nem confirma entrega/leitura.",

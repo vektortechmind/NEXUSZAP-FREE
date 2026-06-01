@@ -508,14 +508,13 @@ function createDispatchService(options = {}) {
       payload: createBasePayload(),
     });
     assert.equal(sentPayloads[0].jid, "5511998765432@s.whatsapp.net");
-    assert.equal(sentPayloads[0].content.text.includes("PIX"), true);
-    assert.equal(sentPayloads[0].content.text.includes("Codigo Pix copia e cola"), true);
-    assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
-    assert.equal(sentPayloads[0].content.contextInfo, undefined);
+    assert.equal(Buffer.isBuffer(sentPayloads[0].content.image), true);
+    assert.equal(sentPayloads[0].content.caption.includes("PIX"), true);
+    assert.equal(sentPayloads[0].content.caption.includes("Codigo Pix copia e cola"), true);
     assert.equal(sentPayloads[1].content.text, "000201PIX-COPIA-COLA");
     assert.equal(result.dispatchLog.messageType, "image");
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"text_fallback_interactive_native"'), true);
-    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"interactiveButtonKinds":["cta_url","cta_copy"]'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"image_clean"'), true);
+    assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"interactiveButtonKinds":[]'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"normalizedPhone":"5511998765432"'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"imageFallbackReason":null'), true);
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"secondaryDispatchStatus":"sent"'), true);
@@ -537,8 +536,8 @@ function createDispatchService(options = {}) {
       payload,
     });
     const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
-    assert.equal(sentPayloads[0].content.text.includes("Mensagem principal Pix externa"), true);
-    assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
+    assert.equal(Buffer.isBuffer(sentPayloads[0].content.image), true);
+    assert.equal(sentPayloads[0].content.caption.includes("Mensagem principal Pix externa"), true);
     assert.equal(sentPayloads[1].content.text, "Segunda mensagem Pix externa");
     assert.equal(summary.includes('"customBodyUsed":true'), true);
     assert.equal(summary.includes('"customPixFollowupUsed":true'), true);
@@ -989,13 +988,15 @@ function createDispatchService(options = {}) {
     const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
     const buttons = relayCalls[0].message.interactiveMessage.nativeFlowMessage.buttons;
     assert.equal(relayCalls.length, 1);
-    assert.equal(sentPayloads.length, 0);
+    assert.equal(sentPayloads.length, 1);
+    assert.equal(Buffer.isBuffer(sentPayloads[0].content.image), true);
     assert.equal(buttons.some((button) => button.name === "cta_copy"), true);
     assert.equal(JSON.stringify(relayCalls[0].message).includes("000201PIX-COPIA-COLA"), true);
-    assert.equal(result.dispatchLog.providerMessageId, "wamid.pix-native");
-    assert.equal(summary.includes('"deliveryPath":"interactive_native"'), true);
+    assert.equal(result.dispatchLog.providerMessageId, "wamid.pix-fallback");
+    assert.equal(summary.includes('"deliveryPath":"image_clean"'), true);
     assert.equal(summary.includes('"interactiveButtonKinds":["cta_url","cta_copy"]'), true);
     assert.equal(summary.includes('"secondaryDispatchStatus":"skipped_interactive_button"'), true);
+    assert.equal(summary.includes('"secondaryProviderMessageId":"wamid.pix-native"'), true);
   }
 
   {
