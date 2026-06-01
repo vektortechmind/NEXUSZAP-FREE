@@ -304,7 +304,7 @@ export const INTEGRATION_CUSTOM_PIX_FOLLOWUP_EXAMPLE = `{
       "copy_paste": "00020126580014BR.GOV.BCB.PIX0136pix-456-chave-dinamica"
     },
     "message": {
-      "body": "João, seu Pix foi gerado. Pague até o vencimento para garantir o acesso.",
+      "body": "João, seu Pix foi gerado. Pague até o vencimento para manter seu pedido.",
       "pix_followup_body": "Pix copia e cola:\n00020126580014BR.GOV.BCB.PIX0136pix-456-chave-dinamica"
     }
   }

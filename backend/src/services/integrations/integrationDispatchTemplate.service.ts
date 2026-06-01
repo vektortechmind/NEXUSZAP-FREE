@@ -403,8 +403,7 @@ function renderDefaultIntegrationDispatchTemplateFromContext(
         [
           `💳 *${customer}*, o PIX do *${product}* foi gerado!`,
           context.total ? `📋 *Valor:* R$ ${context.total}` : null,
-          "⚠️ *Pague até o vencimento para garantir sua vaga!*",
-          context.pixCopyPaste ? "📌 *Codigo Pix copia e cola:* logo abaixo." : null,
+          "⚠️ *Pague até o vencimento para manter seu pedido.*",
         ],
         createExternalAdReply("Visualizar pedido", product, context.checkoutLink),
         createPixCopyPasteFollowup(context),
