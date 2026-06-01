@@ -33,13 +33,21 @@ function readEnvFile(): string[] {
   return fs.readFileSync(envPath, "utf8").split(/\r?\n/);
 }
 
-export function readEnvValue(key: string): string | undefined {
-  if (process.env[key] !== undefined) return process.env[key];
+export function readEnvFileValue(key: string): string | undefined {
   for (const line of readEnvFile()) {
     const parsed = parseEnvLine(line);
     if (parsed?.key === key) return parsed.value;
   }
   return undefined;
+}
+
+export function readConfiguredAppUrl(): string | undefined {
+  return readEnvFileValue("APP_URL") ?? process.env.APP_URL;
+}
+
+export function readEnvValue(key: string): string | undefined {
+  if (process.env[key] !== undefined) return process.env[key];
+  return readEnvFileValue(key);
 }
 
 export function updateEnvFile(updates: EnvUpdates): void {
@@ -89,7 +97,7 @@ export function getAdminCredentials() {
 }
 
 export function getSetupStatus() {
-  const appUrl = readEnvValue("APP_URL") ?? process.env.APP_URL ?? null;
+  const appUrl = readConfiguredAppUrl() ?? null;
   return {
     appUrl,
     dockerConfigured: Boolean(appUrl),

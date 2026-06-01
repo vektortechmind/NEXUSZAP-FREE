@@ -11,6 +11,9 @@ process.env.APP_URL = process.env.APP_URL || "https://painel.exemplo.com";
 require("ts-node/register/transpile-only");
 
 const assert = require("assert");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 const Fastify = require("fastify");
 const {
   IntegrationCredentialNotFoundError,
@@ -142,6 +145,12 @@ function createCredentialsService() {
   }
 
   {
+    const originalNexusEnvFile = process.env.NEXUS_ENV_FILE;
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "nexus-credentials-env-"));
+    const envPath = path.join(tempDir, ".env");
+    fs.writeFileSync(envPath, 'APP_URL="https://api-final.exemplo.com"\n');
+    process.env.NEXUS_ENV_FILE = envPath;
+
     const app = Fastify();
     const credentialsService = createCredentialsService();
     await app.register(createDashboardRoutes({
@@ -156,7 +165,7 @@ function createCredentialsService() {
     assert.equal(workspaceResponse.statusCode, 200, workspaceResponse.body);
     const workspacePayload = JSON.parse(workspaceResponse.body);
     assert.equal(workspacePayload.instances[0].instanceId, "instance-a");
-    assert.equal(workspacePayload.endpointUrl, "https://painel.exemplo.com/api/integrations/events");
+    assert.equal(workspacePayload.endpointUrl, "https://api-final.exemplo.com/api/integrations/events");
 
     const detailResponse = await app.inject({ method: "GET", url: "/api/dashboard/integrations/credentials/instance-a" });
     assert.equal(detailResponse.statusCode, 200, detailResponse.body);
@@ -174,6 +183,12 @@ function createCredentialsService() {
     assert.equal(rotatedPayload.secretToken, "nz_live_rotated_instance-a");
 
     await app.close();
+    if (originalNexusEnvFile === undefined) {
+      delete process.env.NEXUS_ENV_FILE;
+    } else {
+      process.env.NEXUS_ENV_FILE = originalNexusEnvFile;
+    }
+    fs.rmSync(tempDir, { recursive: true, force: true });
   }
 
 
