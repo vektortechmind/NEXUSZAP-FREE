@@ -13,6 +13,7 @@ Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 ### Fixed
 
 - Eventos de integracao com imagem valida preservam o envio da imagem mesmo quando botoes interativos automaticos tambem sao gerados.
+- Eventos de integracao com imagem e botoes automaticos agora tentam enviar mídia e botoes no mesmo payload interativo quando o socket suporta upload de mídia para native flow.
 - O Update Center não exibe mais os botões `Verificar` e `Atualizar` enquanto um job de atualização remoto está ativo, evitando nova checagem manual durante a instalação/update em andamento.
 - Update remoto pelo painel agora acompanha o job por endpoint leve, recupera melhor o estado após recriação do backend e evita installs/builds locais duplicados quando o deploy roda via Docker.
 - Instalação inicial não exibe mais login/senha temporários como credencial de uso e bloqueia login enquanto o primeiro administrador não for criado pelo fluxo `/criar-admin`.

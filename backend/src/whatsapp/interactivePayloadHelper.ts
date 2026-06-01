@@ -1,5 +1,5 @@
 import { randomBytes } from "crypto";
-import type { BinaryNode } from "@whiskeysockets/baileys";
+import type { BinaryNode, proto } from "@whiskeysockets/baileys";
 
 export type CtaUrlInteractiveInput = {
   body: string;
@@ -27,6 +27,10 @@ export type NativeInteractiveInput = {
 export type CtaUrlInteractivePayload = {
   message: {
     interactiveMessage: {
+      header?: {
+        hasMediaAttachment?: boolean;
+        imageMessage?: proto.Message.IImageMessage | null;
+      };
       body: { text: string };
       footer?: { text: string };
       nativeFlowMessage: {
@@ -51,6 +55,10 @@ export type CtaUrlInteractivePayload = {
 export type NativeInteractivePayload = {
   message: {
     interactiveMessage: {
+      header?: {
+        hasMediaAttachment?: boolean;
+        imageMessage?: proto.Message.IImageMessage | null;
+      };
       body: { text: string };
       footer?: { text: string };
       nativeFlowMessage: {

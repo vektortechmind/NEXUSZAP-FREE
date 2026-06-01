@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { proto, type MessageRelayOptions } from "@whiskeysockets/baileys";
+import { prepareWAMessageMedia, proto, type MessageRelayOptions, type WAMediaUploadFunction } from "@whiskeysockets/baileys";
 import { safeErrorMessage } from "../utils/redaction";
 import {
   buildCtaUrlFallbackText,
@@ -15,6 +15,7 @@ type SendMessageResult = { key?: { id?: string | null } } | string | void;
 export type NativeInteractiveRelaySocket = {
   relayMessage?: (jid: string, message: proto.IMessage, options: MessageRelayOptions) => Promise<string>;
   sendMessage?: (jid: string, content: { text: string }) => Promise<SendMessageResult>;
+  waUploadToServer?: WAMediaUploadFunction;
 };
 
 export type CtaUrlRelaySocket = NativeInteractiveRelaySocket;
@@ -24,6 +25,8 @@ export type SendNativeInteractiveOptions = {
   messageId?: string;
   fallbackText?: string;
   sendFallbackAfterInteractiveSuccess?: boolean;
+  headerImageBuffer?: Buffer | null;
+  headerImageMimeType?: string | null;
 };
 
 export type SendCtaUrlInteractiveOptions = SendNativeInteractiveOptions;
@@ -107,6 +110,19 @@ export async function sendNativeInteractiveMessage(
 
   try {
     // Payload shape adapted from MIT-licensed native flow/additionalNodes patterns in itsliaaa/baileys.
+    if (options.headerImageBuffer && typeof sock.waUploadToServer === "function") {
+      const media = await prepareWAMessageMedia({
+        image: options.headerImageBuffer,
+        mimetype: options.headerImageMimeType ?? undefined,
+      }, { upload: sock.waUploadToServer });
+      if (media.imageMessage) {
+        payload.message.interactiveMessage.header = {
+          hasMediaAttachment: true,
+          imageMessage: media.imageMessage,
+        };
+      }
+    }
+
     const message = proto.Message.create(payload.message);
     const providerMessageId = await sock.relayMessage(jid, message, {
       messageId,

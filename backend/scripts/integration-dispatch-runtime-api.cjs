@@ -1008,6 +1008,46 @@ function createDispatchService(options = {}) {
       sock: {
         async relayMessage(jid, message, options) {
           relayCalls.push({ jid, message, options });
+          return "wamid.pix-media-native";
+        },
+        async sendMessage(jid, content) {
+          sentPayloads.push({ jid, content });
+          return { key: { id: "wamid.unexpected-text" } };
+        },
+        async waUploadToServer() {
+          return {
+            mediaUrl: "https://mmg.example.com/image.enc",
+            directPath: "/v/t62.7118/image.enc",
+          };
+        },
+      },
+    });
+    const result = await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "pix_gerado",
+      dedupKey: "evt-pix-media-native-single",
+      payload: createBasePayload(),
+    });
+    const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
+    const interactive = relayCalls[0].message.interactiveMessage;
+    assert.equal(relayCalls.length, 1);
+    assert.equal(sentPayloads.length, 0);
+    assert.equal(Boolean(interactive.header.imageMessage), true);
+    assert.equal(interactive.body.text.includes("Codigo Pix copia e cola"), false);
+    assert.equal(interactive.body.text.includes("logo abaixo"), false);
+    assert.equal(result.dispatchLog.providerMessageId, "wamid.pix-media-native");
+    assert.equal(summary.includes('"deliveryPath":"image_clean"'), true);
+    assert.equal(summary.includes('"secondaryDispatchStatus":"skipped_interactive_button"'), true);
+  }
+
+  {
+    const relayCalls = [];
+    const sentPayloads = [];
+    const { service, store } = createDispatchService({
+      sentPayloads,
+      sock: {
+        async relayMessage(jid, message, options) {
+          relayCalls.push({ jid, message, options });
           return "wamid.boleto-native";
         },
         async sendMessage(jid, content) {
