@@ -990,6 +990,7 @@ function createDispatchService(options = {}) {
     assert.equal(relayCalls.length, 1);
     assert.equal(sentPayloads.length, 1);
     assert.equal(Buffer.isBuffer(sentPayloads[0].content.image), true);
+    assert.equal(relayCalls[0].message.interactiveMessage.body.text, "Use os botoes abaixo para abrir o checkout ou copiar o Pix.");
     assert.equal(buttons.some((button) => button.name === "cta_copy"), true);
     assert.equal(JSON.stringify(relayCalls[0].message).includes("000201PIX-COPIA-COLA"), true);
     assert.equal(result.dispatchLog.providerMessageId, "wamid.pix-fallback");

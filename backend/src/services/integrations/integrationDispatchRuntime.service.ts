@@ -769,6 +769,27 @@ function getRuntimeNativeInteractiveConfig(
   };
 }
 
+function buildMediaInteractiveBody(template: IntegrationRenderedDispatchTemplate): string {
+  switch (template.eventSlug) {
+    case "pix_gerado":
+      return "Use os botoes abaixo para abrir o checkout ou copiar o Pix.";
+    case "boleto_gerado":
+      return "Use os botoes abaixo para abrir ou copiar o boleto.";
+    case "pedido_pago":
+      return "Use o botao abaixo para acessar seu produto.";
+    case "envio_acesso":
+      return "Use os botoes abaixo para acessar sua area.";
+    case "carrinho_abandonado":
+      return "Use o botao abaixo para finalizar sua compra.";
+    case "assinatura_criada":
+      return "Use o botao abaixo para acessar sua assinatura.";
+    case "assinatura_em_atraso":
+      return "Use o botao abaixo para regularizar sua assinatura.";
+    default:
+      return "Use os botoes abaixo para continuar.";
+  }
+}
+
 function shouldSkipFollowupAfterInteractive(template: IntegrationRenderedDispatchTemplate, interactiveResult: SendNativeInteractiveResult | SendCtaUrlInteractiveResult | null): boolean {
   if (!interactiveResult || interactiveResult.summary.fallbackUsed) return false;
   if (template.eventSlug !== "pix_gerado" && template.eventSlug !== "boleto_gerado") return false;
@@ -1156,9 +1177,9 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
 
           if (typeof sock.relayMessage === "function") {
             interactiveResult = await sendNativeInteractiveMessage(sock, effectiveRecipientJid, {
-              body: nativeInteractiveConfig.body,
+              body: buildMediaInteractiveBody(template),
               buttons: nativeInteractiveConfig.buttons,
-            }, { fallbackText: nativeInteractiveConfig.fallbackText });
+            }, { fallbackText: buildMediaInteractiveBody(template) });
             secondaryProviderMessageId = interactiveResult.providerMessageId ?? interactiveResult.fallbackProviderMessageId ?? null;
           }
         } else if (nativeInteractiveConfig) {
