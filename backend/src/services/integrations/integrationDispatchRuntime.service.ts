@@ -698,6 +698,18 @@ function stripInteractiveActionValues(body: string, buttons: NativeInteractiveBu
   return next.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim() || body.trim();
 }
 
+function stripInteractiveHintLines(body: string, buttons: NativeInteractiveButton[]): string {
+  const hasCopyButton = buttons.some((button) => button.kind === "cta_copy");
+  if (!hasCopyButton) return body;
+
+  return body
+    .split("\n")
+    .filter((line) => !/logo abaixo/i.test(line) && !/c[oó]digo pix/i.test(line) && !/linha digit[aá]vel/i.test(line))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim() || body;
+}
+
 function buildInteractiveFallbackText(template: IntegrationRenderedDispatchTemplate, content: IntegrationDispatchTransportPayload): string {
   if ("text" in content && typeof content.text === "string" && content.text.trim()) return content.text;
   if (template.messageType === "document") return buildDocumentFallbackBody(template);
@@ -762,7 +774,7 @@ function getRuntimeNativeInteractiveConfig(
   if (buttons.length === 0) return null;
 
   return {
-    body: stripInteractiveActionValues(template.body, buttons),
+    body: stripInteractiveHintLines(stripInteractiveActionValues(template.body, buttons), buttons),
     buttons,
     fallbackText,
     automatic: true,
@@ -1172,15 +1184,27 @@ export function createIntegrationDispatchRuntimeService(deps: IntegrationDispatc
         const shouldPreservePrimaryMedia = "image" in content;
 
         if (nativeInteractiveConfig && shouldPreservePrimaryMedia) {
-          const sentMessage = await sock.sendMessage(effectiveRecipientJid, content);
-          providerMessageId = extractProviderMessageId(sentMessage as WAMessage | null | undefined);
-
-          if (typeof sock.relayMessage === "function") {
+          if (typeof sock.relayMessage === "function" && typeof sock.waUploadToServer === "function" && imageAsset) {
             interactiveResult = await sendNativeInteractiveMessage(sock, effectiveRecipientJid, {
-              body: buildMediaInteractiveBody(template),
+              body: nativeInteractiveConfig.body,
               buttons: nativeInteractiveConfig.buttons,
-            }, { fallbackText: buildMediaInteractiveBody(template) });
-            secondaryProviderMessageId = interactiveResult.providerMessageId ?? interactiveResult.fallbackProviderMessageId ?? null;
+            }, {
+              fallbackText: buildMediaInteractiveBody(template),
+              headerImageBuffer: imageAsset.buffer,
+              headerImageMimeType: imageAsset.mimeType,
+            });
+            providerMessageId = interactiveResult.providerMessageId ?? interactiveResult.fallbackProviderMessageId ?? null;
+          } else {
+            const sentMessage = await sock.sendMessage(effectiveRecipientJid, content);
+            providerMessageId = extractProviderMessageId(sentMessage as WAMessage | null | undefined);
+
+            if (typeof sock.relayMessage === "function") {
+              interactiveResult = await sendNativeInteractiveMessage(sock, effectiveRecipientJid, {
+                body: buildMediaInteractiveBody(template),
+                buttons: nativeInteractiveConfig.buttons,
+              }, { fallbackText: buildMediaInteractiveBody(template) });
+              secondaryProviderMessageId = interactiveResult.providerMessageId ?? interactiveResult.fallbackProviderMessageId ?? null;
+            }
           }
         } else if (nativeInteractiveConfig) {
           if (nativeInteractiveConfig.automatic) {
