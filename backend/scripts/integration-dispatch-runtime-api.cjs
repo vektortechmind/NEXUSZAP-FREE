@@ -510,7 +510,7 @@ function createDispatchService(options = {}) {
     assert.equal(sentPayloads[0].jid, "5511998765432@s.whatsapp.net");
     assert.equal(Buffer.isBuffer(sentPayloads[0].content.image), true);
     assert.equal(sentPayloads[0].content.caption.includes("PIX"), true);
-    assert.equal(sentPayloads[0].content.caption.includes("Codigo Pix copia e cola"), true);
+    assert.equal(sentPayloads[0].content.caption.includes("Codigo Pix copia e cola"), false);
     assert.equal(sentPayloads[1].content.text, "000201PIX-COPIA-COLA");
     assert.equal(result.dispatchLog.messageType, "image");
     assert.equal(Array.from(store.logs.values())[0].payloadSummaryJson.includes('"deliveryPath":"image_clean"'), true);
@@ -619,8 +619,8 @@ function createDispatchService(options = {}) {
       payload,
     });
     assert.equal(sentPayloads[0].content.text.includes("PIX"), true);
-    assert.equal(sentPayloads[0].content.text.includes("Codigo Pix copia e cola"), true);
-    assert.equal(sentPayloads[0].content.text.includes("logo abaixo"), true);
+    assert.equal(sentPayloads[0].content.text.includes("Codigo Pix copia e cola"), false);
+    assert.equal(sentPayloads[0].content.text.includes("logo abaixo"), false);
     assert.equal(sentPayloads[0].content.text.includes("https://checkout.example.com/c/123"), true);
     assert.equal(sentPayloads[0].content.contextInfo, undefined);
     assert.equal(sentPayloads[1].content.text, "000201PIX-COPIA-COLA");
@@ -1038,6 +1038,50 @@ function createDispatchService(options = {}) {
     assert.equal(result.dispatchLog.providerMessageId, "wamid.pix-media-native");
     assert.equal(summary.includes('"deliveryPath":"image_clean"'), true);
     assert.equal(summary.includes('"secondaryDispatchStatus":"skipped_interactive_button"'), true);
+  }
+
+  for (const [eventSlug, expectedButtonName, forbiddenText] of [
+    ["carrinho_abandonado", "cta_url", "↗ *Finalizar compra*"],
+    ["envio_acesso", "cta_url", "↗ *Acessar"],
+    ["assinatura_criada", "cta_url", "↗ *Acessar assinatura*"],
+    ["assinatura_em_atraso", "cta_url", "↗ *Regularizar assinatura*"],
+  ]) {
+    const relayCalls = [];
+    const sentPayloads = [];
+    const { service, store } = createDispatchService({
+      sentPayloads,
+      sock: {
+        async relayMessage(jid, message, options) {
+          relayCalls.push({ jid, message, options });
+          return `wamid.${eventSlug}.media-native`;
+        },
+        async sendMessage(jid, content) {
+          sentPayloads.push({ jid, content });
+          return { key: { id: `wamid.${eventSlug}.unexpected-text` } };
+        },
+        async waUploadToServer() {
+          return {
+            mediaUrl: "https://mmg.example.com/image.enc",
+            directPath: "/v/t62.7118/image.enc",
+          };
+        },
+      },
+    });
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug,
+      dedupKey: `evt-${eventSlug}-media-native-single`,
+      payload: createBasePayload(),
+    });
+    const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
+    const interactive = relayCalls[0].message.interactiveMessage;
+    const buttons = interactive.nativeFlowMessage.buttons;
+    assert.equal(relayCalls.length, 1);
+    assert.equal(sentPayloads.length, 0);
+    assert.equal(Boolean(interactive.header.imageMessage), true);
+    assert.equal(buttons.some((button) => button.name === expectedButtonName), true);
+    assert.equal(interactive.body.text.includes(forbiddenText), false);
+    assert.equal(summary.includes('"deliveryPath":"image_clean"'), true);
   }
 
   {
