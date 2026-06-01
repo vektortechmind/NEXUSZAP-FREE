@@ -205,16 +205,36 @@ function inferStorageBaseUrl(payload: IntegrationPayload, explicitBaseUrl?: stri
   if (explicit) return explicit;
 
   const absoluteCandidates = [
+    "product_image_url",
+    "productImageUrl",
+    "product.thumbnail_url",
+    "product.thumbnailUrl",
+    "product.image_url",
+    "product.imageUrl",
+    "product.image",
+    "product.cover",
+    "order.product_image_url",
+    "order.productImageUrl",
     "order.product.thumbnail_url",
     "order.product.thumbnailUrl",
+    "order.product.image_url",
+    "order.product.imageUrl",
     "order.product.image",
     "order.product.cover",
+    "checkout_session.product_image_url",
+    "checkout_session.productImageUrl",
     "checkout_session.product.thumbnail_url",
     "checkout_session.product.thumbnailUrl",
+    "checkout_session.product.image_url",
+    "checkout_session.product.imageUrl",
     "checkout_session.product.image",
     "checkout_session.product.cover",
+    "subscription.product_image_url",
+    "subscription.productImageUrl",
     "subscription.product.thumbnail_url",
     "subscription.product.thumbnailUrl",
+    "subscription.product.image_url",
+    "subscription.product.imageUrl",
     "subscription.product.image",
     "subscription.product.cover",
     "checkout_link",
@@ -250,6 +270,7 @@ function resolveProductSource(payload: IntegrationPayload): IntegrationProductSo
     asRecord(getByPath(payload, "order.product"))
     ?? asRecord(getByPath(payload, "checkout_session.product"))
     ?? asRecord(getByPath(payload, "subscription.product"))
+    ?? asRecord(getByPath(payload, "product"))
   );
 }
 
@@ -278,6 +299,7 @@ function normalizeProduct(payload: IntegrationPayload): IntegrationNormalizedPro
       "order.product.name",
       "checkout_session.product.name",
       "subscription.product.name",
+      "product.name",
     ])),
     offerName: normalizeString(firstDefined(payload, [
       "order.product_offer.name",
@@ -462,11 +484,26 @@ function normalizeAccess(eventSlug: SupportedIntegrationEventSlug, payload: Inte
 }
 
 export function getProductImage(payload: IntegrationPayload, baseUrl?: string | null): string | null {
+  const directUrl = normalizeUrl(firstDefined(payload, [
+    "product_image_url",
+    "productImageUrl",
+    "order.product_image_url",
+    "order.productImageUrl",
+    "checkout_session.product_image_url",
+    "checkout_session.productImageUrl",
+    "subscription.product_image_url",
+    "subscription.productImageUrl",
+  ]));
+  if (directUrl) return directUrl;
+
   const product = resolveProductSource(payload);
   if (!product) return null;
 
   const thumbnailUrl = normalizeUrl(firstDefined(product, ["thumbnail_url", "thumbnailUrl"]));
   if (thumbnailUrl) return thumbnailUrl;
+
+  const imageUrlAlias = normalizeUrl(firstDefined(product, ["image_url", "imageUrl"]));
+  if (imageUrlAlias) return imageUrlAlias;
 
   const cover = normalizeString(firstDefined(product, ["cover"]));
   const coverUrl = normalizeUrl(cover);
@@ -477,6 +514,8 @@ export function getProductImage(payload: IntegrationPayload, baseUrl?: string | 
   if (imageUrl) return imageUrl;
 
   if (image) return buildStorageAssetUrl(image, payload, baseUrl);
+  const imageAlias = normalizeString(firstDefined(product, ["image_url", "imageUrl"]));
+  if (imageAlias) return buildStorageAssetUrl(imageAlias, payload, baseUrl);
   if (cover) return buildStorageAssetUrl(cover, payload, baseUrl);
 
   return null;

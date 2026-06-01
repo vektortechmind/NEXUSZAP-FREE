@@ -294,6 +294,26 @@ function expectPhoneContext(context, digits) {
 
   {
     const payload = createBasePayload();
+    payload.product_image_url = "https://loja.example.com/storage/products/capa.png";
+    assert.equal(getProductImage(payload), "https://loja.example.com/storage/products/capa.png");
+  }
+
+  {
+    const payload = createBasePayload();
+    delete payload.order;
+    delete payload.checkout_session;
+    delete payload.subscription;
+    payload.product = {
+      name: "Produto top-level",
+      image_url: "https://loja.example.com/storage/products/top-level.png",
+    };
+    const context = extractContext("pedido_pago", payload);
+    assert.equal(context.productName, "Produto top-level");
+    assert.equal(context.productImage, "https://loja.example.com/storage/products/top-level.png");
+  }
+
+  {
+    const payload = createBasePayload();
     payload.order.product = {
       name: "Curso Premium",
       cover: "/products/curso-premium/cover.jpg",

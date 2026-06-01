@@ -74,7 +74,7 @@ export const INTEGRATION_CONTEXT_FIELDS = [
   },
   {
     label: "Produto",
-    paths: ["payload.order.product.name", "payload.checkout_session.product.name", "payload.subscription.product.name"],
+    paths: ["payload.order.product.name", "payload.checkout_session.product.name", "payload.subscription.product.name", "payload.product.name"],
   },
   {
     label: "Oferta ou plano",
@@ -83,11 +83,27 @@ export const INTEGRATION_CONTEXT_FIELDS = [
   {
     label: "Imagem do produto",
     paths: [
+      "payload.product_image_url",
+      "payload.productImageUrl",
+      "payload.product.image_url",
+      "payload.product.imageUrl",
+      "payload.product.image",
+      "payload.order.product_image_url",
+      "payload.order.productImageUrl",
       "payload.order.product.thumbnail_url",
       "payload.order.product.thumbnailUrl",
+      "payload.order.product.image_url",
+      "payload.order.product.imageUrl",
       "payload.order.product.image",
       "payload.order.product.cover",
+      "payload.checkout_session.product_image_url",
+      "payload.checkout_session.productImageUrl",
       "payload.checkout_session.product.thumbnail_url",
+      "payload.checkout_session.product.image_url",
+      "payload.checkout_session.product.image",
+      "payload.subscription.product_image_url",
+      "payload.subscription.productImageUrl",
+      "payload.subscription.product.image_url",
       "payload.subscription.product.image",
     ],
   },
@@ -524,8 +540,9 @@ export const INTEGRATION_MINIMAL_PAYLOAD_EXAMPLES = [
 ] as const;
 
 export const INTEGRATION_IMAGE_RESOLUTION_RULES = [
-  "A imagem pode vir como URL absoluta em thumbnail_url, thumbnailUrl, image ou cover do produto.",
-  "Quando image ou cover forem caminhos relativos de storage, o backend tenta montar a URL pública a partir de uma base HTTP/HTTPS inferida do payload.",
+  "A imagem pode vir como URL absoluta em product_image_url/productImageUrl no payload ou dentro de product, order.product, checkout_session.product e subscription.product.",
+  "Tambem sao aceitos thumbnail_url, thumbnailUrl, image_url, imageUrl, image ou cover do produto.",
+  "Quando image, image_url ou cover forem caminhos relativos de storage, o backend tenta montar a URL publica a partir de uma base HTTP/HTTPS inferida do payload.",
   "O arquivo de imagem é baixado apenas no momento do dispatch para compor a mensagem e não faz parte do contrato persistido do request.",
 ] as const;
 
