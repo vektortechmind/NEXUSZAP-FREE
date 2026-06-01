@@ -1,5 +1,19 @@
 # NexusZAP - Chatbot com IA v1.0.5
 
+<div align="center">
+
+![GitHub repo size](https://img.shields.io/github/repo-size/vektortechmind/NEXUSZAP-FREE?style=flat-square)
+![GitHub stars](https://img.shields.io/github/stars/vektortechmind/NEXUSZAP-FREE?style=flat-square)
+![GitHub forks](https://img.shields.io/github/forks/vektortechmind/NEXUSZAP-FREE?style=flat-square)
+![GitHub issues](https://img.shields.io/github/issues/vektortechmind/NEXUSZAP-FREE?style=flat-square)
+![GitHub license](https://img.shields.io/github/license/vektortechmind/NEXUSZAP-FREE?style=flat-square)
+
+<a href="https://livepix.gg/vektortechmind01" target="_blank">
+  <img src="https://img.shields.io/badge/Apoie%20o%20projeto-LivePix-FFB000?style=for-the-badge" alt="Apoie o projeto via LivePix" />
+</a>
+
+</div>
+
 NexusZAP e uma plataforma de automacao para WhatsApp e Telegram com IA, base de conhecimento, painel administrativo e endpoint publico de integracoes para sistemas externos.
 
 ## Visao geral
@@ -369,6 +383,57 @@ Regras principais:
 | `npm run typecheck` | Typecheck de backend e frontend |
 | `npm test` | Suite atual do backend |
 | `npm run test:smoke` | Smoke test do backend/API |
+
+## Apoie o projeto
+
+<div align="center">
+
+### 💛 NexusZAP e gratuito e feito para a comunidade.
+
+Se o NexusZAP economizou seu tempo, ajudou sua operacao ou serviu como base para uma integracao real, considere apoiar o desenvolvimento com uma contribuicao voluntaria.
+
+As doacoes ajudam a manter:
+
+🚀 evolucao continua do projeto  
+🛠️ correcoes, melhorias e novas funcionalidades  
+☁️ custos com servidores, testes e infraestrutura  
+📚 documentacao, exemplos e suporte para a comunidade  
+
+<br />
+
+<a href="https://livepix.gg/vektortechmind01" target="_blank">
+  <img src="https://img.shields.io/badge/Apoiar%20via%20LivePix-FFB000?style=for-the-badge&logo=pix&logoColor=white" alt="Apoiar via LivePix" />
+</a>
+
+<br />
+<br />
+
+<a href="https://livepix.gg/vektortechmind01" target="_blank">
+  <strong>Fazer uma contribuicao voluntaria</strong>
+</a>
+
+</div>
+
+## Gostou do NexusZAP?
+
+<div align="center">
+
+Se o projeto foi util para voce, deixe uma estrela no repositorio.
+
+Isso ajuda o NexusZAP a chegar em mais pessoas, aumenta a confianca da comunidade e incentiva a continuidade do desenvolvimento.
+
+<br />
+
+<a href="https://github.com/vektortechmind/NEXUSZAP-FREE/stargazers" target="_blank">
+  <img src="https://img.shields.io/github/stars/vektortechmind/NEXUSZAP-FREE?style=for-the-badge&logo=github&label=Dar%20uma%20estrela&color=181717" alt="Dar uma estrela no GitHub" />
+</a>
+
+<br />
+<br />
+
+<strong>⭐ Sua estrela fortalece o projeto.</strong>
+
+</div>
 
 ## Seguranca operacional
 
