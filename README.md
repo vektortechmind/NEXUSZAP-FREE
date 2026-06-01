@@ -42,8 +42,8 @@ O produto esta organizado em cinco frentes operacionais dentro do painel:
 
 | Ferramenta | Versao | Download |
 |------------|--------|----------|
-| Node.js | 18+ | https://nodejs.org/ |
-| Git | Atual | https://git-scm.com/ |
+| Node.js | 20 LTS instalado automaticamente pelo `install.sh` em Debian/Ubuntu quando faltar ou estiver abaixo de 18 | https://nodejs.org/ |
+| Git | Instalado automaticamente pelo `install.sh` em Debian/Ubuntu quando faltar | https://git-scm.com/ |
 | Docker | Instalado automaticamente pelo `install.sh` em Debian/Ubuntu | https://www.docker.com/ |
 
 Verificacao rapida:
@@ -63,6 +63,7 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/vektortechmind/NEXUSZAP-
 ```
 
 Esse comando pode ser executado em uma VPS limpa. Se a pasta do projeto ainda nao existir, o instalador clona `NEXUSZAP-FREE` automaticamente e continua a instalacao dentro dela.
+Em Debian/Ubuntu, o instalador tambem prepara os pacotes basicos necessarios, Node.js 20 LTS/npm e Docker/Compose quando ainda nao estiverem instalados.
 
 Se preferir auditar o script antes de executar:
 
@@ -85,6 +86,8 @@ O `install.sh` executa o fluxo completo:
 
 - cria `backend/.env` automaticamente se ele ainda nao existir;
 - gera `JWT_SECRET`, `ENCRYPTION_KEY`, `SETUP_TOKEN` e senha temporaria de bootstrap;
+- instala pacotes basicos em Debian/Ubuntu quando necessario: `ca-certificates`, `curl`, `gnupg`, `git`, `build-essential` e `python3`;
+- instala Node.js 20 LTS/npm em Debian/Ubuntu quando Node.js nao existir ou estiver abaixo da versao 18;
 - instala Docker Engine e Docker Compose plugin em Debian/Ubuntu quando necessario;
 - instala dependencias da raiz, backend e frontend;
 - executa `prisma generate`;

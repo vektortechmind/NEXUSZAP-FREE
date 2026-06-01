@@ -74,6 +74,14 @@ assert.ok(
   "install.sh deve instalar Docker Engine e Docker Compose plugin em VPS Debian/Ubuntu"
 );
 assert.ok(
+  read("install.sh").includes("setup_20.x") && read("install.sh").includes("install_node_debian_ubuntu"),
+  "install.sh deve instalar Node.js 20 LTS automaticamente em VPS Debian/Ubuntu quando necessario"
+);
+assert.ok(
+  read("install.sh").includes("ca-certificates curl gnupg git build-essential python3"),
+  "install.sh deve instalar pacotes basicos automaticamente em VPS Debian/Ubuntu"
+);
+assert.ok(
   read("install.sh").includes("run_backend_migrations_docker"),
   "install.sh deve verificar e aplicar migrations Prisma no fluxo Docker"
 );
