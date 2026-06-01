@@ -136,6 +136,83 @@ sudo_cmd() {
   fi
 }
 
+is_debian_ubuntu() {
+  if [[ ! -r /etc/os-release ]]; then
+    return 1
+  fi
+
+  # shellcheck disable=SC1091
+  source /etc/os-release
+  local distro_id="${ID:-}"
+  local distro_like="${ID_LIKE:-}"
+
+  [[ "$distro_id" == "ubuntu" || "$distro_id" == "debian" || " $distro_like " == *" debian "* ]]
+}
+
+ensure_can_install_with_apt() {
+  require apt-get "Instalacao automatica requer apt-get em Debian/Ubuntu."
+  if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
+    require sudo "Instale sudo ou rode este script como root para instalar dependencias."
+  fi
+}
+
+node_major_version() {
+  if ! command -v node >/dev/null 2>&1; then
+    echo "0"
+    return 0
+  fi
+
+  node -v 2>/dev/null | sed 's/^v//' | cut -d. -f1
+}
+
+nodejs_available() {
+  local major
+  major="$(node_major_version)"
+  [[ "$major" =~ ^[0-9]+$ && "$major" -ge 18 ]] && command -v npm >/dev/null 2>&1
+}
+
+install_base_packages_debian_ubuntu() {
+  echo "Verificando pacotes basicos da VPS..."
+  ensure_can_install_with_apt
+  sudo_cmd apt-get update
+  sudo_cmd apt-get install -y ca-certificates curl gnupg git build-essential python3
+}
+
+install_node_debian_ubuntu() {
+  if nodejs_available; then
+    echo "Node.js $(node -v) e npm $(npm -v) encontrados."
+    return 0
+  fi
+
+  ensure_can_install_with_apt
+  echo "Node.js 18+ nao encontrado. Instalando Node.js 20 LTS..."
+  sudo_cmd apt-get update
+  sudo_cmd apt-get install -y ca-certificates curl gnupg
+  curl -fsSL https://deb.nodesource.com/setup_20.x | sudo_cmd bash -
+  sudo_cmd apt-get install -y nodejs
+
+  if ! nodejs_available; then
+    echo "ERRO: Node.js 20/npm nao ficaram disponiveis apos a instalacao automatica." >&2
+    exit 1
+  fi
+
+  node -v
+  npm -v
+}
+
+ensure_system_dependencies() {
+  if ! is_debian_ubuntu; then
+    require git "Instale Git antes de rodar a instalacao remota."
+    require curl "Instale curl antes de continuar."
+    require node "Instale Node.js 18+ antes de continuar."
+    require npm "Instale npm antes de continuar."
+    return 0
+  fi
+
+  install_base_packages_debian_ubuntu
+  install_node_debian_ubuntu
+}
+
 install_docker_debian_ubuntu() {
   if docker_compose_available; then
     return 0
@@ -165,13 +242,9 @@ install_docker_debian_ubuntu() {
       ;;
   esac
 
+  ensure_can_install_with_apt
   require curl "Instale curl antes de instalar Docker automaticamente."
   require gpg "Instale gnupg/gpg antes de instalar Docker automaticamente."
-  require apt-get "Instalacao automatica de Docker requer apt-get."
-
-  if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then
-    require sudo "Instale sudo ou rode este script como root para instalar Docker."
-  fi
 
   local codename="${UBUNTU_CODENAME:-${VERSION_CODENAME:-}}"
   if [[ -z "$codename" ]]; then
@@ -362,10 +435,8 @@ remove_ps1() {
   find "$ROOT" -type f -name '*.ps1' -delete
 }
 
+ensure_system_dependencies
 ensure_repo_checkout
-
-require node "Instale Node.js 18+ antes de continuar."
-require npm "Instale npm antes de continuar."
 
 install_docker_debian_ubuntu
 
