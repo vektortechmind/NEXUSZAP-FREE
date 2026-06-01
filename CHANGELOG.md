@@ -8,6 +8,7 @@ Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
 - Templates de integracao agora podem usar botoes nativos internos para acoes ja existentes: `cta_url` em links e `cta_copy` em Pix copia e cola/linha digitavel de boleto.
 - Auditoria de dispatch passou a registrar `interactiveButtonKinds`, `interactiveButtonCount`, caminhos interativos nativos e `skipped_interactive_button` quando a segunda mensagem Pix/Boleto foi substituida por botao.
+- Normalizacao de integracoes passa a aceitar imagem do produto tambem em `product_image_url`, `productImageUrl`, `product.*` no topo do payload e aliases equivalentes nos blocos `order`, `checkout_session` e `subscription`.
 
 ### Fixed
 
