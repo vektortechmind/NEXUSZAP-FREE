@@ -14,58 +14,38 @@
 
 </div>
 
-NexusZAP e uma plataforma de automacao para WhatsApp e Telegram com IA, base de conhecimento, painel administrativo e endpoint publico de integracoes para sistemas externos.
+NexusZAP e uma plataforma gratuita para automacao de atendimento no WhatsApp e Telegram com IA, base de conhecimento, painel administrativo e endpoint publico para integracoes externas.
 
-## Visao geral
+## O que o NexusZAP entrega
 
-O produto esta organizado em cinco frentes operacionais dentro do painel:
+- Conexao e gestao de instancias WhatsApp e Telegram.
+- Agentes com IA, prompt principal, memoria e base de conhecimento.
+- Providers de IA: Gemini, Groq, OpenRouter e OpenAI.
+- Endpoint publico para receber eventos externos e disparar mensagens.
+- Templates prontos para pedidos, pagamentos, acesso, assinaturas e recuperacao.
+- Auditoria de eventos recebidos, envios, falhas, retries e provider.
+- Instalacao e atualizacao por scripts em VPS Debian/Ubuntu com Docker.
 
-- `Dashboard`: visao consolidada de volume por canal, uso de IA e base ativa.
-- `Instancias`: gestao de conexoes WhatsApp e Telegram, QR Code, status e acoes operacionais.
-- `Integracoes`: credenciais, auditoria global e documentacao publica do endpoint `/api/integrations/events`.
-- `Agente IA`: configuracao de runtime, prompt principal, arquivos de conhecimento e workspace por agente.
-- `Configuracoes`: chaves, providers e recursos de sistema, incluindo modelos OpenRouter/OpenAI quando houver chave configurada.
+## Requisitos
 
-## Recursos principais
+Ambiente recomendado:
 
-- Automacao para `WhatsApp` e `Telegram` com painel unico.
-- Runtime de IA com `Gemini`, `Groq`, `OpenRouter` e `OpenAI`.
-- Base de conhecimento com upload de `PDF`, `DOCX`, `TXT`, `JSON` e imagens.
-- Gestao de agentes com prompt principal, configuracoes de runtime e arquivos por workspace.
-- Endpoint publico de integracoes com autenticacao por `Bearer token`, `instanceId`, `timestamp` e `dedupKey`.
-- Templates operacionais por evento para cobranca, acesso, assinatura, Pix, boleto e recuperacao, com botoes interativos quando houver link ou codigo operacional no payload.
-- Auditoria global de ingressos e dispatches das integracoes.
-- Autenticacao JWT, criptografia de segredos e rate limiting.
-- PostgreSQL como banco oficial.
+- VPS Linux Debian ou Ubuntu.
+- Acesso root ou usuario com sudo.
+- Dominio/subdominio apontando para a VPS.
+- Docker, Docker Compose, Git e Node.js 20 LTS.
 
-## Pre-requisitos
+O `install.sh` instala automaticamente dependencias basicas em Debian/Ubuntu quando elas estiverem ausentes ou desatualizadas.
 
-| Ferramenta | Versao | Download |
-|------------|--------|----------|
-| Node.js | 20 LTS instalado automaticamente pelo `install.sh` em Debian/Ubuntu quando faltar ou estiver abaixo de 18 | https://nodejs.org/ |
-| Git | Instalado automaticamente pelo `install.sh` em Debian/Ubuntu quando faltar | https://git-scm.com/ |
-| Docker | Instalado automaticamente pelo `install.sh` em Debian/Ubuntu | https://www.docker.com/ |
+## Instalacao rapida
 
-Verificacao rapida:
-
-```bash
-node --version
-npm --version
-git --version
-```
-
-## Instalacao com um comando
-
-Em uma VPS Debian/Ubuntu, rode a instalacao completa com um unico comando:
+Em uma VPS limpa Debian/Ubuntu:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/vektortechmind/NEXUSZAP-FREE/main/install.sh)"
 ```
 
-Esse comando pode ser executado em uma VPS limpa. Se a pasta do projeto ainda nao existir, o instalador clona `NEXUSZAP-FREE` automaticamente e continua a instalacao dentro dela.
-Em Debian/Ubuntu, o instalador tambem prepara os pacotes basicos necessarios, Node.js 20 LTS/npm e Docker/Compose quando ainda nao estiverem instalados.
-
-Se preferir auditar o script antes de executar:
+Se preferir auditar antes:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/vektortechmind/NEXUSZAP-FREE/main/install.sh -o install.sh
@@ -73,37 +53,17 @@ chmod +x install.sh
 sudo ./install.sh
 ```
 
-Em um clone Git ja existente na VPS:
-
-```bash
-chmod +x install.sh update.sh
-sudo ./install.sh
-```
-
-## O que o instalador faz
-
-O `install.sh` executa o fluxo completo:
-
-- cria `backend/.env` automaticamente se ele ainda nao existir;
-- gera `JWT_SECRET`, `ENCRYPTION_KEY`, `SETUP_TOKEN` e senha temporaria de bootstrap;
-- instala pacotes basicos em Debian/Ubuntu quando necessario: `ca-certificates`, `curl`, `gnupg`, `git`, `build-essential` e `python3`;
-- instala Node.js 20 LTS/npm em Debian/Ubuntu quando Node.js nao existir ou estiver abaixo da versao 18;
-- instala Docker Engine e Docker Compose plugin em Debian/Ubuntu quando necessario;
-- instala dependencias da raiz, backend e frontend;
-- executa `prisma generate`;
-- builda backend e frontend;
-- sobe `postgres`, `backend` e `frontend` com `docker compose up -d --build` quando Docker estiver disponivel;
-- expoe o backend diretamente na porta `3001` do host para acesso tecnico e troubleshooting da API.
+O instalador clona o repositorio quando necessario, prepara `backend/.env`, gera segredos, instala dependencias, executa build e sobe os containers `postgres`, `backend` e `frontend`.
 
 ## Primeiro acesso
 
-Ao final da instalacao na VPS, abra a URL mostrada no terminal:
+Ao final da instalacao, acesse a URL exibida no terminal:
 
 ```text
 http://SEU_IP/docker-setup?token=SEU_TOKEN
 ```
 
-Informe o dominio publico, por exemplo `seudominio.com`. Essa etapa ajusta `APP_URL`, `CORS_ORIGINS` e prepara a configuracao final.
+Informe o dominio publico do painel/API. Essa etapa ajusta `APP_URL`, `CORS_ORIGINS` e finaliza a configuracao inicial.
 
 Depois crie o primeiro administrador:
 
@@ -111,122 +71,98 @@ Depois crie o primeiro administrador:
 http://SEU_DOMINIO/criar-admin?token=SEU_TOKEN
 ```
 
-Essa etapa substitui a senha temporaria gerada na instalacao e bloqueia nova criacao publica de administrador.
-Enquanto `ADMIN_SETUP_REQUIRED="true"`, o login no painel fica bloqueado ate o primeiro administrador ser criado pela rota `/criar-admin`.
+Enquanto o primeiro administrador nao for criado, o login normal fica bloqueado por seguranca.
 
-URLs padrao na VPS com Docker:
+## URLs importantes
 
-- Painel: `http://SEU_IP` ou `https://SEU_DOMINIO`
-- API direta do backend: `http://SEU_IP:3001/api`
-- API publica final: `https://SEU_DOMINIO/api` quando `APP_URL` estiver configurado com proxy/dominio real
-- PostgreSQL: container interno `postgres:5432`
+Em uma instalacao padrao com Docker:
 
-## Update na VPS
+- Painel: `https://SEU_DOMINIO`
+- API publica: `https://SEU_DOMINIO/api`
+- Backend direto para suporte: `http://SEU_IP:3001/api`
+- Endpoint de integracoes: `https://SEU_DOMINIO/api/integrations/events`
 
-Dentro da pasta do projeto na VPS Debian/Ubuntu:
+`APP_URL` deve apontar para a URL publica real da API. Sem isso, o painel pode exibir endpoint interno ou IP local em integracoes.
+
+## Configuracao basica
+
+No painel voce configura:
+
+- instancias WhatsApp e Telegram;
+- IA por agente e por instancia;
+- provider/modelo de IA;
+- base de conhecimento;
+- credenciais de integracao externa;
+- auditoria e acompanhamento de envios.
+
+A IA pode ser habilitada ou desabilitada por instancia WhatsApp. Isso permite manter a instancia conectada sem responder automaticamente.
+
+## Integracoes externas
+
+O NexusZAP recebe eventos externos em:
+
+```text
+POST /api/integrations/events
+```
+
+Autenticacao:
+
+```text
+Authorization: Bearer <secretToken>
+Content-Type: application/json
+```
+
+Campos principais:
+
+- `event`: tipo do evento.
+- `instanceId`: instancia autorizada para a credencial.
+- `timestamp`: usado na protecao contra replay.
+- `dedupKey`: chave idempotente para evitar duplicidade.
+- `payload`: dados do cliente, pedido, produto, links, Pix, boleto ou acesso.
+
+Eventos suportados:
+
+- pedidos: pendente, pago, cancelado, recusado e reembolso;
+- pagamentos: Pix gerado e boleto gerado;
+- acesso: envio de acesso ao cliente;
+- assinatura: criada, renovada, cancelada e em atraso;
+- recuperacao: carrinho abandonado.
+
+A documentacao tecnica completa do endpoint fica no proprio painel em `Integracoes -> Documentacao`.
+
+## Templates e mensagens
+
+Cada evento possui template padrao. Quando o payload contem imagem, link, Pix ou boleto, o NexusZAP escolhe automaticamente o melhor formato disponivel.
+
+O runtime pode usar:
+
+- texto simples;
+- link com preview;
+- imagem com legenda;
+- documento;
+- botoes nativos quando suportado, como abrir link ou copiar codigo Pix/boleto.
+
+Sistemas externos podem enviar `payload.message.body` para personalizar o texto visivel do evento. Campos tecnicos de WhatsApp/Baileys nao sao aceitos pelo endpoint publico.
+
+## Atualizacao
+
+Dentro da pasta do projeto na VPS:
 
 ```bash
 ./update.sh
 ```
 
-O `update.sh`:
+O update busca o repositorio oficial, aplica mudancas com Git, reinstala dependencias quando necessario, executa build e recria os containers afetados.
 
-- garante o remote oficial `https://github.com/vektortechmind/NEXUSZAP-FREE.git`;
-- executa `git fetch` e `git pull --ff-only`;
-- reinstala dependencias com `npm ci` quando houver lockfile;
-- executa `prisma generate`;
-- builda o projeto;
-- recria `backend` e `frontend` com Docker quando houver mudancas que afetem os containers.
-
-Se a pasta atual foi baixada como ZIP, nao use update automatico nela. Clone pelo Git para manter updates seguros.
-
-## Variaveis de ambiente
-
-Arquivo principal:
-
-```text
-backend/.env
-```
-
-Modelo:
-
-```text
-backend/.env.example
-```
-
-Minimo esperado:
-
-```env
-NODE_ENV="production"
-DATABASE_URL="postgresql://nexus:nexus_secret@localhost:5432/nexus_chatbot_db?schema=public"
-PORT=3000
-JWT_SECRET="gerado-automaticamente"
-ENCRYPTION_KEY="gerado-automaticamente"
-ADMIN_EMAIL="admin@nexuszap.com"
-ADMIN_PASSWORD="senha-gerada"
-ADMIN_SETUP_REQUIRED="true"
-CORS_ORIGINS="http://localhost,http://localhost:5173,http://localhost:4173"
-APP_URL="https://seudominio.com"
-SETUP_TOKEN="token-gerado"
-SETUP_COMPLETED="false"
-GITHUB_REPO="vektortechmind/NEXUSZAP-FREE"
-```
-
-Em producao, ajuste `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `APP_URL` e `CORS_ORIGINS` pelo fluxo inicial de setup. O login so e liberado apos `ADMIN_SETUP_REQUIRED` virar `false` na criacao do primeiro administrador.
-
-`APP_URL` deve apontar para a URL publica real que expoe o backend/API. Sem isso, o painel nao inventa `endpointUrl` para integracoes em ambiente publico.
-
-## Estrutura do projeto
-
-```text
-NEXUSZAP-FREE/
-├── backend/
-│   ├── prisma/
-│   ├── scripts/
-│   └── src/
-├── frontend/
-│   ├── public/
-│   └── src/
-├── scripts/
-│   └── start-safe.cjs
-├── docker-compose.yml
-├── install.sh
-└── update.sh
-```
-
-## Desenvolvimento local
-
-Subir frontend e backend em modo desenvolvimento:
-
-```bash
-npm install
-npm run dev
-```
-
-Outros comandos uteis:
-
-```bash
-npm run dev:api
-npm run dev:web
-npm run build
-npm run lint
-npm run typecheck
-npm test
-```
+Tambem e possivel usar o painel quando a instalacao estiver preparada para atualizacao controlada.
 
 ## Docker
 
-Subir stack manualmente:
+Subir manualmente:
 
 ```bash
 docker compose up -d --build
 ```
-
-Acesso padrao apos subir manualmente:
-
-- painel: `http://SEU_IP` ou porta definida em `FRONTEND_HTTP_PORT`
-- backend direto: `http://SEU_IP:3001/api`
-- endpoint publico final de integracoes: usar o dominio configurado em `APP_URL`
 
 Ver logs:
 
@@ -234,158 +170,40 @@ Ver logs:
 docker compose logs -f
 ```
 
-Parar containers:
+Parar:
 
 ```bash
 docker compose down
 ```
 
-## Painel administrativo
+## Desenvolvimento local
 
-### Dashboard
-
-Mostra:
-
-- volume por periodo;
-- volume por canal;
-- uso de IA;
-- quantidade de arquivos da base;
-- tendencia diaria;
-- atividade em destaque.
-
-### Instancias
-
-Permite:
-
-- criar instancias WhatsApp;
-- gerar QR Code e conectar;
-- habilitar ou desabilitar a IA por instancia WhatsApp;
-- configurar o singleton do Telegram;
-- abrir detalhes operacionais de cada canal;
-- desconectar ou remover quando aplicavel.
-
-### Agente IA
-
-Permite:
-
-- criar agentes para WhatsApp e Telegram;
-- definir nome e prompt principal;
-- ajustar provider e memoria do runtime;
-- configurar modelo OpenRouter ou OpenAI quando selecionado;
-- enviar arquivos de conhecimento;
-- manter workspace separado por agente.
-
-### Integracoes
-
-A area de integracoes separa credenciais, operacao e documentacao tecnica.
-
-Fluxo operacional:
-
-1. selecione a instancia correta;
-2. abra `Credenciais`;
-3. obtenha `instanceId`, `endpointUrl` e `secretToken`;
-4. configure o sistema externo para enviar eventos para o endpoint publico.
-
-A operacao tambem oferece auditoria global de ingressos e dispatches para todos os eventos.
-
-## Endpoint publico de integracoes
-
-Endpoint principal:
-
-```text
-POST /api/integrations/events
+```bash
+npm install
+npm run dev
 ```
 
-Headers obrigatorios:
+Comandos uteis:
 
-```text
-Authorization: Bearer <secretToken>
-Content-Type: application/json
+```bash
+npm run build
+npm run lint
+npm run typecheck
+npm test
 ```
 
-Campos principais do body:
+## Estrutura
 
-- `event`: slug do evento suportado;
-- `instanceId`: precisa pertencer a mesma credencial autenticada;
-- `timestamp`: entra na replay window operacional;
-- `dedupKey`: chave idempotente obrigatoria por credencial, com ate 180 caracteres;
-- `payload`: contexto operacional usado para normalizacao e renderizacao.
-
-Eventos suportados atualmente:
-
-- `pedido_pendente`
-- `pedido_pago`
-- `envio_acesso`
-- `pagamento_recusado`
-- `pedido_cancelado`
-- `reembolso`
-- `pix_gerado`
-- `boleto_gerado`
-- `carrinho_abandonado`
-- `assinatura_criada`
-- `assinatura_renovada`
-- `assinatura_cancelada`
-- `assinatura_em_atraso`
-
-Tipos de mensagem usados pelo runtime:
-
-- `text`
-- `link`
-- `image`
-- `document`
-
-A documentacao publica completa desse endpoint fica dentro do proprio painel, em `Integracoes -> Documentacao`.
-
-Regras operacionais importantes:
-
-- rate limit atual: `120` requisicoes por minuto por IP;
-- replay window padrao: `300000 ms`, com tolerancia futura de `30000 ms`;
-- telefones devem vir preferencialmente em E.164 com DDI, por exemplo `+5511998765432` ou `+14155552671`;
-- `202 accepted`, `SENT` e `providerMessageId` indicam aceite/submissao operacional ao runtime/provider, nao entrega, leitura ou visualizacao final no WhatsApp;
-- falhas temporarias de instancia offline ou envio podem entrar em retry operacional quando registradas como retryable;
-- imagens de produto podem vir por URL publica em `payload.product_image_url`, `payload.productImageUrl`, `payload.product.image_url`, `payload.order.product.image_url`, `payload.checkout_session.product.image_url`, `payload.subscription.product.image_url` ou aliases equivalentes `imageUrl`, `thumbnail_url`, `thumbnailUrl`, `image` e `cover`;
-- quando houver link ou codigo operacional nos templates consolidados, o backend pode renderizar botoes nativos internos: `cta_url` para abrir paginas/boletos e `cta_copy` para copiar Pix ou linha digitavel; a ferramenta externa nao envia payload tecnico de WhatsApp/Baileys;
-- em `pix_gerado`, `pix.copy_paste` ou `pix.copyPaste` pode virar botao de copiar codigo Pix; se o relay interativo for aceito, a segunda mensagem textual do Pix nao e enviada, mas o fallback textual preserva o codigo se houver falha tecnica;
-- em `boleto_gerado`, `boleto.pdf_url` ou `boleto.pdfUrl` e obrigatorio; o backend pode renderizar botao para abrir boleto e `boleto.barcode` pode virar botao de copiar linha digitavel; se o interativo ou o download falhar tecnicamente, o fallback preserva link/codigo visivel e registra o caminho operacional na auditoria.
-
-Texto customizado opcional:
-
-- `payload.message.body` pode substituir o texto visivel/caption do template com texto final ja renderizado pela ferramenta externa;
-- `payload.message.pix_followup_body` pode personalizar o fallback/segunda mensagem textual do Pix, somente no evento `pix_gerado`; quando o botao de copiar e aceito, essa segunda mensagem nao e enviada;
-- cada um desses campos aceita string nao vazia com ate `4000` caracteres; esse limite vale apenas para cada texto customizado, nao para o payload inteiro;
-- o texto customizado recebido nao e salvo como template reutilizavel, nao cria template por instancia e nao fica armazenado como conteudo na auditoria;
-- a auditoria registra apenas metadados de uso e tamanho, como `customBodyUsed`, `customBodyLength`, `customPixFollowupUsed` e `customPixFollowupLength`;
-- campos tecnicos em `payload.message`, como `caption`, `messageType`, `providerPayload`, `relayMessage`, `nativeFlow`, `buttons`, `templateMessage` ou `interactiveMessage`, sao rejeitados com `INTEGRATION_CUSTOM_MESSAGE_INVALID`.
-
-## Credenciais de integracao
-
-Cada credencial e vinculada a uma instancia operacional.
-
-Campos operacionais:
-
-- `endpointUrl`: URL final completa da integracao derivada de `APP_URL`;
-- `instanceId`: identificador autorizado para a chamada;
-- `secretToken`: token Bearer ativo emitido ou rotacionado no painel.
-
-Regras principais:
-
-- o `instanceId` do body precisa pertencer a credencial autenticada;
-- `timestamp` fora da janela permitida gera bloqueio;
-- `dedupKey` repetida dentro da janela da credencial e recusada;
-- a resposta `202 accepted` indica aceite do evento e inicio do dispatch, nao confirmacao sincrona de entrega no WhatsApp.
-
-## Scripts disponiveis
-
-| Script | Descricao |
-|--------|-----------|
-| `install.sh` | Instalacao completa em VPS Debian/Ubuntu |
-| `update.sh` | Atualizacao em VPS Debian/Ubuntu pelo repositorio oficial |
-| `npm run dev` | Frontend e backend em desenvolvimento |
-| `npm run build` | Build de backend e frontend |
-| `npm run lint` | Lint do frontend |
-| `npm run typecheck` | Typecheck de backend e frontend |
-| `npm test` | Suite atual do backend |
-| `npm run test:smoke` | Smoke test do backend/API |
+```text
+NEXUSZAP-FREE/
+├── backend/
+├── frontend/
+├── docs/
+├── scripts/
+├── docker-compose.yml
+├── install.sh
+└── update.sh
+```
 
 ## Apoie o projeto
 
@@ -440,14 +258,12 @@ Isso ajuda o NexusZAP a chegar em mais pessoas, aumenta a confianca da comunidad
 
 ## Seguranca operacional
 
-Nunca commite:
+Nunca commite arquivos locais ou sensiveis, como:
 
 - `backend/.env`
 - `node_modules`
 - `dist`
-- secrets, tokens ou credenciais exportadas do painel
-
-Esses caminhos devem permanecer locais e ja ficam protegidos pelo `.gitignore` quando aplicavel.
+- tokens, segredos ou credenciais exportadas do painel
 
 ## Licenca
 
