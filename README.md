@@ -214,7 +214,6 @@ npm test
 NEXUSZAP-FREE/
 ├── backend/
 ├── frontend/
-├── docs/
 ├── scripts/
 ├── docker-compose.yml
 ├── install.sh
