@@ -55,6 +55,22 @@ sudo ./install.sh
 
 O instalador clona o repositorio quando necessario, prepara `backend/.env`, gera segredos, instala dependencias, executa build e sobe os containers `postgres`, `backend` e `frontend`.
 
+## Instalação assistida
+
+Quer usar o NexusZAP sem lidar com a parte técnica da instalação?
+
+O projeto é gratuito e pode ser instalado por conta própria seguindo este README. Para quem prefere ajuda, ofereço um serviço opcional de instalação assistida e orientação inicial de uso.
+
+Serviço opcional a partir de **R$ 29,99**.
+
+<div align="center">
+
+<a href="https://wa.me/447308028362?text=Ol%C3%A1%2C%20tenho%20interesse%20na%20instala%C3%A7%C3%A3o%20assistida%20do%20NexusZAP%20a%20partir%20de%20R%24%2029%2C99.%20Pode%20me%20passar%20mais%20informa%C3%A7%C3%B5es%3F" target="_blank">
+  <img src="https://img.shields.io/badge/Solicitar%20instala%C3%A7%C3%A3o%20assistida-WhatsApp-25D366?style=for-the-badge&logo=whatsapp&logoColor=white" alt="Solicitar instalação assistida pelo WhatsApp" />
+</a>
+
+</div>
+
 ## Primeiro acesso
 
 Ao final da instalacao, acesse a URL exibida no terminal:

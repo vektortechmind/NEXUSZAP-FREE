@@ -100,3 +100,6 @@ test-results/
 __pycache__/
 **/__pycache__/
 *.pyc
+
+# Local agent configuration
+AGENTS.md
