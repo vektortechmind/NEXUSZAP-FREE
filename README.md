@@ -18,7 +18,7 @@ NexusZAP e uma plataforma gratuita para automacao de atendimento no WhatsApp e T
 
 ## O que o NexusZAP entrega
 
-- Conexao e gestao de instancias WhatsApp e Telegram.
+- Conexao e gestao de instancias WhatsApp via Baileys e Telegram.
 - Agentes com IA, prompt principal, memoria e base de conhecimento.
 - Providers de IA: Gemini, Groq, OpenRouter e OpenAI.
 - Endpoint publico para receber eventos externos e disparar mensagens.
@@ -149,6 +149,8 @@ A documentacao tecnica completa do endpoint fica no proprio painel em `Integraco
 ## Templates e mensagens
 
 Cada evento possui template padrao. Quando o payload contem imagem, link, Pix ou boleto, o NexusZAP escolhe automaticamente o melhor formato disponivel.
+
+No WhatsApp, o envio e a conexao das instancias usam Baileys. O NexusZAP controla o contrato publico, templates, fallback, auditoria e seguranca; detalhes internos do Baileys nao fazem parte da API publica de integracoes.
 
 O runtime pode usar:
 
