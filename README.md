@@ -284,7 +284,7 @@ Nunca commite arquivos locais ou sensiveis, como:
 
 ## Licenca
 
-Este projeto usa a [NexusZAP Source-Available License](./LICENSE.md).
+Este projeto usa a [Licenca Source-Available NexusZAP](./LICENSE.md). A versao em ingles esta disponivel apenas como traducao auxiliar em [LICENSE.en.md](./LICENSE.en.md).
 
 Resumo pratico:
 

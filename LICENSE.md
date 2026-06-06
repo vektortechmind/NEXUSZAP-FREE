@@ -1,82 +1,84 @@
-# NexusZAP Source-Available License
+# Licenca Source-Available NexusZAP
 
 Copyright (c) 2026 Vektor Tech Mind / NexusZAP.
-All rights reserved except as expressly granted below.
+Todos os direitos reservados, exceto aqueles expressamente concedidos abaixo.
 
-This license grants limited rights to use, modify, and run the NexusZAP software. It is not an open-source license as defined by the Open Source Initiative because it restricts redistribution and sale of the software and source code.
+Esta versao em portugues brasileiro e a versao oficial desta licenca e prevalece sobre qualquer traducao. A versao em ingles, quando existir, e fornecida apenas por conveniencia.
 
-## 1. Definitions
+Esta licenca concede direitos limitados para usar, modificar e executar o software NexusZAP. Esta nao e uma licenca de codigo aberto conforme a definicao da Open Source Initiative, pois restringe a redistribuicao, a revenda e a exploracao do software e do codigo-fonte como produto concorrente.
 
-"Software" means the NexusZAP source code, documentation, scripts, configuration examples, frontend, backend, database schema, assets, and any related files distributed in this repository.
+## 1. Definicoes
 
-"You" means an individual, company, organization, or other legal entity using the Software.
+"Software" significa o codigo-fonte do NexusZAP, documentacao, scripts, exemplos de configuracao, frontend, backend, esquema de banco de dados, ativos e quaisquer arquivos relacionados distribuidos neste repositorio.
 
-"Internal Use" means use of the Software inside your own organization, business, VPS, infrastructure, or private operational environment.
+"Voce" significa uma pessoa fisica, empresa, organizacao ou outra entidade legal que utilize o Software.
 
-"Commercial Operation" means using the Software to support your own business activities, including automations, integrations, customer support, internal workflows, or services delivered by your team, as long as you do not sell, redistribute, sublicense, package, or offer the Software itself as a product.
+"Uso Interno" significa o uso do Software dentro da sua propria organizacao, negocio, VPS, infraestrutura ou ambiente operacional privado.
 
-## 2. Permitted Uses
+"Operacao Comercial" significa usar o Software para apoiar as atividades do seu proprio negocio, incluindo automacoes, integracoes, atendimento ao cliente, fluxos internos ou servicos prestados pela sua equipe, desde que voce nao venda, redistribua, sublicencie, empacote ou ofereca o proprio Software como produto.
 
-You may:
+## 2. Usos Permitidos
 
-- use the Software for personal, internal, or commercial operation;
-- install and run the Software on your own server, VPS, cloud account, local machine, or private infrastructure;
-- modify the Software for your own internal or commercial operation;
-- create private integrations, templates, automations, and customizations for your own use;
-- use the Software to operate your own business or serve your own clients, provided that your clients do not receive the Software, source code, installer, Docker image, hosted white-label product, or a substantially similar redistributable copy.
+Voce pode:
 
-## 3. Restrictions
+- usar o Software para operacao pessoal, interna ou comercial propria;
+- instalar e executar o Software em seu proprio servidor, VPS, conta de nuvem, maquina local ou infraestrutura privada;
+- modificar o Software para sua propria operacao interna ou comercial;
+- criar integracoes, templates, automacoes e personalizacoes privadas para seu proprio uso;
+- usar o Software para operar seu proprio negocio ou atender seus proprios clientes, desde que esses clientes nao recebam o Software, codigo-fonte, instalador, imagem Docker, produto hospedado white-label ou copia redistribuivel substancialmente similar.
 
-You may not, without prior written permission from Vektor Tech Mind / NexusZAP:
+## 3. Restricoes
 
-- sell, resell, license, sublicense, rent, lease, distribute, publish, or otherwise provide the Software or source code to third parties;
-- sell or distribute modified versions, forks, installers, templates, Docker images, compiled builds, or packaged copies of the Software;
-- offer the Software or a modified version as a white-label product, marketplace item, SaaS product, managed platform, hosted clone, or competing commercial product;
-- remove, hide, or alter copyright notices, license notices, attribution, product identity, or ownership references;
-- use the Software name, brand, logo, or identity in a way that suggests endorsement, partnership, or ownership without written permission;
-- make public forks or public mirrors containing the full or substantial source code;
-- circumvent technical protections, license notices, update mechanisms, or security controls included with the Software;
-- use the Software in a way that violates applicable law or third-party platform terms.
+Voce nao pode, sem autorizacao previa e por escrito da Vektor Tech Mind / NexusZAP:
 
-## 4. Client and Agency Use
+- vender, revender, licenciar, sublicenciar, alugar, arrendar, distribuir, publicar ou de qualquer outra forma fornecer o Software ou codigo-fonte a terceiros;
+- vender ou distribuir versoes modificadas, forks, instaladores, templates, imagens Docker, builds compilados ou copias empacotadas do Software;
+- oferecer o Software ou uma versao modificada como produto white-label, item de marketplace, produto SaaS, plataforma gerenciada, clone hospedado ou produto comercial concorrente;
+- remover, ocultar ou alterar avisos de copyright, avisos de licenca, atribuicao, identidade do produto ou referencias de titularidade;
+- usar o nome, marca, logotipo ou identidade do Software de forma que sugira endosso, parceria ou titularidade sem autorizacao por escrito;
+- criar forks publicos ou espelhos publicos contendo o codigo-fonte completo ou substancial;
+- contornar protecoes tecnicas, avisos de licenca, mecanismos de atualizacao ou controles de seguranca incluidos no Software;
+- usar o Software de forma que viole a legislacao aplicavel ou os termos de plataformas de terceiros.
 
-Agencies, freelancers, consultants, and internal IT teams may use and modify the Software to support their own operations or deliver operational services to their clients.
+## 4. Uso por Clientes e Agencias
 
-This permission does not allow transferring, selling, sublicensing, publishing, or granting the source code or a redistributable copy of the Software to those clients. If a client needs to own, resell, host as white-label, or redistribute the Software, a separate commercial license is required.
+Agencias, freelancers, consultores e equipes internas de TI podem usar e modificar o Software para apoiar suas proprias operacoes ou prestar servicos operacionais aos seus clientes.
 
-## 5. Separate Commercial License
+Esta permissao nao autoriza transferir, vender, sublicenciar, publicar ou conceder o codigo-fonte ou uma copia redistribuivel do Software a esses clientes. Se um cliente precisar possuir, revender, hospedar como white-label ou redistribuir o Software, sera necessaria uma licenca comercial separada.
 
-A separate written commercial license is required for any use not expressly permitted here, including:
+## 5. Licenca Comercial Separada
 
-- resale of the Software;
-- white-label distribution;
-- SaaS resale based primarily on this Software;
-- public or private distribution of modified forks;
-- commercial marketplace distribution;
-- selling installation packages, Docker images, hosted clones, or source-code access.
+Uma licenca comercial separada, por escrito, e necessaria para qualquer uso nao expressamente permitido aqui, incluindo:
 
-Contact Vektor Tech Mind / NexusZAP for commercial licensing authorization.
+- revenda do Software;
+- distribuicao white-label;
+- revenda de SaaS baseado principalmente neste Software;
+- distribuicao publica ou privada de forks modificados;
+- distribuicao comercial em marketplace;
+- venda de pacotes de instalacao, imagens Docker, clones hospedados ou acesso ao codigo-fonte.
 
-## 6. Contributions
+Entre em contato com a Vektor Tech Mind / NexusZAP para autorizacao de licenciamento comercial.
 
-Unless a separate written agreement says otherwise, any contribution submitted to this repository may be used, modified, and distributed by Vektor Tech Mind / NexusZAP under this license or under a future license chosen by Vektor Tech Mind / NexusZAP.
+## 6. Contribuicoes
 
-You represent that you have the right to submit any contribution you provide.
+Salvo acordo separado por escrito em sentido contrario, qualquer contribuicao enviada a este repositorio podera ser usada, modificada e distribuida pela Vektor Tech Mind / NexusZAP sob esta licenca ou sob uma licenca futura escolhida pela Vektor Tech Mind / NexusZAP.
 
-## 7. No Warranty
+Voce declara que possui o direito de enviar qualquer contribuicao que fornecer.
 
-The Software is provided "as is" and "as available", without warranties of any kind, express or implied, including but not limited to warranties of merchantability, fitness for a particular purpose, non-infringement, availability, reliability, or compatibility with third-party services.
+## 7. Ausencia de Garantia
 
-Use of WhatsApp, Telegram, AI providers, hosting providers, payment platforms, or other third-party services is subject to their own terms and limitations. Vektor Tech Mind / NexusZAP does not guarantee message delivery, account availability, platform approval, or uninterrupted operation.
+O Software e fornecido "como esta" e "conforme disponivel", sem garantias de qualquer tipo, expressas ou implicitas, incluindo, sem limitacao, garantias de comerciabilidade, adequacao a uma finalidade especifica, nao violacao de direitos de terceiros, disponibilidade, confiabilidade ou compatibilidade com servicos de terceiros.
 
-## 8. Limitation of Liability
+O uso de WhatsApp, Telegram, provedores de IA, provedores de hospedagem, plataformas de pagamento ou outros servicos de terceiros esta sujeito aos seus proprios termos e limitacoes. A Vektor Tech Mind / NexusZAP nao garante entrega de mensagens, disponibilidade de contas, aprovacao de plataformas ou operacao ininterrupta.
 
-To the maximum extent permitted by law, Vektor Tech Mind / NexusZAP and its contributors shall not be liable for any indirect, incidental, special, consequential, exemplary, or punitive damages, or for any loss of profits, revenue, data, goodwill, business opportunity, or service availability arising from use of the Software.
+## 8. Limitacao de Responsabilidade
 
-## 9. Termination
+Na maxima extensao permitida pela legislacao aplicavel, a Vektor Tech Mind / NexusZAP e seus contribuidores nao serao responsaveis por danos indiretos, incidentais, especiais, consequenciais, exemplares ou punitivos, nem por perda de lucros, receita, dados, reputacao, oportunidade de negocio ou disponibilidade de servico decorrente do uso do Software.
 
-Your rights under this license terminate automatically if you violate any restriction in this license. Upon termination, you must stop using the Software and delete any copies, forks, builds, installers, Docker images, or modified versions in your possession or control, unless Vektor Tech Mind / NexusZAP provides written permission otherwise.
+## 9. Rescisao
 
-## 10. Ownership
+Seus direitos sob esta licenca terminam automaticamente se voce violar qualquer restricao desta licenca. Apos a rescisao, voce deve parar de usar o Software e excluir quaisquer copias, forks, builds, instaladores, imagens Docker ou versoes modificadas em sua posse ou controle, salvo autorizacao por escrito em sentido contrario da Vektor Tech Mind / NexusZAP.
 
-The Software is licensed, not sold. Vektor Tech Mind / NexusZAP retains all ownership rights not expressly granted in this license.
+## 10. Titularidade
+
+O Software e licenciado, nao vendido. A Vektor Tech Mind / NexusZAP mantem todos os direitos de titularidade nao expressamente concedidos nesta licenca.
