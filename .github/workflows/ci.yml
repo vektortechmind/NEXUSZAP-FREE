@@ -13,6 +13,13 @@ jobs:
     name: Validate
     runs-on: ubuntu-latest
 
+    env:
+      NODE_ENV: test
+      DATABASE_URL: postgresql://nexuszap:nexuszap@localhost:5432/nexuszap_test
+      JWT_SECRET: ci-jwt-secret-min-16-chars
+      ADMIN_EMAIL: admin@example.com
+      ADMIN_PASSWORD: Admin123!
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6
