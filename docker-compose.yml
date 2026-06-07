@@ -33,6 +33,7 @@ services:
       DATABASE_URL: postgresql://nexus:nexus_secret@postgres:5432/nexus_chatbot_db?schema=public
       PORT: 3000
       GITHUB_REPO: vektortechmind/NEXUSZAP-FREE
+      COMPOSE_PROJECT_NAME: nexuszap-free
       UPDATE_SCRIPT_PATH: /workspace/update.sh
       UPDATE_STORAGE_DIR: /workspace/updates
       UPDATE_WORKSPACE_DIR: /workspace
@@ -59,4 +60,3 @@ services:
 
 volumes:
   pgdata:
-

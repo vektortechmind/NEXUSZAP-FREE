@@ -28,13 +28,20 @@ docker_compose_available() {
   command -v docker-compose >/dev/null 2>&1
 }
 
+compose_project_name() {
+  echo "${COMPOSE_PROJECT_NAME:-nexuszap-free}"
+}
+
 docker_compose() {
+  local project_name
+  project_name="$(compose_project_name)"
+
   if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-    docker compose "$@"
+    docker compose -p "$project_name" "$@"
     return
   fi
 
-  docker-compose "$@"
+  docker-compose -p "$project_name" "$@"
 }
 
 print_migration_summary() {
@@ -107,8 +114,11 @@ run_backend_migrations_docker() {
   local status_output=""
   local deploy_output=""
 
+  echo "Garantindo Postgres ativo no projeto Docker $(compose_project_name)..."
+  docker_compose up -d postgres
+
   echo "Verificando status das migrations Prisma via Docker..."
-  if ! status_output="$(docker_compose run --rm backend npx prisma migrate status --schema prisma/schema.prisma 2>&1)"; then
+  if ! status_output="$(docker_compose run --rm --no-deps backend npx prisma migrate status --schema prisma/schema.prisma 2>&1)"; then
     printf '%s\n' "$status_output"
     echo "ERRO: falha ao verificar status das migrations Prisma no ambiente Docker." >&2
     exit 1
@@ -116,7 +126,7 @@ run_backend_migrations_docker() {
   printf '%s\n' "$status_output"
 
   echo "Aplicando migrations Prisma via Docker..."
-  if ! deploy_output="$(docker_compose run --rm backend npm run db:migrate:deploy 2>&1)"; then
+  if ! deploy_output="$(docker_compose run --rm --no-deps backend npm run db:migrate:deploy 2>&1)"; then
     printf '%s\n' "$deploy_output"
     echo "ERRO: falha ao aplicar migrations Prisma no ambiente Docker." >&2
     exit 1
@@ -442,4 +452,3 @@ remove_ps1
 
 echo ""
 echo "Update concluido."
-

@@ -2,6 +2,17 @@
 
 Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
+## [1.0.7] - 2026-06-07
+
+### Fixed
+
+- Update Center agora preserva o projeto Docker Compose `nexuszap-free` quando executado de dentro do backend, evitando conflito com o container `nexus-postgres` existente.
+- Verificação e aplicação de migrations no update remoto passam a garantir o Postgres ativo e executar o backend com `--no-deps`, sem tentar recriar dependências já em execução.
+
+### Changed
+
+- Versão do frontend, backend, `backend/VERSION`, `README` e artefatos de release atualizada para `1.0.7`.
+
 ## [1.0.6] - 2026-06-07
 
 ### Added
