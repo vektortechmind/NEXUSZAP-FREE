@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../../lib/axios";
 import type { ChannelCard, CreateChannel, CreateModalState, InstanceStatus, TelegramStatus, WhatsappCard } from "./types";
-import { initialCreateModalState } from "./types";
+import { initialCreateModalState, MAX_WHATSAPP_INSTANCES } from "./types";
 
 export function useInstancesOverview(addToast: (message: string, tone?: "success" | "error" | "warning" | "info") => void) {
   const [instances, setInstances] = useState<InstanceStatus[]>([]);
@@ -118,7 +118,7 @@ export function useInstancesOverview(addToast: (message: string, tone?: "success
   const selectedCard = useMemo(() => cards.find((card) => card.key === selectedKey) ?? null, [cards, selectedKey]);
   const connectedWhatsApp = useMemo(() => instances.filter((instance) => instance.status === "CONNECTED").length, [instances]);
   const availableWhatsApp = useMemo(() => instances.filter((instance) => instance.available).length, [instances]);
-  const hasCapacity = instances.length < 3;
+  const hasCapacity = instances.length < MAX_WHATSAPP_INSTANCES;
   const telegramUnavailable = Boolean(telegramStatus?.instanceId);
   const createdWhatsappCard = useMemo(
     () => createModal.createdInstanceId

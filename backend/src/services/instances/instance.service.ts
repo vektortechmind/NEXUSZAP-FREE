@@ -1,8 +1,9 @@
 import { prisma } from "../../database/prisma";
 import { InstanceManager } from "../../whatsapp/InstanceManager";
 
-export const MAX_WHATSAPP_INSTANCES = 3;
 export const TELEGRAM_INSTANCE_SLOT = 0;
+export const MAX_WHATSAPP_INSTANCES = 5;
+export const WHATSAPP_INSTANCE_SLOTS = Array.from({ length: MAX_WHATSAPP_INSTANCES }, (_, index) => index + 1);
 
 export class MaxWhatsAppInstancesError extends Error {
   constructor() {
@@ -14,6 +15,11 @@ export class MaxWhatsAppInstancesError extends Error {
 type CreateInstanceInput = {
   name: string;
 };
+
+export function findNextWhatsAppSlot(existingSlots: number[]): number | null {
+  const occupiedSlots = new Set(existingSlots.filter((slot) => slot > TELEGRAM_INSTANCE_SLOT));
+  return WHATSAPP_INSTANCE_SLOTS.find((slot) => !occupiedSlots.has(slot)) ?? null;
+}
 
 export async function listInstances() {
   return prisma.instance.findMany({
@@ -76,8 +82,7 @@ export async function createInstance(input: CreateInstanceInput) {
       throw new MaxWhatsAppInstancesError();
     }
 
-    const occupiedSlots = new Set(whatsappInstances.map((instance) => instance.slot));
-    const nextSlot = [1, 2, 3].find((slot) => !occupiedSlots.has(slot));
+    const nextSlot = findNextWhatsAppSlot(whatsappInstances.map((instance) => instance.slot));
 
     if (!nextSlot) {
       throw new MaxWhatsAppInstancesError();

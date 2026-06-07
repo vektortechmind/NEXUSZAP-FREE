@@ -2,7 +2,7 @@ import { Plus } from "lucide-react";
 import { Button } from "../../../components/ui/Button";
 import { Toolbar } from "../../../components/ui/Toolbar";
 import { StatusDot } from "../../../components/ui/StatusDot";
-import type { StatusTone, TelegramStatus } from "../types";
+import { MAX_WHATSAPP_INSTANCES, type StatusTone, type TelegramStatus } from "../types";
 
 function StatusPill({ tone, label, pulse }: { tone: StatusTone; label: string; pulse?: boolean }) {
   return (
@@ -31,7 +31,7 @@ export function InstancesOverviewToolbar({
       <div className="flex w-full flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-3">
           <div className="flex flex-wrap items-center gap-2">
-            <StatusPill tone="info" label={`${instancesCount}/3 instâncias WhatsApp`} />
+            <StatusPill tone="info" label={`${instancesCount}/${MAX_WHATSAPP_INSTANCES} instâncias WhatsApp`} />
             <StatusPill tone={connectedWhatsApp > 0 ? "success" : "neutral"} pulse={connectedWhatsApp > 0} label={`${connectedWhatsApp} conectadas`} />
             <StatusPill tone={availableWhatsApp > 0 ? "info" : "neutral"} label={`${availableWhatsApp} disponíveis`} />
             <StatusPill

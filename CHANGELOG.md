@@ -2,6 +2,22 @@
 
 Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
+## [1.0.6] - 2026-06-07
+
+### Added
+
+- Limite operacional de instâncias WhatsApp aumentado para 5, preservando Telegram fora da contagem e slots WhatsApp ordenados de 1 a 5.
+- Teste dedicado para proteger criação da 4ª/5ª instância, rejeição da 6ª e reaproveitamento do menor slot livre.
+
+### Fixed
+
+- Corrigida corrida de autenticação no login que podia deixar a transição para o painel inconsistente até recarregar a página.
+
+### Changed
+
+- Frontend passa a exibir capacidade e mensagens de criação usando o limite de 5 instâncias WhatsApp.
+- Versão do frontend, backend, `backend/VERSION`, `README` e artefatos de release atualizada para `1.0.6`.
+
 ## [1.0.5] - 2026-05-31
 
 ### Added

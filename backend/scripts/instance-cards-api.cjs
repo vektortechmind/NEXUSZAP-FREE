@@ -10,6 +10,7 @@ function read(relativePath) {
 
 function assertInstanceServiceContracts() {
   const source = read("src/services/instance.service.ts");
+  const implementationSource = read("src/services/instances/instance.service.ts");
 
   assert.ok(source.includes("export const TELEGRAM_INSTANCE_SLOT = 0;"), "service deve reservar slot 0 para Telegram singleton");
   assert.ok(source.includes("where: { slot: { gt: TELEGRAM_INSTANCE_SLOT } }"), "listagem primaria deve excluir Telegram do grid WhatsApp");
@@ -17,6 +18,9 @@ function assertInstanceServiceContracts() {
   assert.ok(source.includes("export async function getTelegramInstance()"), "service deve expor lookup explicito de Telegram");
   assert.ok(source.includes("export async function getOrCreateTelegramInstance()"), "service deve criar Telegram apenas por fluxo explicito");
   assert.ok(source.includes("throw new InstanceLinkedAgentError();"), "exclusao deve bloquear instancias com agente vinculado");
+  assert.ok(implementationSource.includes("export const MAX_WHATSAPP_INSTANCES = 5;"), "limite WhatsApp deve permitir cinco instancias");
+  assert.ok(implementationSource.includes("findNextWhatsAppSlot"), "service deve centralizar escolha do proximo slot WhatsApp");
+  assert.ok(!implementationSource.includes("[1, 2, 3]"), "service nao deve manter slots WhatsApp hardcoded ate 3");
 }
 
 function assertAgentRoutesContracts() {
@@ -74,6 +78,8 @@ function assertProviderFallbackIsolationContracts() {
 function assertFrontendContracts() {
   const source = fs.readFileSync(path.resolve(__dirname, "..", "..", "frontend", "src", "pages", "Instancia.tsx"), "utf8");
   const instancesHookSource = fs.readFileSync(path.resolve(__dirname, "..", "..", "frontend", "src", "features", "instances", "useInstancesOverview.ts"), "utf8");
+  const instancesTypesSource = fs.readFileSync(path.resolve(__dirname, "..", "..", "frontend", "src", "features", "instances", "types.ts"), "utf8");
+  const instancesToolbarSource = fs.readFileSync(path.resolve(__dirname, "..", "..", "frontend", "src", "features", "instances", "components", "InstancesOverviewToolbar.tsx"), "utf8");
   const telegramWorkspaceSource = fs.readFileSync(path.resolve(__dirname, "..", "..", "frontend", "src", "features", "agents", "useAgentWorkspace.ts"), "utf8");
   const agenteSource = fs.readFileSync(path.resolve(__dirname, "..", "..", "frontend", "src", "pages", "Agente.tsx"), "utf8");
 
@@ -84,6 +90,13 @@ function assertFrontendContracts() {
   assert.ok(source.includes("Nenhum pareamento ativo"), "detalhes devem exibir estado neutro antes de conectar");
   assert.ok(!source.includes("QR ainda não disponível"), "UI nao deve exibir placeholder antigo de QR");
   assert.ok(!source.includes("Use Conectar para iniciar o pareamento desta instância."), "UI nao deve antecipar copy de pareamento");
+  assert.ok(instancesTypesSource.includes("export const MAX_WHATSAPP_INSTANCES = 5;"), "frontend deve centralizar limite de cinco WhatsApp");
+  assert.ok(instancesHookSource.includes("instances.length < MAX_WHATSAPP_INSTANCES"), "capacidade do frontend deve usar limite centralizado");
+  assert.ok(instancesToolbarSource.includes("instancesCount}/${MAX_WHATSAPP_INSTANCES}"), "toolbar deve renderizar contador x/5 via constante");
+  assert.ok(source.includes("MAX_WHATSAPP_INSTANCES - instances.length"), "modal deve calcular slots restantes via constante");
+  assert.ok(!instancesHookSource.includes("instances.length < 3"), "hook nao deve manter limite antigo de 3");
+  assert.ok(!instancesToolbarSource.includes("/3 instâncias WhatsApp"), "toolbar nao deve mostrar contador antigo x/3");
+  assert.ok(!source.includes("Limite de 3 instâncias WhatsApp atingido."), "modal nao deve manter mensagem antiga de limite 3");
   assert.ok(telegramWorkspaceSource.includes('api.get<TelegramAgentConfig>("/agent/telegram/config")'), "workspace do agente deve ler config isolada do Telegram");
   assert.ok(telegramWorkspaceSource.includes('api.put("/agent/telegram/config"'), "workspace do agente deve salvar config isolada do Telegram");
   assert.ok(telegramWorkspaceSource.includes("telegramConfig?.blockingReason"), "workspace do agente deve exibir bloqueio quando nao houver agente vinculado");
@@ -98,7 +111,6 @@ assertProviderFallbackIsolationContracts();
 assertFrontendContracts();
 
 console.log("instance-cards-api: OK");
-
 
 
 

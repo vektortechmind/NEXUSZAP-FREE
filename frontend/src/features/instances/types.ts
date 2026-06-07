@@ -1,6 +1,8 @@
 export type StatusTone = "neutral" | "success" | "warning" | "danger" | "info";
 export type CreateChannel = "WHATSAPP" | "TELEGRAM";
 
+export const MAX_WHATSAPP_INSTANCES = 5;
+
 export type InstanceStatus = {
   id: string;
   channel: "WHATSAPP";
