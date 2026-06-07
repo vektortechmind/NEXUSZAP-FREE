@@ -92,6 +92,7 @@ desktop.ini
 
 # Misc local-only folders
 landing/
+report/
 playwright-report/
 test-results/
 .nyc_output/
