@@ -252,9 +252,24 @@ port_in_use() {
   return 1
 }
 
+port_owned_by_compose_frontend() {
+  local port="$1"
+  local project_name
+  project_name="$(compose_project_name)"
+
+  if ! command -v docker >/dev/null 2>&1; then
+    return 1
+  fi
+
+  docker ps \
+    --filter "label=com.docker.compose.project=${project_name}" \
+    --filter "label=com.docker.compose.service=frontend" \
+    --format '{{.Ports}}' 2>/dev/null | grep -Eq "(^|, )((0\.0\.0\.0|::):)?${port}->"
+}
+
 ensure_frontend_port() {
   local preferred="${FRONTEND_HTTP_PORT:-80}"
-  if ! port_in_use "$preferred"; then
+  if ! port_in_use "$preferred" || port_owned_by_compose_frontend "$preferred"; then
     compose_env_set FRONTEND_HTTP_PORT "$preferred"
     return 0
   fi

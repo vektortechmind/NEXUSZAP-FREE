@@ -2,6 +2,16 @@
 
 Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
+## [1.0.8] - 2026-06-07
+
+### Fixed
+
+- Update Center preserva a porta HTTP atual do frontend quando ela já pertence ao container `frontend` do projeto Docker Compose, evitando troca indevida de `8081` para outra porta durante recriação do painel.
+
+### Changed
+
+- Versão do frontend, backend, `backend/VERSION`, `README` e artefatos de release atualizada para `1.0.8`.
+
 ## [1.0.7] - 2026-06-07
 
 ### Fixed

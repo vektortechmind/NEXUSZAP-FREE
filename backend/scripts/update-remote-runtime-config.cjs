@@ -32,6 +32,9 @@ assert.ok(updateScript.includes("docker_compose_available()"), "update.sh deve s
 assert.ok(updateScript.includes("compose_project_name()"), "update.sh deve resolver o nome do projeto Docker Compose");
 assert.ok(updateScript.includes("docker compose -p \"$project_name\""), "update.sh deve chamar docker compose com projeto explicito");
 assert.ok(updateScript.includes("docker-compose -p \"$project_name\""), "update.sh deve chamar docker-compose legado com projeto explicito");
+assert.ok(updateScript.includes("port_owned_by_compose_frontend()"), "update.sh deve detectar porta ocupada pelo proprio frontend Compose");
+assert.ok(updateScript.includes("label=com.docker.compose.service=frontend"), "update.sh deve identificar o container frontend por label Compose");
+assert.ok(updateScript.includes("port_owned_by_compose_frontend \"$preferred\""), "update.sh deve preservar a porta publicada pelo frontend atual");
 assert.ok(updateScript.includes("docker_compose build"), "update.sh deve fazer build Docker pelo wrapper de compose");
 assert.ok(updateScript.includes("docker_compose up -d"), "update.sh deve usar wrapper de compose no deploy");
 assert.ok(updateScript.includes("docker_compose up -d postgres"), "update.sh deve garantir Postgres ativo no projeto correto antes das migrations");
