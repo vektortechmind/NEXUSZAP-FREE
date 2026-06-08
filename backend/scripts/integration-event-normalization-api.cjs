@@ -114,6 +114,8 @@ function expectPhoneContext(context, digits) {
     assert.equal(context.email, context.customer.email);
     assert.equal(typeof context.productImage === "string" || context.productImage === null, true);
     assert.equal(context.messageOverride, null);
+    assert.deepEqual(context.orderBumps, []);
+    assert.equal(context.orderBumpsText, null);
 
     if (eventSlug === "carrinho_abandonado") {
       assert.equal(context.product.name, "Produto do Carrinho");
@@ -412,6 +414,52 @@ function expectPhoneContext(context, digits) {
       pixFollowupBodyLength: null,
       ctaUrlButton: null,
     });
+  }
+
+  {
+    const payload = createBasePayload();
+    payload.order_bumps = [
+      { name: " Produto extra ", amount: "20.00", currency: "BRL" },
+      { product: { name: "Produto sem valor" } },
+      { offer: { name: "Oferta extra" }, value: "valor especial" },
+      { subscription_plan: { name: "Plano extra" }, price: "10,50" },
+      { product_id: "sem-nome", amount: "99.00" },
+      null,
+      "invalido",
+    ];
+    const context = normalizeIntegrationEventContext("pedido_pago", payload);
+    assert.deepEqual(context.orderBumps, [
+      { name: "Produto extra", amount: "R$ 20,00", currency: "BRL" },
+      { name: "Produto sem valor", amount: null, currency: null },
+      { name: "Oferta extra", amount: "valor especial", currency: null },
+      { name: "Plano extra", amount: "R$ 10,50", currency: null },
+    ]);
+    assert.equal(context.orderBumpsText, "Itens adicionais:\n- Produto extra - R$ 20,00\n- Produto sem valor\n- Oferta extra - valor especial\n- Plano extra - R$ 10,50");
+  }
+
+  {
+    const payload = createBasePayload();
+    payload.orderBumps = [
+      { name: "Bump 1", amount: "1" },
+      { name: "Bump 2", amount: "2" },
+      { name: "Bump 3", amount: "3" },
+      { name: "Bump 4", amount: "4" },
+      { name: "Bump 5", amount: "5" },
+      { name: "Bump 6", amount: "6" },
+    ];
+    const context = normalizeIntegrationEventContext("pedido_pago", payload);
+    assert.equal(context.orderBumps.length, 6);
+    assert.equal(context.orderBumpsText.includes("- Bump 5 - R$ 5,00"), true);
+    assert.equal(context.orderBumpsText.includes("- Bump 6"), false);
+    assert.equal(context.orderBumpsText.includes("+1 itens adicionais"), true);
+  }
+
+  {
+    const payload = createBasePayload();
+    payload.order_bumps = "invalido";
+    const context = normalizeIntegrationEventContext("pedido_pago", payload);
+    assert.deepEqual(context.orderBumps, []);
+    assert.equal(context.orderBumpsText, null);
   }
 
   {

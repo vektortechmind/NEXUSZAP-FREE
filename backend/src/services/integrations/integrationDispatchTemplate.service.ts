@@ -151,6 +151,10 @@ function buildEnvioAcessoParagraphs(context: IntegrationNormalizedEventContext, 
   return paragraphs;
 }
 
+function orderBumpsParagraph(context: IntegrationNormalizedEventContext): string | null {
+  return context.orderBumpsText;
+}
+
 function ensureRequiredUrl(eventSlug: SupportedIntegrationEventSlug, fieldName: string, value: string | null): string {
   if (!value) {
     throw new MissingIntegrationTemplateUrlError(eventSlug, fieldName);
@@ -356,6 +360,7 @@ function renderDefaultIntegrationDispatchTemplateFromContext(
         [
           `✅ *Parabéns ${customer}!*`,
           `Seu *${product}* foi aprovado com sucesso!`,
+          orderBumpsParagraph(context),
           "👉 Acesse agora sua área de membros e comece a aprender.",
         ],
         createExternalAdReply(product, "Clique para acessar", context.checkoutLink),
@@ -365,6 +370,7 @@ function renderDefaultIntegrationDispatchTemplateFromContext(
       return renderTextTemplate(context, "Pedido pendente", [
         `⏳ *Olá ${customer}!*`,
         `Recebemos seu pedido do *${product}*.`,
+        orderBumpsParagraph(context),
         "Assim que o pagamento for confirmado, você receberá o acesso automaticamente.",
         "Qualquer dúvida, estamos à disposição.",
       ]);
@@ -403,6 +409,7 @@ function renderDefaultIntegrationDispatchTemplateFromContext(
         [
           `💳 *${customer}*, o PIX do *${product}* foi gerado!`,
           context.total ? `📋 *Valor:* R$ ${context.total}` : null,
+          orderBumpsParagraph(context),
           "⚠️ *Pague até o vencimento para manter seu pedido.*",
         ],
         createExternalAdReply("Visualizar pedido", product, context.checkoutLink),
@@ -418,6 +425,7 @@ function renderDefaultIntegrationDispatchTemplateFromContext(
           `📄 *${customer}*, o boleto do *${product}* foi gerado!`,
           context.boletoAmount ? `📋 *Valor:* R$ ${context.boletoAmount}` : null,
           context.boletoExpire ? `📅 *Vencimento:* ${context.boletoExpire}` : null,
+          orderBumpsParagraph(context),
           context.boletoBarcode ? "🔢 *Linha digitável:* logo abaixo." : null,
         ],
         "boletoUrl",
@@ -444,7 +452,7 @@ function renderDefaultIntegrationDispatchTemplateFromContext(
         context,
         "Acesso liberado",
         context.productImage,
-        buildEnvioAcessoParagraphs(context, customer, product),
+        [...buildEnvioAcessoParagraphs(context, customer, product), orderBumpsParagraph(context)],
         createExternalAdReply("Acesso liberado", product, accessTextValue(context, "url") ?? context.checkoutLink),
       );
 

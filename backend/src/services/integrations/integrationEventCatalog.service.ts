@@ -49,6 +49,12 @@ export type IntegrationNormalizedBoleto = {
 
 export type IntegrationNormalizedAccess = Record<string, unknown> | null;
 
+export type IntegrationNormalizedOrderBump = {
+  name: string;
+  amount: string | null;
+  currency: string | null;
+};
+
 export type IntegrationNormalizedCtaUrlButton = {
   enabled: boolean;
   text: string | null;
@@ -90,6 +96,8 @@ export type IntegrationNormalizedEventContext = IntegrationExtractedContext & {
   pix: IntegrationNormalizedPix;
   boleto: IntegrationNormalizedBoleto;
   access: IntegrationNormalizedAccess;
+  orderBumps: IntegrationNormalizedOrderBump[];
+  orderBumpsText: string | null;
   messageOverride: IntegrationNormalizedMessageOverride;
   raw: IntegrationPayload;
 };
@@ -343,6 +351,67 @@ function normalizeBoleto(eventSlug: SupportedIntegrationEventSlug, payload: Inte
   return normalized.amount || normalized.expireAt || normalized.barcode || normalized.pdfUrl ? normalized : null;
 }
 
+function normalizeMoneyText(value: unknown, currency: string | null): string | null {
+  const raw = normalizeString(value);
+  if (!raw) return null;
+
+  const numericSource = raw.includes(",")
+    ? raw.replace(/\./g, "").replace(/,(\d{1,2})$/, ".$1")
+    : raw;
+  const parsed = Number(numericSource);
+  const isPlainNumeric = /^-?\d+(?:[.,]\d{1,2})?$/.test(raw);
+  const shouldFormatBrl = !currency || currency.toUpperCase() === "BRL";
+
+  if (Number.isFinite(parsed) && isPlainNumeric && shouldFormatBrl) {
+    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(parsed).replace(/\u00a0/g, " ");
+  }
+
+  return raw;
+}
+
+function normalizeOrderBumps(payload: IntegrationPayload): IntegrationNormalizedOrderBump[] {
+  const source = Array.isArray(payload.order_bumps)
+    ? payload.order_bumps
+    : Array.isArray(payload.orderBumps)
+      ? payload.orderBumps
+      : [];
+
+  return source.flatMap((item) => {
+    const record = asRecord(item);
+    if (!record) return [];
+
+    const name = normalizeString(firstDefined(record, [
+      "name",
+      "product.name",
+      "offer.name",
+      "subscription_plan.name",
+      "subscriptionPlan.name",
+    ]));
+    if (!name) return [];
+
+    const currency = normalizeString(firstDefined(record, ["currency"]));
+    const amount = normalizeMoneyText(firstDefined(record, ["amount", "total", "price", "value"]), currency);
+
+    return [{ name, amount, currency }];
+  });
+}
+
+function buildOrderBumpsText(orderBumps: IntegrationNormalizedOrderBump[]): string | null {
+  if (orderBumps.length === 0) return null;
+
+  const visible = orderBumps.slice(0, 5).map((bump) => {
+    const value = bump.amount ? ` - ${bump.amount}` : "";
+    return `- ${bump.name}${value}`;
+  });
+
+  const remaining = orderBumps.length - visible.length;
+  if (remaining > 0) {
+    visible.push(`+${remaining} itens adicionais`);
+  }
+
+  return ["Itens adicionais:", ...visible].join("\n");
+}
+
 function normalizeCustomMessageText(value: unknown, fieldName: string): string {
   if (typeof value !== "string") {
     throw new InvalidIntegrationCustomMessageError(`${fieldName} deve ser string.`);
@@ -531,7 +600,6 @@ export function extractContext(
   const product = normalizeProduct(payload);
   const pix = normalizePix(eventSlug, payload);
   const boleto = normalizeBoleto(eventSlug, payload);
-
   return {
     name: customer.name,
     email: customer.email,
@@ -572,6 +640,7 @@ export function normalizeIntegrationEventContext(eventSlug: string, payload: Int
   const pix = normalizePix(eventSlug, payload);
   const boleto = normalizeBoleto(eventSlug, payload);
   const access = normalizeAccess(eventSlug, payload);
+  const orderBumps = normalizeOrderBumps(payload);
   const messageOverride = normalizeMessageOverride(eventSlug, payload);
   const extracted = extractContext(eventSlug, payload);
 
@@ -584,6 +653,8 @@ export function normalizeIntegrationEventContext(eventSlug: string, payload: Int
     pix,
     boleto,
     access,
+    orderBumps,
+    orderBumpsText: buildOrderBumpsText(orderBumps),
     messageOverride,
     raw: payload,
     ...extracted,

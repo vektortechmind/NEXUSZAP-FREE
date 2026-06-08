@@ -2,6 +2,18 @@
 
 Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
+## [1.0.9] - 2026-06-07
+
+### Added
+
+- Integrações passam a renderizar itens adicionais de order bump em mensagens padrão quando o payload enviar `order_bumps` ou `orderBumps`.
+- Normalização aceita nome do item adicional em `name`, `product.name`, `offer.name`, `subscription_plan.name` ou `subscriptionPlan.name`, com valor vindo de `amount`, `total`, `price` ou `value`.
+
+### Changed
+
+- Documentação do painel de integrações passa a listar os campos opcionais de order bump e a regra de renderização nos eventos suportados.
+- Versão do frontend, backend, `backend/VERSION`, `README` e artefatos de release atualizada para `1.0.9`.
+
 ## [1.0.8] - 2026-06-07
 
 ### Fixed

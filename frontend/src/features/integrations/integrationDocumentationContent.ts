@@ -123,11 +123,15 @@ export const INTEGRATION_CONTEXT_FIELDS = [
     label: "Boleto",
     paths: ["payload.boleto.amount", "payload.boleto.expire_at", "payload.boleto.barcode", "payload.boleto.pdf_url", "payload.boleto.pdfUrl"],
   },
+  {
+    label: "Order bumps",
+    paths: ["payload.order_bumps[].name", "payload.order_bumps[].product.name", "payload.order_bumps[].amount", "payload.orderBumps[]"],
+  },
 ] as const;
 
 export const INTEGRATION_TEMPLATE_FLOW = [
   "O sistema externo envia apenas o evento, a autenticação e o payload operacional. Não existe envio de template livre no request.",
-  "O backend normaliza telefone, cliente, produto, links, Pix, boleto e acesso antes de escolher a mensagem padrão do evento.",
+  "O backend normaliza telefone, cliente, produto, links, Pix, boleto, acesso e order bumps antes de escolher a mensagem padrão do evento.",
   "Cada evento já possui um template predefinido com tipo final de saída, texto base, caption e, quando aplicável, botões montados pelo backend a partir de links ou códigos existentes no payload.",
   "A resposta HTTP 202 significa que o evento foi aceito para processamento e que o runtime tentou submeter a mensagem ao provider. Isso não é recibo de entrega, leitura ou confirmação do aparelho final.",
 ] as const;
@@ -137,16 +141,16 @@ export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
     event: "pedido_pago",
     messageType: "text",
     requiredFields: ["customer.phone", "customer.name ou order.user.name", "order.product.name ou equivalente"],
-    optionalFields: ["checkout_link ou checkoutLink", "order.product.image ou cover"],
-    generatedMessage: "Confirmação de pagamento; quando checkoutLink existir, o backend pode trocar o link visível por botão CTA URL para acessar o produto.",
+    optionalFields: ["checkout_link ou checkoutLink", "order.product.image ou cover", "order_bumps ou orderBumps"],
+    generatedMessage: "Confirmação de pagamento; quando checkoutLink existir, o backend pode trocar o link visível por botão CTA URL para acessar o produto. Quando order_bumps existir, o template adiciona itens adicionais.",
     fallback: "Sem checkoutLink, o texto continua sendo enviado sem link complementar.",
   },
   {
     event: "pedido_pendente",
     messageType: "text",
     requiredFields: ["customer.phone", "customer.name ou order.user.name", "order.product.name ou equivalente"],
-    optionalFields: [],
-    generatedMessage: "Aviso de pedido recebido e aguardando confirmação.",
+    optionalFields: ["order_bumps ou orderBumps"],
+    generatedMessage: "Aviso de pedido recebido e aguardando confirmação; quando order_bumps existir, o template adiciona itens adicionais.",
     fallback: "Não depende de mídia.",
   },
   {
@@ -177,16 +181,16 @@ export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
     event: "pix_gerado",
     messageType: "image",
     requiredFields: ["customer.phone", "customer.name ou order.user.name", "order.product.name ou equivalente"],
-    optionalFields: ["pix.copy_paste ou pix.copyPaste", "order.total ou amount equivalente", "checkout_link ou checkoutLink", "order.product.image ou cover"],
-    generatedMessage: "Mensagem com instrução de pagamento Pix e valor; quando houver pix.copy_paste, o backend pode renderizar botão de copiar código Pix em vez da segunda mensagem textual.",
+    optionalFields: ["pix.copy_paste ou pix.copyPaste", "order.total ou amount equivalente", "checkout_link ou checkoutLink", "order.product.image ou cover", "order_bumps ou orderBumps"],
+    generatedMessage: "Mensagem com instrução de pagamento Pix e valor; quando houver pix.copy_paste, o backend pode renderizar botão de copiar código Pix em vez da segunda mensagem textual. Quando order_bumps existir, o template adiciona itens adicionais.",
     fallback: "Se o envio interativo falhar tecnicamente, o fallback textual preserva o Pix copia e cola como segunda mensagem. Sem Pix copia e cola, a ação de copiar é pulada.",
   },
   {
     event: "boleto_gerado",
     messageType: "document",
     requiredFields: ["customer.phone", "customer.name ou order.user.name", "order.product.name ou equivalente", "boleto.pdf_url ou boleto.pdfUrl"],
-    optionalFields: ["boleto.amount", "boleto.expire_at ou expireAt", "boleto.barcode"],
-    generatedMessage: "Boleto com valor e vencimento; quando boleto.pdf_url existir, o backend pode renderizar botão ABRIR BOLETO e, quando boleto.barcode existir, botão para copiar a linha digitável.",
+    optionalFields: ["boleto.amount", "boleto.expire_at ou expireAt", "boleto.barcode", "order_bumps ou orderBumps"],
+    generatedMessage: "Boleto com valor e vencimento; quando boleto.pdf_url existir, o backend pode renderizar botão ABRIR BOLETO e, quando boleto.barcode existir, botão para copiar a linha digitável. Quando order_bumps existir, o template adiciona itens adicionais.",
     fallback: "Sem boleto.pdf_url/boleto.pdfUrl o template falha com erro 422. Se o interativo ou o download do PDF falhar tecnicamente, o dispatch preserva texto com link visível e linha digitável quando informada.",
   },
   {
@@ -201,8 +205,8 @@ export const INTEGRATION_EVENT_TEMPLATE_MATRIX = [
     event: "envio_acesso",
     messageType: "image",
     requiredFields: ["customer.phone", "customer.name ou order.user.name", "order.product.name ou equivalente"],
-    optionalFields: ["access.url", "access.login", "access.email", "access.password", "access.instructions", "checkout_link ou checkoutLink", "order.product.image ou cover"],
-    generatedMessage: "Aviso de acesso liberado com dados do aluno no corpo; quando access.url existir, o backend pode renderizar botão CTA URL para a área de membros.",
+    optionalFields: ["access.url", "access.login", "access.email", "access.password", "access.instructions", "checkout_link ou checkoutLink", "order.product.image ou cover", "order_bumps ou orderBumps"],
+    generatedMessage: "Aviso de acesso liberado com dados do aluno no corpo; quando access.url existir, o backend pode renderizar botão CTA URL para a área de membros. Quando order_bumps existir, o template adiciona itens adicionais.",
     fallback: "Sem imagem válida, o runtime envia texto mantendo os dados normalizados de acesso e os links visíveis no corpo.",
   },
   {
@@ -258,6 +262,7 @@ export const INTEGRATION_RENDER_RULES = [
   "A telemetria do dispatch registra deliveryPath, interactiveButtonKinds, interactiveButtonCount e secondaryDispatchStatus para diferenciar interativo aceito, fallback textual e segunda mensagem Pix/boleto.",
   "externalAdReply continua restrito aos fluxos text, document e aos fallbacks textuais dos eventos ricos; ele não é usado no caminho de imagem limpa nem substitui botão real.",
   "Boleto é o caso oficial de document e exige URL HTTP/HTTPS em boleto.pdf_url ou boleto.pdfUrl; a URL precisa ser pública e baixável pelo backend para envio como PDF.",
+  "Order bumps são opcionais em order_bumps ou orderBumps. O template padrão renderiza até 5 itens adicionais em pedido_pendente, pedido_pago, pix_gerado, boleto_gerado e envio_acesso; payload.message.body customizado substitui o texto e não recebe esse bloco automaticamente.",
 ] as const;
 
 export const INTEGRATION_CUSTOM_MESSAGE_RULES = [

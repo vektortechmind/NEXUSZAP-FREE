@@ -179,6 +179,24 @@ function assertNoRawLeak(template) {
   }
 
   {
+    const payload = payloadForEvent("pedido_pago");
+    payload.order_bumps = [{ name: "Mentoria VIP", amount: "20.00", currency: "BRL" }];
+    const rendered = renderIntegrationDispatchTemplate("pedido_pago", payload);
+    assert.equal(rendered.messageType, "image");
+    assert.equal(rendered.body.includes("Itens adicionais:\n- Mentoria VIP - R$ 20,00"), true);
+    assert.equal(rendered.caption, rendered.body);
+  }
+
+  {
+    const payload = payloadForEvent("pedido_pendente");
+    payload.order_bumps = [{ name: "Mentoria VIP", amount: "20.00", currency: "BRL" }];
+    const rendered = renderIntegrationDispatchTemplate("pedido_pendente", payload);
+    assert.equal(rendered.messageType, "text");
+    assert.equal(rendered.caption, null);
+    assert.equal(rendered.body.includes("Itens adicionais:\n- Mentoria VIP - R$ 20,00"), true);
+  }
+
+  {
     const rendered = renderIntegrationDispatchTemplate("pagamento_recusado", payloadForEvent("pagamento_recusado"));
     assert.equal(rendered.messageType, "text");
     assert.equal(rendered.body.includes("• Cartão sem limite"), true);
@@ -194,6 +212,15 @@ function assertNoRawLeak(template) {
     assert.equal(rendered.body.includes("Codigo Pix copia e cola"), false);
     assert.equal(rendered.body.includes("logo abaixo"), false);
     assert.equal(rendered.followup.body, "000201PIX-COPIA-COLA");
+  }
+
+  {
+    const payload = payloadForEvent("pix_gerado");
+    payload.orderBumps = [{ product: { name: "Comunidade extra" }, price: "47,90" }];
+    const rendered = renderIntegrationDispatchTemplate("pix_gerado", payload);
+    assert.equal(rendered.messageType, "image");
+    assert.equal(rendered.body.includes("Itens adicionais:\n- Comunidade extra - R$ 47,90"), true);
+    assert.equal(rendered.caption, rendered.body);
   }
 
   for (const [eventSlug, label] of [
@@ -246,10 +273,12 @@ function assertNoRawLeak(template) {
 
   {
     const payload = payloadForEvent("pedido_pendente");
+    payload.order_bumps = [{ name: "Mentoria VIP", amount: "20.00" }];
     payload.message = { body: "Texto final externo para pedido pendente" };
     const rendered = renderIntegrationDispatchTemplate("pedido_pendente", payload);
     assert.equal(rendered.messageType, "text");
     assert.equal(rendered.body, "Texto final externo para pedido pendente");
+    assert.equal(rendered.body.includes("Itens adicionais"), false);
     assert.equal(rendered.caption, null);
   }
 
