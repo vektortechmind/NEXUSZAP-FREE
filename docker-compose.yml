@@ -10,7 +10,7 @@ services:
       POSTGRES_PASSWORD: nexus_secret
       POSTGRES_DB: nexus_chatbot_db
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nexus"]
+      test: ["CMD-SHELL", "pg_isready -U nexus -d nexus_chatbot_db"]
       interval: 5s
       timeout: 5s
       retries: 5

@@ -2,6 +2,26 @@
 
 Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
+## [1.0.10] - 2026-06-08
+
+### Added
+
+- Update Center passa a ter botão `Ampliar` nos logs do job, abrindo um popup maior com fonte monoespaçada e rolagem para leitura mais nítida.
+
+### Fixed
+
+- Update Center agora exige Docker Compose V2 antes de alterar containers, bloqueando ambientes com `docker-compose` legado que podem falhar com `KeyError: ContainerConfig`.
+- Fluxo Docker do update preserva o Postgres durante atualizações, inicia container existente sem recriar volume e sobe backend/frontend com `--no-deps`.
+- Migrations Prisma passam a aguardar Postgres saudável no banco `nexus_chatbot_db` antes de executar.
+- Job de update só marca sucesso após validar Postgres, backend e frontend saudáveis, evitando conclusão falsa no painel.
+- Painel recupera melhor o estado do job quando o backend reinicia ou o usuário recarrega a página durante uma atualização.
+
+### Changed
+
+- Imagem do backend passa a instalar Docker CLI oficial com plugin Docker Compose V2 para update remoto.
+- Healthcheck do Postgres passa a validar explicitamente o banco `nexus_chatbot_db`.
+- Versão do frontend, backend, `backend/VERSION`, `README` e artefatos de release atualizada para `1.0.10`.
+
 ## [1.0.9] - 2026-06-07
 
 ### Added

@@ -118,9 +118,13 @@ function assertStaticGuards(backendRoot, frontendRoot) {
   assert.ok(serviceSource.includes("UPDATE_RUNNER_SCRIPT"), "service deve disparar runner controlado");
   assert.ok(serviceSource.includes("detached: true"), "worker deve ser destacado do request");
   assert.ok(serviceSource.includes("child.unref()"), "worker destacado deve usar unref");
+  assert.ok(serviceSource.includes("dockerStackRecovered"), "service deve validar saude Docker antes de recuperar sucesso apos restart");
+  assert.ok(serviceSource.includes("Consulta de release indisponível durante atualização"), "status deve acompanhar job local se consulta externa/banco falhar durante update");
 
   assert.ok(runnerSource.includes('path.basename(scriptPath) !== "update.sh"'), "runner deve restringir execucao ao update.sh");
   assert.ok(frontendSource.includes("Atualizar"), "UI deve expor o botao de execucao");
+  assert.ok(frontendSource.includes("connectionIssue"), "UI deve representar reconexao durante update");
+  assert.ok(frontendSource.includes("Backend reiniciando durante a atualização"), "UI deve explicar indisponibilidade temporaria durante restart");
 }
 
 (async () => {
@@ -207,4 +211,3 @@ function assertStaticGuards(backendRoot, frontendRoot) {
   console.error("update-disabled:", err);
   process.exit(1);
 });
-

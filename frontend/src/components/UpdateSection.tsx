@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { isAxiosError } from "axios";
 import { api } from "../lib/axios";
-import { AlertCircle, Check, ExternalLink, RefreshCw, Shield, TerminalSquare } from "lucide-react";
+import { AlertCircle, Check, ExternalLink, Maximize2, RefreshCw, Shield, TerminalSquare, X } from "lucide-react";
 import { Button } from "./ui/Button";
 import { InlineAlert } from "./ui/InlineAlert";
 import { Panel } from "./ui/Panel";
@@ -40,25 +40,48 @@ export function UpdateSection() {
   const [loading, setLoading] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [connectionIssue, setConnectionIssue] = useState(false);
+  const [logsModalOpen, setLogsModalOpen] = useState(false);
+  const jobSnapshotActive = Boolean(jobSnapshot?.active);
+
+  const loadJobSnapshot = useCallback(async () => {
+    const res = await api.get<{ job: UpdateJob | null }>("/update/job");
+    setJobSnapshot(res.data.job);
+    setStatus((current) => current ? { ...current, job: res.data.job } : current);
+    setRunning(Boolean(res.data.job?.active));
+    return res.data.job;
+  }, []);
 
   const checkUpdate = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setConnectionIssue(false);
     try {
       const res = await api.get<UpdateStatus>("/update/status");
       setStatus(res.data);
       setJobSnapshot(res.data.job);
       setRunning(Boolean(res.data.job?.active));
     } catch (err) {
-      const message = isAxiosError(err)
-        ? (err.response?.data as { error?: string } | undefined)?.error ?? "Não foi possível verificar atualizações"
-        : "Não foi possível verificar atualizações";
-      setError(message);
+      try {
+        const job = await loadJobSnapshot();
+        if (job?.active || running || jobSnapshotActive) {
+          setConnectionIssue(true);
+          setRunning(true);
+          setError(null);
+        } else {
+          throw err;
+        }
+      } catch {
+        const message = isAxiosError(err)
+          ? (err.response?.data as { error?: string } | undefined)?.error ?? "Não foi possível verificar atualizações"
+          : "Não foi possível verificar atualizações";
+        setError(message);
+      }
       console.error(err);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [jobSnapshotActive, loadJobSnapshot, running]);
 
   const applyUpdate = useCallback(async () => {
     if (!status?.hasUpdate) return;
@@ -68,6 +91,7 @@ export function UpdateSection() {
 
     setRunning(true);
     setError(null);
+    setConnectionIssue(false);
     try {
       const res = await api.post<{ success: boolean; message: string; job: UpdateJob }>("/update/apply");
       setJobSnapshot(res.data.job);
@@ -84,16 +108,22 @@ export function UpdateSection() {
 
   const refreshJob = useCallback(async () => {
     try {
-      const res = await api.get<{ job: UpdateJob | null }>("/update/job");
-      setJobSnapshot(res.data.job);
-      setStatus((current) => current ? { ...current, job: res.data.job } : current);
-      setRunning(Boolean(res.data.job?.active));
+      const job = await loadJobSnapshot();
+      setConnectionIssue(false);
+      if (job?.status === "failed") {
+        setError(job.error || "Atualização falhou. Verifique os logs recentes do job.");
+      }
     } catch (err) {
+      if (running || jobSnapshotActive) {
+        setConnectionIssue(true);
+        setRunning(true);
+      }
       console.error(err);
     }
-  }, []);
+  }, [jobSnapshotActive, loadJobSnapshot, running]);
 
   const job = status?.job ?? jobSnapshot;
+  const logText = job?.logTail.length ? job.logTail.join("\n") : "Sem logs disponíveis ainda.";
   const updateInProgress = Boolean(job?.active || running);
   const jobTone = job?.status === "success" ? "success" : job?.status === "failed" ? "danger" : "warning";
   const jobLabel = job?.status === "queued"
@@ -123,37 +153,44 @@ export function UpdateSection() {
   }, [checkUpdate, refreshJob]);
 
   return (
-    <Section
-      title="Update Center"
-      description="Status e execução do update remoto."
-      actions={status ? (
-        <div className="flex flex-wrap gap-2">
-          {updateInProgress ? (
-            <span className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/25 dark:text-amber-200">
-              <RefreshCw className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
-              Atualização em andamento
-            </span>
-          ) : (
-            <>
-              <Button variant="secondary" size="sm" onClick={() => void checkUpdate()} disabled={loading} loading={loading}>
-                <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
-                Verificar
-              </Button>
-              {status?.hasUpdate && (
-                <Button size="sm" onClick={() => void applyUpdate()} disabled={loading}>
-                  <TerminalSquare className="mr-2 h-4 w-4" aria-hidden="true" />
-                  Atualizar
+    <>
+      <Section
+        title="Update Center"
+        description="Status e execução do update remoto."
+        actions={status ? (
+          <div className="flex flex-wrap gap-2">
+            {updateInProgress ? (
+              <span className="inline-flex items-center rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/25 dark:text-amber-200">
+                <RefreshCw className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                Atualização em andamento
+              </span>
+            ) : (
+              <>
+                <Button variant="secondary" size="sm" onClick={() => void checkUpdate()} disabled={loading} loading={loading}>
+                  <RefreshCw className="mr-2 h-4 w-4" aria-hidden="true" />
+                  Verificar
                 </Button>
-              )}
-            </>
-          )}
-        </div>
-      ) : undefined}
-    >
+                {status?.hasUpdate && (
+                  <Button size="sm" onClick={() => void applyUpdate()} disabled={loading}>
+                    <TerminalSquare className="mr-2 h-4 w-4" aria-hidden="true" />
+                    Atualizar
+                  </Button>
+                )}
+              </>
+            )}
+          </div>
+        ) : undefined}
+      >
       <Panel className="p-3">
         {error && (
           <InlineAlert tone="danger" className="mb-3" icon={<AlertCircle size={16} aria-hidden="true" />}>
             {error}
+          </InlineAlert>
+        )}
+
+        {connectionIssue && updateInProgress && (
+          <InlineAlert tone="warning" className="mb-3" icon={<RefreshCw size={16} aria-hidden="true" />}>
+            Backend reiniciando durante a atualização. O painel vai continuar tentando recuperar o estado do job.
           </InlineAlert>
         )}
 
@@ -246,13 +283,39 @@ export function UpdateSection() {
 
                 <details className="mt-3">
                   <summary className="cursor-pointer text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-slate-400">Logs recentes</summary>
-                  <pre className="mt-2 max-h-36 overflow-y-auto rounded-lg bg-white p-3 text-[11px] text-slate-700 dark:bg-slate-900 dark:text-slate-300">{job.logTail.length > 0 ? job.logTail.join("\n") : "Sem logs disponíveis ainda."}</pre>
+                  <div className="mt-2 flex items-center justify-end">
+                    <Button variant="ghost" size="sm" onClick={() => setLogsModalOpen(true)} aria-label="Ampliar logs da atualização">
+                      <Maximize2 className="mr-2 h-4 w-4" aria-hidden="true" />
+                      Ampliar
+                    </Button>
+                  </div>
+                  <pre className="mt-2 max-h-36 overflow-y-auto rounded-lg bg-white p-3 text-[11px] leading-relaxed text-slate-700 dark:bg-slate-900 dark:text-slate-300">{logText}</pre>
                 </details>
               </div>
             )}
           </div>
         )}
-      </Panel>
-    </Section>
+        </Panel>
+      </Section>
+
+      {logsModalOpen && job ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-3 sm:p-5">
+          <Panel className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50/80 px-5 py-4 dark:border-slate-800 dark:bg-slate-950/35">
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold text-slate-950 dark:text-slate-50">Logs da atualização</h3>
+                <p className="mt-1 truncate text-xs text-slate-600 dark:text-slate-400">Job {job.id} · alvo {job.targetVersion}</p>
+              </div>
+              <button type="button" onClick={() => setLogsModalOpen(false)} className="rounded-lg border border-slate-200 bg-white p-2 text-slate-700 transition hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800" aria-label="Fechar logs">
+                <X size={18} aria-hidden="true" />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 bg-white p-4 dark:bg-slate-950">
+              <pre className="max-h-[72vh] min-h-[24rem] overflow-auto rounded-lg border border-slate-200 bg-slate-950 p-4 font-mono text-xs leading-6 text-slate-100 shadow-inner dark:border-slate-800 sm:text-sm">{logText}</pre>
+            </div>
+          </Panel>
+        </div>
+      ) : null}
+    </>
   );
 }

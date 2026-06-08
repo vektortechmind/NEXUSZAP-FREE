@@ -1,5 +1,6 @@
 import { openSync, closeSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { prisma } from "../database/prisma";
 import { env } from "../config/env";
 import {
@@ -85,6 +86,56 @@ function writeStoredJob(job: StoredUpdateJob) {
   writeFileSync(UPDATE_JOB_FILE, JSON.stringify(job, null, 2));
 }
 
+function dockerInspectHealth(containerName: string): "healthy" | "running" | "unhealthy" | "missing" | "unknown" {
+  try {
+    const output = execFileSync("docker", [
+      "inspect",
+      "-f",
+      "{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}",
+      containerName,
+    ], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 3000 }).trim();
+
+    if (output === "healthy" || output === "running" || output === "unhealthy") return output;
+    return output ? "unknown" : "missing";
+  } catch {
+    return "missing";
+  }
+}
+
+function canVerifyDockerHealth() {
+  try {
+    execFileSync("docker", ["version", "--format", "{{.Client.Version}}"], { stdio: "ignore", timeout: 3000 });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function dockerStackRecovered() {
+  if (!canVerifyDockerHealth()) return null;
+
+  const postgres = dockerInspectHealth("nexus-postgres");
+  const backend = dockerInspectHealth("nexus-backend");
+  const frontend = dockerInspectHealth("nexus-frontend");
+
+  return (postgres === "healthy" || postgres === "running")
+    && (backend === "healthy" || backend === "running")
+    && frontend === "running";
+}
+
+function updateJobAsFailed(job: StoredUpdateJob, summary: string, error: string): StoredUpdateJob {
+  const failed: StoredUpdateJob = {
+    ...job,
+    status: "failed",
+    finishedAt: job.finishedAt ?? new Date().toISOString(),
+    summary,
+    error,
+  };
+
+  writeStoredJob(failed);
+  return failed;
+}
+
 function reconcileRecoveredJob(job: StoredUpdateJob | null): StoredUpdateJob | null {
   if (!job || !isActiveJob(job.status)) return job;
 
@@ -95,11 +146,34 @@ function reconcileRecoveredJob(job: StoredUpdateJob | null): StoredUpdateJob | n
     return job;
   }
 
+  const dockerRecovered = dockerStackRecovered();
+  if (dockerRecovered === false) {
+    const createdAt = Date.parse(job.createdAt);
+    const timeoutMs = 10 * 60 * 1000;
+    if (Number.isFinite(createdAt) && Date.now() - createdAt > timeoutMs) {
+      return updateJobAsFailed(
+        job,
+        "Atualização falhou na validação pós-restart.",
+        "A versão alvo foi aplicada, mas Postgres, backend ou frontend não ficaram saudáveis dentro do tempo esperado."
+      );
+    }
+
+    const pending: StoredUpdateJob = {
+      ...job,
+      status: "running",
+      summary: "Versão alvo aplicada. Aguardando validação de Postgres, backend e frontend.",
+    };
+    writeStoredJob(pending);
+    return pending;
+  }
+
   const recovered: StoredUpdateJob = {
     ...job,
     status: "success",
     finishedAt: job.finishedAt ?? new Date().toISOString(),
-    summary: "Atualização concluída após reinício do serviço.",
+    summary: dockerRecovered === true
+      ? "Atualização validada após reinício: Postgres, backend e frontend saudáveis."
+      : "Atualização concluída após reinício do serviço.",
     error: null,
   };
 
@@ -241,10 +315,29 @@ export async function checkForUpdate(): Promise<UpdateInfo> {
 }
 
 export async function getUpdateStatusPayload(): Promise<UpdateStatusPayload> {
-  const updateInfo = await checkForUpdate();
+  const job = getCurrentUpdateJob();
+  let updateInfo: UpdateInfo;
+
+  try {
+    updateInfo = await checkForUpdate();
+  } catch (error) {
+    if (job?.active) {
+      return {
+        currentVersion: parseVersion(CURRENT_VERSION),
+        latestVersion: job.targetVersion,
+        hasUpdate: true,
+        releaseUrl: job.releaseUrl,
+        changelog: "Consulta de release indisponível durante atualização. Acompanhando job local persistido.",
+        job,
+      };
+    }
+
+    throw error;
+  }
+
   return {
     ...updateInfo,
-    job: getCurrentUpdateJob(),
+    job,
   };
 }
 

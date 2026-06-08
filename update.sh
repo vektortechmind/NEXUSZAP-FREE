@@ -21,11 +21,27 @@ require() {
 }
 
 docker_compose_available() {
-  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
+  command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1
+}
+
+legacy_docker_compose_available() {
+  command -v docker-compose >/dev/null 2>&1
+}
+
+require_docker_compose_v2() {
+  if docker_compose_available; then
     return 0
   fi
 
-  command -v docker-compose >/dev/null 2>&1
+  if legacy_docker_compose_available; then
+    echo "ERRO: Docker Compose V2 e obrigatorio para update remoto." >&2
+    echo "Detectei docker-compose legado, que pode falhar com KeyError: ContainerConfig e derrubar containers stateful." >&2
+    echo "Instale o plugin Docker Compose V2 e rode novamente usando 'docker compose version' como validacao." >&2
+    exit 1
+  fi
+
+  echo "ERRO: Docker Compose V2 nao encontrado. Instale Docker com o plugin 'docker compose'." >&2
+  exit 1
 }
 
 compose_project_name() {
@@ -35,14 +51,68 @@ compose_project_name() {
 docker_compose() {
   local project_name
   project_name="$(compose_project_name)"
+  docker compose -p "$project_name" "$@"
+}
 
-  if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
-    docker compose -p "$project_name" "$@"
-    return
+compose_service_container_id() {
+  local service="$1"
+  docker_compose ps -a -q "$service" 2>/dev/null | head -n 1
+}
+
+container_status() {
+  local container_id="$1"
+  docker inspect -f '{{.State.Status}}' "$container_id" 2>/dev/null || true
+}
+
+container_health() {
+  local container_id="$1"
+  docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id" 2>/dev/null || true
+}
+
+POSTGRES_WAS_RUNNING=false
+
+remember_postgres_state() {
+  local postgres_id status
+  postgres_id="$(compose_service_container_id postgres || true)"
+  status=""
+  if [[ -n "$postgres_id" ]]; then
+    status="$(container_status "$postgres_id")"
+  fi
+  if [[ "$status" == "running" ]]; then
+    POSTGRES_WAS_RUNNING=true
+  else
+    POSTGRES_WAS_RUNNING=false
+  fi
+}
+
+restore_postgres_if_needed() {
+  if [[ "${POSTGRES_WAS_RUNNING:-false}" != "true" ]]; then
+    return 0
+  fi
+  if ! docker_compose_available; then
+    return 0
   fi
 
-  docker-compose -p "$project_name" "$@"
+  local postgres_id status
+  postgres_id="$(compose_service_container_id postgres || true)"
+  status=""
+  if [[ -n "$postgres_id" ]]; then
+    status="$(container_status "$postgres_id")"
+  fi
+
+  if [[ "$status" != "running" ]]; then
+    echo "Tentando restaurar Postgres que estava ativo antes da falha..."
+    docker_compose start postgres >/dev/null 2>&1 || docker_compose up -d --no-recreate postgres >/dev/null 2>&1 || true
+  fi
 }
+
+on_update_error() {
+  local exit_code=$?
+  restore_postgres_if_needed
+  exit "$exit_code"
+}
+
+trap on_update_error ERR
 
 print_migration_summary() {
   local deploy_output="$1"
@@ -114,8 +184,8 @@ run_backend_migrations_docker() {
   local status_output=""
   local deploy_output=""
 
-  echo "Garantindo Postgres ativo no projeto Docker $(compose_project_name)..."
-  docker_compose up -d postgres
+  ensure_postgres_running
+  wait_postgres_healthy
 
   echo "Verificando status das migrations Prisma via Docker..."
   if ! status_output="$(docker_compose run --rm --no-deps backend npx prisma migrate status --schema prisma/schema.prisma 2>&1)"; then
@@ -134,6 +204,100 @@ run_backend_migrations_docker() {
   printf '%s\n' "$deploy_output"
 
   print_migration_summary "$deploy_output"
+}
+
+ensure_postgres_running() {
+  local postgres_id status
+  echo "Garantindo Postgres ativo no projeto Docker $(compose_project_name) sem recriar volume/container existente..."
+
+  postgres_id="$(compose_service_container_id postgres || true)"
+  status=""
+  if [[ -n "$postgres_id" ]]; then
+    status="$(container_status "$postgres_id")"
+  fi
+
+  if [[ "$status" == "running" ]]; then
+    echo "Postgres ja esta rodando. Preservando container existente."
+    return 0
+  fi
+
+  if [[ -n "$postgres_id" ]]; then
+    echo "Postgres existente esta em estado '${status:-desconhecido}'. Iniciando sem recriar..."
+    docker_compose start postgres
+    return 0
+  fi
+
+  echo "Postgres ainda nao existe neste projeto. Criando com --no-recreate para preservar volumes existentes."
+  docker_compose up -d --no-recreate postgres
+}
+
+wait_postgres_healthy() {
+  local attempt postgres_id health
+  echo "Aguardando Postgres healthy e banco nexus_chatbot_db acessivel..."
+
+  for attempt in $(seq 1 60); do
+    postgres_id="$(compose_service_container_id postgres || true)"
+    if [[ -n "$postgres_id" ]]; then
+      health="$(container_health "$postgres_id")"
+      if [[ "$health" == "healthy" ]] && docker_compose exec -T postgres pg_isready -U nexus -d nexus_chatbot_db >/dev/null 2>&1; then
+        echo "Postgres healthy."
+        return 0
+      fi
+    fi
+    sleep 2
+  done
+
+  docker_compose ps postgres || true
+  echo "ERRO: Postgres nao ficou healthy dentro do tempo esperado." >&2
+  exit 1
+}
+
+wait_backend_healthy() {
+  local attempt backend_id health
+  echo "Validando backend apos restart..."
+
+  for attempt in $(seq 1 90); do
+    backend_id="$(compose_service_container_id backend || true)"
+    if [[ -n "$backend_id" ]]; then
+      health="$(container_health "$backend_id")"
+      if [[ "$health" == "healthy" ]] && docker_compose exec -T backend node -e "fetch('http://127.0.0.1:3000/api/ping').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))" >/dev/null 2>&1; then
+        echo "Backend healthy."
+        return 0
+      fi
+    fi
+    sleep 2
+  done
+
+  docker_compose ps backend || true
+  echo "ERRO: backend nao ficou healthy dentro do tempo esperado." >&2
+  exit 1
+}
+
+wait_frontend_ready() {
+  local attempt frontend_id status
+  echo "Validando frontend apos restart..."
+
+  for attempt in $(seq 1 60); do
+    frontend_id="$(compose_service_container_id frontend || true)"
+    if [[ -n "$frontend_id" ]]; then
+      status="$(container_status "$frontend_id")"
+      if [[ "$status" == "running" ]] && docker_compose exec -T frontend wget -qO- http://127.0.0.1/ >/dev/null 2>&1; then
+        echo "Frontend pronto."
+        return 0
+      fi
+    fi
+    sleep 2
+  done
+
+  docker_compose ps frontend || true
+  echo "ERRO: frontend nao respondeu dentro do tempo esperado." >&2
+  exit 1
+}
+
+validate_docker_stack_after_update() {
+  wait_postgres_healthy
+  wait_backend_healthy
+  wait_frontend_ready
 }
 
 random_key() {
@@ -361,13 +525,15 @@ else
   CHANGED_FILES="$(git diff --name-only "$old_rev" "$new_rev")"
 fi
 
-if docker_compose_available; then
+if docker_compose_available || legacy_docker_compose_available || command -v docker >/dev/null 2>&1; then
+  require_docker_compose_v2
   echo ""
   echo "[2/5] Ambiente Docker detectado. Dependencias e build serao feitos pelos Dockerfiles."
 
   load_env
   ensure_frontend_port
   ensure_bootstrap_app_url
+  remember_postgres_state
 
   update_backend=false
   update_frontend=false
@@ -406,12 +572,12 @@ if docker_compose_available; then
   echo ""
   echo "[5/5] Restart Docker seletivo..."
   if [[ "$update_stack" == "true" ]]; then
-    update_panel_job_state "running" "Build e migrations concluídos. Recriando stack Docker para finalizar o update."
-    docker_compose up -d
+    update_panel_job_state "running" "Build e migrations concluídos. Recriando backend/frontend sem recriar Postgres."
+    docker_compose up -d --no-deps backend frontend
   else
     if [[ "$update_backend" == "true" || "$update_frontend" == "true" ]]; then
-      update_panel_job_state "running" "Build e migrations concluídos. Recriando containers para finalizar o update."
-      docker_compose up -d backend frontend
+      update_panel_job_state "running" "Build e migrations concluídos. Recriando backend/frontend sem recriar Postgres."
+      docker_compose up -d --no-deps backend frontend
     fi
     if [[ "$update_backend" != "true" && "$update_frontend" != "true" && -n "$CHANGED_FILES" ]]; then
       echo "Mudancas sem impacto em containers. Nenhum restart Docker necessario."
@@ -421,6 +587,11 @@ if docker_compose_available; then
   if [[ "$update_backend" == "true" || "$update_stack" == "true" ]]; then
     docker_compose ps backend
   fi
+
+  echo ""
+  echo "[5/5] Validando saude final da stack..."
+  update_panel_job_state "running" "Containers iniciados. Validando Postgres, backend e frontend antes de concluir."
+  validate_docker_stack_after_update
   update_panel_job_state "success" "Atualização concluída com sucesso."
   echo "Stack Docker atualizada."
 else
