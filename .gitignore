@@ -60,23 +60,7 @@ storage/
 uploads/
 media/
 
-# Local agent/workspace artifacts, not product source
-.agent/
-.agents/
-.aiox-core/
-.antigravity/
-.claude/
-.codex/
-.cursor/
-.gemini/
-.kiro/
-.qoder/
-.qwen/
-frontend/.agents/
-frontend/.claude/
-frontend/.kiro/
-frontend/.qoder/
-frontend/.qwen/
+# Local workspace artifacts, not product source
 CHANGELOG-LOCAL-vs-REMOTE.md
 docs/
 
@@ -101,6 +85,3 @@ test-results/
 __pycache__/
 **/__pycache__/
 *.pyc
-
-# Local agent configuration
-AGENTS.md
