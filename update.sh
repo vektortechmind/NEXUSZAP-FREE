@@ -69,6 +69,48 @@ container_health() {
   docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$container_id" 2>/dev/null || true
 }
 
+package_version_from_file() {
+  local package_file="$1"
+  node -e "const fs=require('fs'); const p=process.argv[1]; if (!fs.existsSync(p)) process.exit(0); const pkg=JSON.parse(fs.readFileSync(p,'utf8')); process.stdout.write(String(pkg.version || ''));" "$package_file"
+}
+
+backend_code_version() {
+  package_version_from_file "backend/package.json"
+}
+
+backend_container_version() {
+  local backend_id
+  backend_id="$(compose_service_container_id backend || true)"
+  if [[ -z "$backend_id" ]]; then
+    return 0
+  fi
+
+  docker exec "$backend_id" node -e "const fs=require('fs'); const paths=['/app/package.json','./package.json']; for (const p of paths) { if (fs.existsSync(p)) { const pkg=JSON.parse(fs.readFileSync(p,'utf8')); process.stdout.write(String(pkg.version || '')); process.exit(0); } }" 2>/dev/null || true
+}
+
+detect_stale_backend_container() {
+  local code_version container_version
+  code_version="$(backend_code_version)"
+  container_version="$(backend_container_version)"
+
+  if [[ -z "$code_version" ]]; then
+    return 1
+  fi
+
+  if [[ -z "$container_version" ]]; then
+    echo "Versao do backend no container nao detectada. Rebuild Docker sera executado."
+    return 0
+  fi
+
+  if [[ "$code_version" != "$container_version" ]]; then
+    echo "Backend no container esta em ${container_version}, mas o codigo esta em ${code_version}. Rebuild Docker sera executado."
+    return 0
+  fi
+
+  echo "Backend no container ja esta na versao ${container_version}."
+  return 1
+}
+
 POSTGRES_WAS_RUNNING=false
 
 remember_postgres_state() {
@@ -540,7 +582,7 @@ if docker_compose_available || legacy_docker_compose_available || command -v doc
   update_stack=false
 
   if [[ -z "$CHANGED_FILES" ]]; then
-    echo "Nenhuma mudanca nova no Git. Mantendo containers atuais."
+    echo "Nenhuma mudanca nova no Git. Verificando se containers ja estao na versao do codigo."
   else
     if changed_any '^docker-compose\.yml$' '^\.dockerignore$'; then
       update_stack=true
@@ -551,6 +593,11 @@ if docker_compose_available || legacy_docker_compose_available || command -v doc
     if changed_any '^frontend/' '^package(-lock)?\.json$'; then
       update_frontend=true
     fi
+  fi
+
+  if detect_stale_backend_container; then
+    update_backend=true
+    update_frontend=true
   fi
 
   echo ""
