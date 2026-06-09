@@ -1,5 +1,8 @@
 process.env.NODE_ENV = "test";
 process.env.DATABASE_URL = process.env.DATABASE_URL || "postgresql://user:pass@localhost:5432/testdb?schema=public";
+process.env.JWT_SECRET = process.env.JWT_SECRET || "test-secret-with-more-than-32-characters";
+process.env.ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@example.com";
+process.env.ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "local-test-password";
 
 require("ts-node/register/transpile-only");
 const assert = require("node:assert/strict");

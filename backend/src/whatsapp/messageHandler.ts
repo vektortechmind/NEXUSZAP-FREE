@@ -15,6 +15,7 @@ import { askChat, getKeys, isAudioTranscriptionEnabled, transcribeAudio } from "
 import { getResolvedAgentPrompt } from "../services/runtime-ai/agentPrompt.service";
 import { buildCompleteSystemPrompt, resolveAgentDisplayName } from "../ai/systemPrompt";
 import { recordMessageEvent } from "../services/analytics/messageEvent.service";
+import { chatService } from "../services/chat.service";
 import { resolveContactPhoneDisplay } from "../utils/whatsappJid";
 import { recordLastMessageForChat } from "./lastMessageCache";
 import { globalMemoryManager } from "../utils/ai/memoryManager";
@@ -107,6 +108,39 @@ function randomInt(min: number, max: number) {
   return Math.floor(Math.random() * (b - a + 1)) + a;
 }
 
+function messageDateFromBaileysTimestamp(timestamp: proto.IWebMessageInfo["messageTimestamp"]): Date | undefined {
+  if (!timestamp) return undefined;
+  const raw = typeof timestamp === "number"
+    ? timestamp
+    : typeof timestamp === "string"
+      ? Number(timestamp)
+      : typeof timestamp === "object" && "toNumber" in timestamp && typeof timestamp.toNumber === "function"
+        ? timestamp.toNumber()
+        : Number(timestamp);
+  if (!Number.isFinite(raw) || raw <= 0) return undefined;
+  return new Date(raw * 1000);
+}
+
+function resolveChatMessageType(content: WAMessageContent) {
+  if (content.imageMessage) return "IMAGE" as const;
+  if (content.audioMessage) return "AUDIO" as const;
+  if (content.documentMessage) return "DOCUMENT" as const;
+  if ((content as { buttonsResponseMessage?: unknown }).buttonsResponseMessage) return "BUTTONS_REPLY" as const;
+  if ((content as { listResponseMessage?: unknown }).listResponseMessage) return "LIST_REPLY" as const;
+  if (content.conversation || content.extendedTextMessage) return "TEXT" as const;
+  return "UNKNOWN" as const;
+}
+
+function resolveChatBody(content: WAMessageContent): string | null {
+  return content.conversation ||
+    content.extendedTextMessage?.text ||
+    content.imageMessage?.caption ||
+    content.documentMessage?.caption ||
+    (content as { listResponseMessage?: { title?: string; description?: string } }).listResponseMessage?.title ||
+    (content as { buttonsResponseMessage?: { selectedDisplayText?: string } }).buttonsResponseMessage?.selectedDisplayText ||
+    null;
+}
+
 export async function handleIncomingMessage(sock: WASocket, instanceId: string, m: proto.IWebMessageInfo) {
   try {
     if (!m.message) return;
@@ -143,6 +177,18 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
       "";
 
     const audioMessage = content.audioMessage;
+    await chatService.persistInboundMessage({
+      instanceId,
+      jid: remoteJid,
+      body: resolveChatBody(content),
+      messageType: resolveChatMessageType(content),
+      providerMessageId: key.id ?? null,
+      mediaMimeType: audioMessage?.mimetype || content.imageMessage?.mimetype || content.documentMessage?.mimetype || null,
+      mediaDurationMs: audioMessage?.seconds ? Number(audioMessage.seconds) * 1000 : null,
+      createdAt: messageDateFromBaileysTimestamp(m.messageTimestamp),
+      contactName: m.pushName ?? null,
+    });
+
     const hasSupportedInboundContent = Boolean(textMsg.trim() || audioMessage);
     if (!hasSupportedInboundContent) return;
 
@@ -238,6 +284,14 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
 
       const sent = await sock.sendMessage(remoteJid, { text: part });
       if (sent) recordLastMessageForChat(instanceId, remoteJid, sent);
+      await chatService.persistOutboundMessage({
+        instanceId,
+        jid: remoteJid,
+        body: part,
+        messageType: "TEXT",
+        status: "SENT",
+        providerMessageId: sent?.key?.id ?? null,
+      });
       await recordMessageEvent({
         instanceId,
         channel: "WHATSAPP",

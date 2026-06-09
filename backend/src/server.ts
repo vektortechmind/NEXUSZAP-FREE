@@ -17,6 +17,7 @@ import { dashboardRoutes } from "./routes/dashboard.routes";
 import updateRoutes from "./routes/update.routes";
 import { setupRoutes } from "./routes/setup.routes";
 import { integrationRoutes } from "./routes/integration.routes";
+import { chatRoutes } from "./routes/chat.routes";
 import { InstanceManager } from "./whatsapp/InstanceManager";
 import { TelegramBotManager } from "./telegram/TelegramBotManager";
 import { buildAllowedOrigins, createOriginGuard, isCorsOriginAllowedForRequest, verifyCsrf } from "./security/middlewares";
@@ -101,6 +102,7 @@ export async function buildServer() {
   await fastify.register(updateRoutes, { prefix: "/api" });
   await fastify.register(setupRoutes, { prefix: "/api/setup" });
   await fastify.register(integrationRoutes, { prefix: "/api/integrations" });
+  await fastify.register(chatRoutes, { prefix: "/api/chat" });
 
   return fastify;
 }

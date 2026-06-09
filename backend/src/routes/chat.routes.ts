@@ -1,0 +1,126 @@
+import type { FastifyInstance, FastifyReply, preValidationHookHandler } from "fastify";
+import { z } from "zod";
+import {
+  chatService,
+  ChatInstanceNotFoundError,
+  ChatValidationError,
+  createChatService,
+  type ChatStore,
+  type ChatEventRecorder,
+} from "../services/chat.service";
+import { ChatInstanceOfflineError, ChatProviderSendError, type ChatBaileysAdapter } from "../services/chat.baileys";
+
+type ChatRoutesDeps = {
+  service?: ReturnType<typeof createChatService>;
+  store?: ChatStore;
+  baileys?: ChatBaileysAdapter;
+  eventRecorder?: ChatEventRecorder;
+  preValidationHook?: preValidationHookHandler;
+};
+
+const conversationsQuerySchema = z.object({
+  instanceId: z.string().trim().min(1).max(191).optional(),
+});
+
+const messagesParamsSchema = z.object({
+  jid: z.string().trim().min(1).max(191),
+});
+
+const messagesQuerySchema = z.object({
+  instanceId: z.string().trim().min(1).max(191),
+  cursor: z.string().datetime().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+const sendBodySchema = z.object({
+  instanceId: z.string().trim().min(1).max(191),
+  jid: z.string().trim().min(1).max(191),
+  body: z.string().trim().min(1).max(4000),
+});
+
+function serializeDate<T extends Record<string, unknown>>(row: T): T {
+  return Object.fromEntries(
+    Object.entries(row).map(([key, value]) => [key, value instanceof Date ? value.toISOString() : value])
+  ) as T;
+}
+
+function serializeConversation(conversation: Awaited<ReturnType<typeof chatService.listConversations>>[number]) {
+  return {
+    ...serializeDate(conversation),
+    lastMessage: conversation.lastMessage ? serializeDate(conversation.lastMessage) : null,
+  };
+}
+
+function serializeMessage(message: Awaited<ReturnType<typeof chatService.listMessages>>[number]) {
+  return serializeDate(message);
+}
+
+function sendKnownError(reply: FastifyReply, err: unknown) {
+  if (err instanceof z.ZodError) {
+    return reply.status(400).send({ error: "Parametros invalidos.", code: "CHAT_CONTRACT_INVALID", details: err.issues });
+  }
+  if (err instanceof ChatValidationError) {
+    return reply.status(400).send({ error: err.message, code: err.code });
+  }
+  if (err instanceof ChatInstanceNotFoundError) {
+    return reply.status(404).send({ error: err.message, code: err.code });
+  }
+  if (err instanceof ChatInstanceOfflineError) {
+    return reply.status(503).send({ error: err.message, code: err.code });
+  }
+  if (err instanceof ChatProviderSendError) {
+    return reply.status(502).send({ error: err.message, code: err.code });
+  }
+  throw err;
+}
+
+export function createChatRoutes(deps: ChatRoutesDeps = {}) {
+  const service = deps.service ?? createChatService({ store: deps.store, baileys: deps.baileys, eventRecorder: deps.eventRecorder });
+  const preValidationHook = deps.preValidationHook ?? (async (request, reply) => {
+    const { verifyJwt } = await import("../security/middlewares");
+    return verifyJwt(request, reply);
+  });
+
+  return async function chatRoutes(fastify: FastifyInstance) {
+    fastify.addHook("preValidation", preValidationHook);
+
+    fastify.get("/conversations", async (request, reply) => {
+      try {
+        const query = conversationsQuerySchema.parse(request.query);
+        const conversations = await service.listConversations(query);
+        return reply.send({ conversations: conversations.map(serializeConversation) });
+      } catch (err) {
+        return sendKnownError(reply, err);
+      }
+    });
+
+    fastify.get("/conversations/:jid/messages", async (request, reply) => {
+      try {
+        const params = messagesParamsSchema.parse(request.params);
+        const query = messagesQuerySchema.parse(request.query);
+        const messages = await service.listMessages({
+          instanceId: query.instanceId,
+          jid: params.jid,
+          cursor: query.cursor ? new Date(query.cursor) : undefined,
+          limit: query.limit,
+        });
+        const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+        return reply.send({ messages: messages.map(serializeMessage), nextCursor: lastMessage?.createdAt.toISOString() ?? null });
+      } catch (err) {
+        return sendKnownError(reply, err);
+      }
+    });
+
+    fastify.post("/send", async (request, reply) => {
+      try {
+        const body = sendBodySchema.parse(request.body);
+        const message = await service.sendTextMessage(body);
+        return reply.status(201).send({ message: serializeMessage(message) });
+      } catch (err) {
+        return sendKnownError(reply, err);
+      }
+    });
+  };
+}
+
+export const chatRoutes = createChatRoutes({ service: chatService });
