@@ -86,7 +86,7 @@ export function ChatHeader({ conversation, instances, connectionState, isTyping,
             </button>
             <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800" onClick={() => { setMenuOpen(false); onClear?.("panel_and_whatsapp"); }}>
               <Trash2 size={15} aria-hidden="true" />
-              Limpar painel + WhatsApp
+              Limpar painel + aparelho
             </button>
           </div>
         ) : null}

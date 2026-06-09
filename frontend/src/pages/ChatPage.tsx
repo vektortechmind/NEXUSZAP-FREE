@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useToast } from "../contexts/ToastContext";
 import { ChatHeader } from "../features/chat/ChatHeader";
 import { ConversationList } from "../features/chat/ConversationList";
+import { MediaViewer } from "../features/chat/MediaViewer";
 import { MessageThread } from "../features/chat/MessageThread";
 import { upsertMessage } from "../features/chat/chatState";
 import { useChat } from "../features/chat/useChat";
@@ -39,6 +40,7 @@ export function ChatPage() {
   const [mobileThreadOpen, setMobileThreadOpen] = useState(false);
   const [typing, setTyping] = useState<Record<string, boolean>>({});
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  const [mediaViewerMessage, setMediaViewerMessage] = useState<ChatMessage | null>(null);
   const [contextMenu, setContextMenu] = useState<{ message: ChatMessage; position: { x: number; y: number } } | null>(null);
 
   const {
@@ -55,6 +57,7 @@ export function ChatPage() {
     editMessage,
     deleteMessage,
     clearConversation,
+    markConversationRead,
     unreadTotal,
   } = useConversations(selectedInstanceId, search);
 
@@ -143,6 +146,11 @@ export function ChatPage() {
     setMessagesLoading(true);
     setConversations((current) => current.map((item) => conversationKey(item) === key ? { ...item, unreadCount: 0 } : item));
     try {
+      if (conversation.unreadCount > 0) {
+        void markConversationRead({ instanceId: conversation.instanceId, jid: conversation.jid }).catch((err) => {
+          console.error(err);
+        });
+      }
       const result = await loadMessages({ instanceId: conversation.instanceId, jid: conversation.jid });
       setMessages(result.messages);
       setNextCursor(result.nextCursor);
@@ -152,7 +160,7 @@ export function ChatPage() {
     } finally {
       setMessagesLoading(false);
     }
-  }, [addToast, loadMessages, setConversations]);
+  }, [addToast, loadMessages, markConversationRead, setConversations]);
 
   const loadOlderMessages = useCallback(async () => {
     if (!selectedConversation || !nextCursor || loadingMore) return;
@@ -263,18 +271,19 @@ export function ChatPage() {
 
   const clearSelectedConversation = useCallback(async (mode: "panel_only" | "panel_and_whatsapp") => {
     if (!selectedConversation) return;
-    const confirmed = window.confirm(mode === "panel_only" ? "Limpar mensagens apenas do painel?" : "Limpar mensagens do painel e tentar apagar no WhatsApp?");
+    const confirmed = window.confirm(mode === "panel_only" ? "Limpar mensagens apenas do painel?" : "Isso limpara as mensagens no painel e no seu aparelho WhatsApp. O contato continuara vendo as mensagens normalmente.");
     if (!confirmed) return;
     try {
       await clearConversation({ instanceId: selectedConversation.instanceId, jid: selectedConversation.jid, mode });
       setMessages([]);
       setReplyingTo(null);
+      setConversations((current) => current.map((item) => conversationKey(item) === conversationKey(selectedConversation) ? { ...item, unreadCount: 0 } : item));
       addToast("Conversa limpa.", "success");
     } catch (err) {
       console.error(err);
       addToast("Nao foi possivel limpar a conversa.", "error");
     }
-  }, [addToast, clearConversation, selectedConversation]);
+  }, [addToast, clearConversation, selectedConversation, setConversations]);
 
   const selectedTyping = selectedConversation ? Boolean(typing[conversationKey(selectedConversation)]) : false;
 
@@ -317,9 +326,18 @@ export function ChatPage() {
             onSend={(body) => void sendMessage(body)}
             onReact={(message, emoji) => void reactToMessage(message, emoji)}
             onOpenMenu={(message, position) => setContextMenu({ message, position })}
+            onOpenMedia={setMediaViewerMessage}
           />
         </div>
       </div>
+      {mediaViewerMessage ? (
+        <MediaViewer
+          message={mediaViewerMessage}
+          onClose={() => setMediaViewerMessage(null)}
+          onReact={(message, emoji) => void reactToMessage(message, emoji)}
+          onReply={(message) => setReplyingTo(message)}
+        />
+      ) : null}
       {contextMenu ? (
         <MessageContextMenu
           message={contextMenu.message}

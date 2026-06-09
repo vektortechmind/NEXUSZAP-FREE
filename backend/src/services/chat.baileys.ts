@@ -22,6 +22,8 @@ export type ChatBaileysAdapter = {
   sendReaction(input: { instanceId: string; jid: string; providerMessageId: string; emoji: string; targetFromMe: boolean }): Promise<void>;
   editMessage(input: { instanceId: string; jid: string; providerMessageId: string; body: string }): Promise<void>;
   deleteMessage(input: { instanceId: string; jid: string; providerMessageId: string }): Promise<void>;
+  clearChat(input: { instanceId: string; jid: string }): Promise<void>;
+  markRead(input: { instanceId: string; jid: string }): Promise<void>;
   getContactProfile(input: { instanceId: string; jid: string }): Promise<{ name: string | null; profilePicUrl: string | null }>;
 };
 
@@ -65,6 +67,26 @@ export const baileysChatAdapter: ChatBaileysAdapter = {
       await sock.sendMessage(input.jid, {
         delete: { id: input.providerMessageId, remoteJid: input.jid, fromMe: true },
       });
+    } catch (err) {
+      if (err instanceof ChatInstanceOfflineError) throw err;
+      throw new ChatProviderSendError(err instanceof Error ? err.message : undefined);
+    }
+  },
+
+  async clearChat(input) {
+    const sock = getSocket(input.instanceId);
+    try {
+      await sock.chatModify({ clear: true, lastMessages: [] }, input.jid);
+    } catch (err) {
+      if (err instanceof ChatInstanceOfflineError) throw err;
+      throw new ChatProviderSendError(err instanceof Error ? err.message : undefined);
+    }
+  },
+
+  async markRead(input) {
+    const sock = getSocket(input.instanceId);
+    try {
+      await sock.chatModify({ markRead: true, lastMessages: [] }, input.jid);
     } catch (err) {
       if (err instanceof ChatInstanceOfflineError) throw err;
       throw new ChatProviderSendError(err instanceof Error ? err.message : undefined);

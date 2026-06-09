@@ -93,7 +93,7 @@ function sendKnownError(reply: FastifyReply, err: unknown) {
     return reply.status(400).send({ error: "Parametros invalidos.", code: "CHAT_CONTRACT_INVALID", details: err.issues });
   }
   if (err instanceof ChatValidationError) {
-    return reply.status(400).send({ error: err.message, code: err.code });
+    return reply.status(err.statusCode).send({ error: err.message, code: err.code });
   }
   if (err instanceof ChatInstanceNotFoundError) {
     return reply.status(404).send({ error: err.message, code: err.code });
@@ -207,6 +207,17 @@ export function createChatRoutes(deps: ChatRoutesDeps = {}) {
         const body = clearConversationBodySchema.parse(request.body);
         const result = await service.clearConversation({ ...body, jid: params.jid });
         return reply.status(200).send({ success: true, ...result });
+      } catch (err) {
+        return sendKnownError(reply, err);
+      }
+    });
+
+    fastify.post("/conversations/:jid/read", async (request, reply) => {
+      try {
+        const params = messagesParamsSchema.parse(request.params);
+        const body = z.object({ instanceId: z.string().trim().min(1).max(191) }).parse(request.body);
+        const conversation = await service.markConversationRead({ ...body, jid: params.jid });
+        return reply.status(200).send({ success: true, conversation: conversation ? serializeConversation(conversation) : null });
       } catch (err) {
         return sendKnownError(reply, err);
       }

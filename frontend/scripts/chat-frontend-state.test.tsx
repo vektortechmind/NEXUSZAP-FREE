@@ -9,7 +9,9 @@ import { ConversationList } from "../src/features/chat/ConversationList.tsx";
 import { MessageBubble } from "../src/features/chat/MessageBubble.tsx";
 import { ChatInput } from "../src/features/chat/ChatInput.tsx";
 import { MessageContextMenu } from "../src/features/chat/MessageContextMenu.tsx";
-import { getMessageContextActions } from "../src/features/chat/messageContextActions.ts";
+import { EmojiPicker } from "../src/features/chat/EmojiPicker.tsx";
+import { MediaViewer } from "../src/features/chat/MediaViewer.tsx";
+import { getMessageContextActions, isWithinEditWindow } from "../src/features/chat/messageContextActions.ts";
 import { getKnownMessageFallback, getMessageStatusLabel } from "../src/features/chat/chatDisplay.ts";
 import { upsertMessage } from "../src/features/chat/chatState.ts";
 import { filterConversations, getUnreadTotal } from "../src/features/chat/useConversations.ts";
@@ -128,6 +130,24 @@ test("conversation list renders avatar, preview, unread badge and instance badge
   assert.match(html, /Buscar nome ou mensagem/);
 });
 
+test("conversation list does not render unread badge for zero", () => {
+  const html = renderToStaticMarkup(
+    <ConversationList
+      conversations={[{ ...conversations[0], unreadCount: 0 }]}
+      instances={[{ id: "instance-a", name: "Vendas" }]}
+      selectedConversationKey={null}
+      selectedInstanceId="all"
+      search=""
+      loading={false}
+      error={null}
+      onSelect={() => undefined}
+      onInstanceChange={() => undefined}
+      onSearchChange={() => undefined}
+    />,
+  );
+  assert.doesNotMatch(html, />0</);
+});
+
 test("message bubbles render direction, status and inline audio controls", () => {
   const sentHtml = renderToStaticMarkup(<MessageBubble message={{ ...textMessage, fromMe: true, status: "READ" }} />);
   const audioHtml = renderToStaticMarkup(<MessageBubble message={audioMessage} />);
@@ -154,8 +174,10 @@ test("message bubbles render image, video, view-once marker and reactions inline
   const viewOnceHtml = renderToStaticMarkup(<MessageBubble message={{ ...imageMessage, body: "Visualizacao unica\nLegenda" }} />);
   assert.match(imageHtml, /<img/);
   assert.match(imageHtml, /\/api\/chat\/media\/instance-a\/wamid.image.1/);
+  assert.match(imageHtml, /Abrir imagem/);
+  assert.match(imageHtml, /p-0 overflow-hidden/);
   assert.match(videoHtml, /<video/);
-  assert.match(videoHtml, /controls=""/);
+  assert.match(videoHtml, /Abrir video/);
   assert.match(fallbackHtml, /\[Imagem\]/);
   assert.match(reactedHtml, /👍/);
   assert.match(viewOnceHtml, /Visualizacao unica/);
@@ -174,11 +196,16 @@ test("message bubbles render edited, deleted and quoted states", () => {
 
 test("message context menu exposes conditional actions", () => {
   assert.deepEqual(getMessageContextActions({ ...textMessage, fromMe: false }), ["reply"]);
-  assert.deepEqual(getMessageContextActions({ ...textMessage, fromMe: true }).slice(0, 3), ["reply", "edit", "delete_for_me"]);
+  const freshOwnText = { ...textMessage, fromMe: true, createdAt: new Date().toISOString() };
+  const oldOwnText = { ...freshOwnText, createdAt: new Date(Date.now() - 16 * 60 * 1000).toISOString() };
+  assert.equal(isWithinEditWindow(freshOwnText), true);
+  assert.equal(isWithinEditWindow(oldOwnText), false);
+  assert.deepEqual(getMessageContextActions(freshOwnText).slice(0, 3), ["reply", "edit", "delete_for_me"]);
+  assert.deepEqual(getMessageContextActions(oldOwnText).slice(0, 2), ["reply", "delete_for_me"]);
   assert.deepEqual(getMessageContextActions({ ...textMessage, isDeleted: true }), []);
   const html = renderToStaticMarkup(
     <MessageContextMenu
-      message={{ ...textMessage, fromMe: true }}
+      message={freshOwnText}
       position={{ x: 10, y: 20 }}
       onAction={() => undefined}
       onClose={() => undefined}
@@ -187,6 +214,29 @@ test("message context menu exposes conditional actions", () => {
   assert.match(html, /Responder/);
   assert.match(html, /Editar/);
   assert.match(html, /Apagar para mim/);
+});
+
+test("emoji picker exposes categories and message bubble plus button", () => {
+  const pickerHtml = renderToStaticMarkup(<EmojiPicker onSelect={() => undefined} onClose={() => undefined} />);
+  const bubbleHtml = renderToStaticMarkup(<MessageBubble message={{ ...textMessage, providerMessageId: "wamid.in.1" }} onReact={() => undefined} />);
+  assert.match(pickerHtml, /Carinhas/);
+  assert.match(pickerHtml, /Gestos/);
+  assert.match(pickerHtml, /Coracoes/);
+  assert.match(pickerHtml, /Objetos/);
+  assert.match(pickerHtml, /Simbolos/);
+  assert.match(bubbleHtml, /Mais emojis/);
+  assert.doesNotMatch(fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/MessageBubble.tsx"), "utf8"), /group-hover:flex/);
+});
+
+test("media viewer renders image and video actions", () => {
+  const imageHtml = renderToStaticMarkup(<MediaViewer message={imageMessage} onClose={() => undefined} onReact={() => undefined} onReply={() => undefined} />);
+  const videoHtml = renderToStaticMarkup(<MediaViewer message={videoMessage} onClose={() => undefined} onReact={() => undefined} onReply={() => undefined} />);
+  assert.match(imageHtml, /Visualizador de midia/);
+  assert.match(imageHtml, /Baixar midia/);
+  assert.match(imageHtml, /Responder/);
+  assert.match(imageHtml, /Mais emojis/);
+  assert.match(videoHtml, /<video/);
+  assert.match(videoHtml, /controls=""/);
 });
 
 test("chat input renders reply mode and cancel button", () => {
@@ -221,6 +271,9 @@ test("chat page keeps desktop split and mobile list-or-thread contract", () => {
   assert.match(source, /h-\[calc\(100svh-3\.5rem\)\]/);
   assert.match(source, /connectionState !== "connected"/);
   assert.match(source, /loadConversations\(\)/);
+  assert.match(source, /markConversationRead/);
+  assert.match(source, /MediaViewer/);
+  assert.match(source, /O contato continuara vendo as mensagens/);
 });
 
 test("message thread exposes a new messages jump button for open chats", () => {

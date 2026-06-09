@@ -118,6 +118,13 @@ export function useConversations(selectedInstanceId: string, search: string) {
     return res.data;
   }, []);
 
+  const markConversationRead = useCallback(async (input: { instanceId: string; jid: string }) => {
+    const res = await api.post<{ success: boolean; conversation: ChatConversation | null }>(`/chat/conversations/${encodeURIComponent(input.jid)}/read`, {
+      instanceId: input.instanceId,
+    });
+    return res.data.conversation;
+  }, []);
+
   return {
     conversations,
     setConversations,
@@ -132,6 +139,7 @@ export function useConversations(selectedInstanceId: string, search: string) {
     editMessage,
     deleteMessage,
     clearConversation,
+    markConversationRead,
     unreadTotal: getUnreadTotal(conversations),
   };
 }

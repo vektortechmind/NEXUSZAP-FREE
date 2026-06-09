@@ -19,6 +19,7 @@ type MessageThreadProps = {
   replyingTo?: ChatMessage | null;
   onCancelReply?: () => void;
   onOpenMenu?: (message: ChatMessage, position: { x: number; y: number }) => void;
+  onOpenMedia?: (message: ChatMessage) => void;
   onMessageAction?: (action: MessageContextMenuAction, message: ChatMessage) => void;
 };
 
@@ -35,6 +36,7 @@ export function MessageThread({
   replyingTo,
   onCancelReply,
   onOpenMenu,
+  onOpenMedia,
 }: MessageThreadProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const nearBottomRef = useRef(true);
@@ -113,6 +115,7 @@ export function MessageThread({
                 quotedMessage={message.quotedMessageId ? messages.find((item) => item.providerMessageId === message.quotedMessageId) ?? null : null}
                 onReact={onReact}
                 onOpenMenu={onOpenMenu}
+                onOpenMedia={onOpenMedia}
               />
             ))}
           </div>

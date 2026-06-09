@@ -1,17 +1,19 @@
-import { AlertTriangle, Check, CheckCheck, Eye, Pencil, X } from "lucide-react";
+import { AlertTriangle, Check, CheckCheck, Eye, Pencil, Plus, X } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChatMessage, ChatMessageStatus } from "./types";
 import { AudioPlayer } from "./AudioPlayer";
 import { getKnownMessageFallback, getMessagePreviewText, getMessageStatusLabel } from "./chatDisplay";
 import { MessageMenuButton } from "./MessageContextMenu";
+import { EmojiPicker } from "./EmojiPicker";
+import { QUICK_REACTIONS } from "./emojiOptions";
 
 type MessageBubbleProps = {
   message: ChatMessage;
   quotedMessage?: ChatMessage | null;
   onReact?: (message: ChatMessage, emoji: string) => Promise<void> | void;
   onOpenMenu?: (message: ChatMessage, position: { x: number; y: number }) => void;
+  onOpenMedia?: (message: ChatMessage) => void;
 };
-
-const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "🙏"];
 
 function MessageStatus({ status }: { status: ChatMessageStatus }) {
   if (status === "FAILED") return <AlertTriangle size={13} className="text-red-500" aria-label="Falhou" />;
@@ -36,21 +38,44 @@ function MessageMeta({ message, inline = false }: { message: ChatMessage; inline
   );
 }
 
-export function MessageBubble({ message, quotedMessage, onReact, onOpenMenu }: MessageBubbleProps) {
+export function MessageBubble({ message, quotedMessage, onReact, onOpenMenu, onOpenMedia }: MessageBubbleProps) {
+  const [showQuickReactions, setShowQuickReactions] = useState(false);
+  const [showFullPicker, setShowFullPicker] = useState(false);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fromMe = message.fromMe;
   const showAudio = message.messageType === "AUDIO" && Boolean(message.mediaUrl);
   const showImage = message.messageType === "IMAGE" && Boolean(message.mediaUrl);
   const showVideo = message.messageType === "VIDEO" && Boolean(message.mediaUrl);
   const missingVisualMedia = (message.messageType === "IMAGE" || message.messageType === "VIDEO") && !message.mediaUrl;
   const showMedia = showAudio || showImage || showVideo;
+  const hasVisualMedia = showImage || showVideo;
   const showInlineMeta = !showMedia;
   const isViewOnce = Boolean(showMedia && message.body?.startsWith("Visualizacao unica"));
   const displayBody = isViewOnce ? message.body?.replace(/^Visualizacao unica\n?/, "").trim() : message.body;
   const canReact = Boolean(onReact && message.providerMessageId && !message.isDeleted);
+  const bubblePadding = hasVisualMedia ? "p-0 overflow-hidden" : "px-2.5 py-1.5";
+  const handleMouseEnter = useCallback(() => {
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+    setShowQuickReactions(true);
+  }, []);
+  const handleMouseLeave = useCallback(() => {
+    hideTimerRef.current = setTimeout(() => setShowQuickReactions(false), 200);
+  }, []);
+  const handleSelectEmoji = useCallback((emoji: string) => {
+    setShowFullPicker(false);
+    void onReact?.(message, emoji);
+  }, [message, onReact]);
+
+  useEffect(() => () => {
+    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+  }, []);
+
   return (
     <div className={`flex ${fromMe ? "justify-end" : "justify-start"}`}>
       <div
-        className={`group relative w-fit max-w-[min(82%,42rem)] rounded-lg px-2.5 py-1.5 shadow-[0_1px_0_rgba(15,23,42,0.08)] ${fromMe ? "bg-emerald-600 text-white dark:bg-emerald-500 dark:text-slate-950" : "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100"}`}
+        className={`group relative w-fit max-w-[min(82%,42rem)] rounded-lg shadow-[0_1px_0_rgba(15,23,42,0.08)] ${bubblePadding} ${fromMe ? "bg-emerald-600 text-white dark:bg-emerald-500 dark:text-slate-950" : "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100"}`}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
         onContextMenu={(event) => {
           if (!onOpenMenu) return;
           event.preventDefault();
@@ -65,7 +90,11 @@ export function MessageBubble({ message, quotedMessage, onReact, onOpenMenu }: M
           }} />
         ) : null}
         {canReact ? (
-          <div className={`absolute top-0 z-10 hidden -translate-y-1/2 items-center gap-0.5 rounded-full border border-slate-200 bg-white px-1 py-0.5 text-sm shadow-lg shadow-slate-900/10 group-hover:flex group-focus-within:flex dark:border-slate-700 dark:bg-slate-900 ${fromMe ? "right-full mr-1" : "left-full ml-1"}`}>
+          <div
+            className={`absolute top-0 z-20 -translate-y-1/2 items-center gap-0.5 rounded-full border border-slate-200 bg-white px-1 py-0.5 text-sm shadow-lg shadow-slate-900/10 dark:border-slate-700 dark:bg-slate-900 ${showQuickReactions ? "flex" : "hidden"} ${fromMe ? "right-2" : "left-2"}`}
+            onMouseEnter={handleMouseEnter}
+            onMouseLeave={handleMouseLeave}
+          >
             {QUICK_REACTIONS.map((emoji) => (
               <button
                 key={emoji}
@@ -77,6 +106,17 @@ export function MessageBubble({ message, quotedMessage, onReact, onOpenMenu }: M
                 {emoji}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setShowFullPicker((current) => !current);
+              }}
+              className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:text-slate-300 dark:hover:bg-slate-800"
+              aria-label="Mais emojis"
+            >
+              <Plus size={14} aria-hidden="true" />
+            </button>
             {message.reactionEmoji ? (
               <button
                 type="button"
@@ -86,6 +126,11 @@ export function MessageBubble({ message, quotedMessage, onReact, onOpenMenu }: M
               >
                 <X size={14} aria-hidden="true" />
               </button>
+            ) : null}
+            {showFullPicker ? (
+              <div className={`absolute bottom-full z-50 mb-2 ${fromMe ? "right-0" : "left-0"}`}>
+                <EmojiPicker onSelect={handleSelectEmoji} onClose={() => setShowFullPicker(false)} />
+              </div>
             ) : null}
           </div>
         ) : null}
@@ -105,8 +150,16 @@ export function MessageBubble({ message, quotedMessage, onReact, onOpenMenu }: M
           </div>
         ) : null}
         {!message.isDeleted && showAudio ? <AudioPlayer src={message.mediaUrl!} durationMs={message.mediaDurationMs} fromMe={fromMe} /> : null}
-        {!message.isDeleted && showImage ? <img src={message.mediaUrl!} alt="" loading="lazy" className="max-h-[24rem] max-w-full rounded-md object-contain" /> : null}
-        {!message.isDeleted && showVideo ? <video src={message.mediaUrl!} controls className="max-h-[24rem] max-w-full rounded-md" /> : null}
+        {!message.isDeleted && showImage ? (
+          <button type="button" onClick={() => onOpenMedia?.(message)} className="block cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500" aria-label="Abrir imagem">
+            <img src={message.mediaUrl!} alt="" loading="lazy" className="max-h-[24rem] max-w-full rounded-lg object-contain" />
+          </button>
+        ) : null}
+        {!message.isDeleted && showVideo ? (
+          <button type="button" onClick={() => onOpenMedia?.(message)} className="block cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500" aria-label="Abrir video">
+            <video src={message.mediaUrl!} className="max-h-[24rem] max-w-full rounded-lg" />
+          </button>
+        ) : null}
         {!message.isDeleted && displayBody ? (
           <p className="whitespace-pre-wrap break-words text-sm leading-5">
             {displayBody}

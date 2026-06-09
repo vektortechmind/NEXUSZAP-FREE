@@ -32,6 +32,8 @@ function createBaileysMock() {
     async sendReaction() {},
     async editMessage() {},
     async deleteMessage() {},
+    async clearChat() {},
+    async markRead() {},
     async getContactProfile() {
       return { name: null, profilePicUrl: null };
     },

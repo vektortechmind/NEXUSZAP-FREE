@@ -24,12 +24,16 @@ function createBaileysMock(options = {}) {
   const reactions = [];
   const edits = [];
   const deletes = [];
+  const clearChats = [];
+  const markReads = [];
   const profileRequests = [];
   return {
     sent,
     reactions,
     edits,
     deletes,
+    clearChats,
+    markReads,
     profileRequests,
     async sendTextMessage(input) {
       sent.push(input);
@@ -47,6 +51,14 @@ function createBaileysMock(options = {}) {
     async deleteMessage(input) {
       deletes.push(input);
       if (options.failDelete) throw new ChatProviderSendError("delete unavailable");
+    },
+    async clearChat(input) {
+      clearChats.push(input);
+      if (options.failClearChat) throw new ChatProviderSendError("clear unavailable");
+    },
+    async markRead(input) {
+      markReads.push(input);
+      if (options.failMarkRead) throw new ChatProviderSendError("mark read unavailable");
     },
     async getContactProfile(input) {
       profileRequests.push(input);
@@ -201,6 +213,22 @@ function createApp({ store, baileys, events }) {
   assert.ok(editedMessage.editedAt);
   assert.equal(baileys.edits.length, 1);
 
+  const oldOutbound = await service.persistOutboundMessage({
+    instanceId: "instance-a",
+    jid: "5511999990000@s.whatsapp.net",
+    body: "Muito antiga",
+    messageType: "TEXT",
+    providerMessageId: "wamid.old.edit",
+    createdAt: new Date(Date.now() - 16 * 60 * 1000),
+  });
+  assert.equal(oldOutbound.fromMe, true);
+  const oldEditResponse = await app.inject({
+    method: "POST",
+    url: "/api/chat/edit",
+    payload: { instanceId: "instance-a", jid: "5511999990000@s.whatsapp.net", providerMessageId: "wamid.old.edit", body: "Tarde demais" },
+  });
+  assert.equal(oldEditResponse.statusCode, 422, oldEditResponse.body);
+
   const deleteEveryoneResponse = await app.inject({
     method: "POST",
     url: "/api/chat/delete",
@@ -284,7 +312,26 @@ function createApp({ store, baileys, events }) {
   });
   assert.equal(clearWhatsappResponse.statusCode, 200, clearWhatsappResponse.body);
   assert.equal(JSON.parse(clearWhatsappResponse.body).deletedCount, 1);
-  assert.equal(baileys.deletes.some((item) => item.providerMessageId === "wamid.clear.whatsapp.1"), true);
+  assert.equal(baileys.clearChats.length, 1);
+  assert.equal(baileys.clearChats[0].jid, "5511777770000@s.whatsapp.net");
+  assert.equal(baileys.deletes.some((item) => item.providerMessageId === "wamid.clear.whatsapp.1"), false);
+
+  await service.persistInboundMessage({
+    instanceId: "instance-a",
+    jid: "5511666660000@s.whatsapp.net",
+    body: "Nao lida",
+    messageType: "TEXT",
+    providerMessageId: "wamid.read.1",
+    createdAt: new Date("2026-06-09T10:09:00.000Z"),
+  });
+  const markReadResponse = await app.inject({
+    method: "POST",
+    url: `/api/chat/conversations/${encodeURIComponent("5511666660000@s.whatsapp.net")}/read`,
+    payload: { instanceId: "instance-a" },
+  });
+  assert.equal(markReadResponse.statusCode, 200, markReadResponse.body);
+  assert.equal(JSON.parse(markReadResponse.body).conversation.unreadCount, 0);
+  assert.equal(baileys.markReads.length, 1);
 
   await app.close();
 
