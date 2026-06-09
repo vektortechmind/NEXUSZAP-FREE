@@ -16,6 +16,7 @@ type EmojiMartPopupProps = {
 
 export const EMOJI_PICKER_WIDTH = 292;
 export const EMOJI_PICKER_HEIGHT = 340;
+const EMOJI_PICKER_CATEGORIES = ["people", "nature", "foods", "activity", "places", "objects", "symbols", "flags"];
 
 export function EmojiMartPopup({ onSelect, onClose, className = "", position }: EmojiMartPopupProps) {
   const panelRef = useRef<HTMLDivElement | null>(null);
@@ -46,6 +47,7 @@ export function EmojiMartPopup({ onSelect, onClose, className = "", position }: 
         data={data}
         emojiVersion="14.0"
         theme="auto"
+        categories={EMOJI_PICKER_CATEGORIES}
         perLine={8}
         emojiSize={18}
         emojiButtonSize={30}

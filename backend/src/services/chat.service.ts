@@ -77,6 +77,7 @@ export type ChatStore = {
   updateMessageReaction(input: { messageId: string; reactionEmoji: string | null }): Promise<ChatMessage>;
   updateMessageText(input: { messageId: string; body: string; editedAt?: Date }): Promise<ChatMessage>;
   softDeleteMessage(input: { messageId: string }): Promise<ChatMessage>;
+  updateConversationProfile(input: { instanceId: string; jid: string; name?: string | null; profilePicUrl?: string | null }): Promise<ChatConversationSummary | null>;
   listMessagesForConversation(input: { instanceId: string; jid: string }): Promise<ChatMessage[]>;
   softDeleteConversationMessages(input: { instanceId: string; jid: string }): Promise<ChatMessage[]>;
   resetUnreadCount(input: { instanceId: string; jid: string }): Promise<ChatConversationSummary | null>;
@@ -294,6 +295,26 @@ export const prismaChatStore: ChatStore = {
     });
   },
 
+  async updateConversationProfile(input) {
+    const jid = normalizeChatJid(input.jid);
+    const conversation = await prisma.conversation.update({
+      where: { instanceId_jid: { instanceId: input.instanceId, jid } },
+      data: {
+        name: input.name ?? undefined,
+        profilePicUrl: input.profilePicUrl ?? undefined,
+      },
+      include: {
+        messages: {
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+      },
+    }).catch(() => null);
+    if (!conversation) return null;
+    const { messages, ...row } = conversation;
+    return { ...row, lastMessage: messages[0] ?? null };
+  },
+
   async listMessagesForConversation(input) {
     const jid = normalizeChatJid(input.jid);
     return prisma.message.findMany({
@@ -474,6 +495,23 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
       messages.set(updated.id, updated);
       return updated;
     },
+    async updateConversationProfile(input) {
+      const jid = normalizeChatJid(input.jid);
+      const key = conversationKey(input.instanceId, jid);
+      const existing = conversations.get(key);
+      if (!existing) return null;
+      const updated = {
+        ...existing,
+        name: input.name ?? existing.name,
+        profilePicUrl: input.profilePicUrl ?? existing.profilePicUrl,
+        updatedAt: new Date(),
+      };
+      conversations.set(key, updated);
+      const lastMessage = Array.from(messages.values())
+        .filter((message) => message.conversationId === updated.id)
+        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
+      return { ...updated, lastMessage };
+    },
     async listMessagesForConversation(input) {
       const jid = normalizeChatJid(input.jid);
       return Array.from(messages.values())
@@ -515,10 +553,33 @@ export function createChatService(deps: {
     if (!instance) throw new ChatInstanceNotFoundError(instanceId);
   }
 
+  async function getSafeContactProfile(input: { instanceId: string; jid: string }) {
+    return baileys.getContactProfile(input).catch((err) => {
+      console.warn("[Chat] Falha ao buscar perfil do contato:", safeLogError(err));
+      return { name: null, profilePicUrl: null };
+    });
+  }
+
+  async function enrichMissingConversationProfiles(conversations: ChatConversationSummary[]) {
+    return Promise.all(conversations.map(async (conversation) => {
+      if (conversation.profilePicUrl) return conversation;
+      const profile = await getSafeContactProfile({ instanceId: conversation.instanceId, jid: conversation.jid });
+      const nextName = conversation.name ?? profile.name;
+      const nextProfilePicUrl = profile.profilePicUrl ?? conversation.profilePicUrl;
+      if (!profile.profilePicUrl && !profile.name) return conversation;
+      return await store.updateConversationProfile({
+        instanceId: conversation.instanceId,
+        jid: conversation.jid,
+        name: nextName,
+        profilePicUrl: nextProfilePicUrl,
+      }) ?? { ...conversation, name: nextName, profilePicUrl: nextProfilePicUrl };
+    }));
+  }
+
   return {
     async listConversations(input: { instanceId?: string }) {
       if (input.instanceId) await ensureInstance(input.instanceId);
-      return store.listConversations(input);
+      return enrichMissingConversationProfiles(await store.listConversations(input));
     },
 
     async listMessages(input: { instanceId: string; jid: string; cursor?: Date; limit?: number }) {
@@ -533,17 +594,19 @@ export function createChatService(deps: {
 
     async persistInboundMessage(input: Omit<PersistMessageInput, "fromMe" | "status">) {
       await ensureInstance(input.instanceId);
+      const jid = normalizeChatJid(input.jid);
       if (input.providerMessageId) {
         const existing = await store.findMessageByProviderId({ instanceId: input.instanceId, providerMessageId: input.providerMessageId });
         if (existing) return existing;
       }
+      const profile = input.profilePicUrl ? null : await getSafeContactProfile({ instanceId: input.instanceId, jid });
       const result = await store.persistMessage({
         ...input,
-        jid: normalizeChatJid(input.jid),
+        jid,
         fromMe: false,
         status: "DELIVERED",
-        contactName: input.contactName ?? null,
-        profilePicUrl: input.profilePicUrl ?? null,
+        contactName: input.contactName ?? profile?.name ?? null,
+        profilePicUrl: input.profilePicUrl ?? profile?.profilePicUrl ?? null,
       });
       chatRealtime.emitMessageNew({ instanceId: input.instanceId, message: result.message });
       chatRealtime.emitConversationUpdate({ instanceId: input.instanceId, conversation: buildConversationSummary(result.conversation, result.message) });

@@ -230,6 +230,8 @@ test("emoji picker uses emoji-mart and message bubble plus button", () => {
   assert.match(popupSource, /import Picker from "@emoji-mart\/react"/);
   assert.match(popupSource, /emojiVersion="14\.0"/);
   assert.match(popupSource, /theme="auto"/);
+  assert.match(popupSource, /EMOJI_PICKER_CATEGORIES/);
+  assert.match(popupSource, /"flags"/);
   assert.match(popupSource, /perLine=\{8\}/);
   assert.match(popupSource, /emojiSize=\{18\}/);
   assert.match(popupSource, /emojiButtonSize=\{30\}/);

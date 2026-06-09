@@ -91,7 +91,8 @@ function createApp({ store, baileys, events }) {
     createdAt: new Date("2026-06-09T10:00:00.000Z"),
   });
   assert.equal(firstInbound.status, "DELIVERED");
-  assert.equal(baileys.profileRequests.length, 0, "mensagem recebida nao deve aguardar consulta de perfil para aparecer no chat");
+  assert.equal(baileys.profileRequests.length, 1, "mensagem recebida deve buscar perfil do contato para preencher avatar");
+  assert.equal(baileys.profileRequests[0].jid, "5511999990000@s.whatsapp.net");
 
   const duplicateInbound = await service.persistInboundMessage({
     instanceId: "instance-a",
@@ -130,6 +131,7 @@ function createApp({ store, baileys, events }) {
   const filteredConversations = JSON.parse(filteredConversationsResponse.body).conversations;
   assert.equal(filteredConversations.length, 2);
   assert.equal(filteredConversations[0].lastMessage.body, "Outra conversa");
+  assert.equal(filteredConversations[0].profilePicUrl, `https://img.example.com/${encodeURIComponent("5511888880000@s.whatsapp.net")}.jpg`);
   assert.equal(filteredConversations[0].unreadCount, 1);
 
   await service.persistInboundMessage({
