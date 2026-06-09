@@ -254,10 +254,10 @@ test("emoji popup position opens inside viewport", () => {
   assert.equal(bottomPosition.left + 292 <= 792, true);
 });
 
-test("clear conversation menu uses device wording", () => {
+test("clear conversation menu uses WhatsApp wording", () => {
   const source = fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/ChatHeader.tsx"), "utf8");
-  assert.match(source, /Limpar painel \+ aparelho/);
-  assert.doesNotMatch(source, /Limpar painel \+ WhatsApp/);
+  assert.match(source, /Limpar painel \+ WhatsApp/);
+  assert.doesNotMatch(source, /Limpar painel \+ aparelho/);
 });
 
 test("message context menu position stays inside viewport", () => {
