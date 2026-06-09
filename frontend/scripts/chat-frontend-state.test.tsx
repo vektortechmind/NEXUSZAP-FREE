@@ -9,8 +9,9 @@ import { ConversationList } from "../src/features/chat/ConversationList.tsx";
 import { MessageBubble } from "../src/features/chat/MessageBubble.tsx";
 import { ChatInput } from "../src/features/chat/ChatInput.tsx";
 import { MessageContextMenu } from "../src/features/chat/MessageContextMenu.tsx";
-import { EmojiPicker } from "../src/features/chat/EmojiPicker.tsx";
 import { MediaViewer } from "../src/features/chat/MediaViewer.tsx";
+import { QUICK_REACTIONS } from "../src/features/chat/chatReactions.ts";
+import { getViewportAwareMenuPosition } from "../src/features/chat/messageMenuPosition.ts";
 import { getMessageContextActions, isWithinEditWindow } from "../src/features/chat/messageContextActions.ts";
 import { getKnownMessageFallback, getMessageStatusLabel } from "../src/features/chat/chatDisplay.ts";
 import { upsertMessage } from "../src/features/chat/chatState.ts";
@@ -216,16 +217,34 @@ test("message context menu exposes conditional actions", () => {
   assert.match(html, /Apagar para mim/);
 });
 
-test("emoji picker exposes categories and message bubble plus button", () => {
-  const pickerHtml = renderToStaticMarkup(<EmojiPicker onSelect={() => undefined} onClose={() => undefined} />);
+test("emoji picker uses emoji-mart and message bubble plus button", () => {
   const bubbleHtml = renderToStaticMarkup(<MessageBubble message={{ ...textMessage, providerMessageId: "wamid.in.1" }} onReact={() => undefined} />);
-  assert.match(pickerHtml, /Carinhas/);
-  assert.match(pickerHtml, /Gestos/);
-  assert.match(pickerHtml, /Coracoes/);
-  assert.match(pickerHtml, /Objetos/);
-  assert.match(pickerHtml, /Simbolos/);
+  const packageJson = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, "../package.json"), "utf8"));
+  const popupSource = fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/EmojiMartPopup.tsx"), "utf8");
+  assert.equal(QUICK_REACTIONS.length, 6);
+  assert.equal(typeof packageJson.dependencies["emoji-mart"], "string");
+  assert.equal(typeof packageJson.dependencies["@emoji-mart/react"], "string");
+  assert.equal(typeof packageJson.dependencies["@emoji-mart/data"], "string");
+  assert.match(popupSource, /import Picker from "@emoji-mart\/react"/);
+  assert.match(popupSource, /emojiVersion="14\.0"/);
+  assert.match(popupSource, /theme="auto"/);
+  assert.match(popupSource, /onEmojiSelect/);
+  assert.match(popupSource, /pointerdown/);
+  assert.match(popupSource, /Escape/);
   assert.match(bubbleHtml, /Mais emojis/);
   assert.doesNotMatch(fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/MessageBubble.tsx"), "utf8"), /group-hover:flex/);
+});
+
+test("message context menu position stays inside viewport", () => {
+  const normal = getViewportAwareMenuPosition({ position: { x: 40, y: 40 }, menuWidth: 176, menuHeight: 160, viewportWidth: 800, viewportHeight: 600 });
+  const bottom = getViewportAwareMenuPosition({ position: { x: 40, y: 580 }, menuWidth: 176, menuHeight: 160, viewportWidth: 800, viewportHeight: 600 });
+  const right = getViewportAwareMenuPosition({ position: { x: 790, y: 40 }, menuWidth: 176, menuHeight: 160, viewportWidth: 800, viewportHeight: 600 });
+  const corner = getViewportAwareMenuPosition({ position: { x: 790, y: 590 }, menuWidth: 176, menuHeight: 160, viewportWidth: 800, viewportHeight: 600 });
+  assert.deepEqual(normal, { x: 40, y: 40 });
+  assert.equal(bottom.y < 580, true);
+  assert.equal(right.x < 790, true);
+  assert.equal(corner.x + 176 <= 800, true);
+  assert.equal(corner.y + 160 <= 600, true);
 });
 
 test("media viewer renders image and video actions", () => {

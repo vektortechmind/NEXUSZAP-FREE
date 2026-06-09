@@ -17,6 +17,7 @@ const {
   createChatService,
   createInMemoryChatStore,
 } = require("../src/services/chat.service.ts");
+const { chatRealtime } = require("../src/services/chat.realtime.ts");
 const { ChatProviderSendError } = require("../src/services/chat.baileys.ts");
 
 function createBaileysMock(options = {}) {
@@ -315,6 +316,41 @@ function createApp({ store, baileys, events }) {
   assert.equal(baileys.clearChats.length, 1);
   assert.equal(baileys.clearChats[0].jid, "5511777770000@s.whatsapp.net");
   assert.equal(baileys.deletes.some((item) => item.providerMessageId === "wamid.clear.whatsapp.1"), false);
+
+  const realtimeEvents = [];
+  chatRealtime.setEmitter({
+    emitToInstance(instanceId, event, payload) {
+      realtimeEvents.push({ instanceId, event, payload });
+    },
+  });
+  const clearFailureStore = createInMemoryChatStore({ instances: [{ id: "instance-a" }] });
+  const clearFailureBaileys = createBaileysMock({ failClearChat: true });
+  const { app: clearFailureApp, service: clearFailureService } = createApp({ store: clearFailureStore, baileys: clearFailureBaileys, events: [] });
+  await clearFailureApp.ready();
+  await clearFailureService.persistInboundMessage({
+    instanceId: "instance-a",
+    jid: "5511555550000@s.whatsapp.net",
+    body: "Limpar mesmo offline",
+    messageType: "TEXT",
+    providerMessageId: "wamid.clear.fail.1",
+    createdAt: new Date("2026-06-09T10:08:30.000Z"),
+  });
+  const clearFailureResponse = await clearFailureApp.inject({
+    method: "POST",
+    url: `/api/chat/conversations/${encodeURIComponent("5511555550000@s.whatsapp.net")}/clear`,
+    payload: { instanceId: "instance-a", mode: "panel_and_whatsapp" },
+  });
+  assert.equal(clearFailureResponse.statusCode, 200, clearFailureResponse.body);
+  assert.equal(JSON.parse(clearFailureResponse.body).deletedCount, 1);
+  assert.equal(clearFailureBaileys.clearChats.length, 1);
+  const clearFailureMessages = await clearFailureApp.inject({
+    method: "GET",
+    url: `/api/chat/conversations/${encodeURIComponent("5511555550000@s.whatsapp.net")}/messages?instanceId=instance-a`,
+  });
+  assert.equal(JSON.parse(clearFailureMessages.body).messages.length, 0);
+  assert.equal(realtimeEvents.some((item) => item.event === "conversation:update" && item.payload.unreadCount === 0), true);
+  chatRealtime.setEmitter(null);
+  await clearFailureApp.close();
 
   await service.persistInboundMessage({
     instanceId: "instance-a",

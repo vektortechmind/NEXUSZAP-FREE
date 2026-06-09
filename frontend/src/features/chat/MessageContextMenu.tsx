@@ -1,8 +1,9 @@
 import { Edit3, MessageSquareReply, MoreVertical, Trash2, XCircle } from "lucide-react";
 import type { MouseEvent } from "react";
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ChatMessage } from "./types";
 import { getMessageContextActions, type MessageContextMenuAction } from "./messageContextActions";
+import { getViewportAwareMenuPosition } from "./messageMenuPosition";
 
 type MessageContextMenuProps = {
   message: ChatMessage;
@@ -28,6 +29,8 @@ function actionIcon(action: MessageContextMenuAction) {
 
 export function MessageContextMenu({ message, position, onAction, onClose }: MessageContextMenuProps) {
   const actions = getMessageContextActions(message);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const [adjustedPosition, setAdjustedPosition] = useState(position);
 
   useEffect(() => {
     const close = () => onClose();
@@ -42,13 +45,29 @@ export function MessageContextMenu({ message, position, onAction, onClose }: Mes
     };
   }, [onClose]);
 
-  if (!position || actions.length === 0) return null;
+  useLayoutEffect(() => {
+    if (!position || !menuRef.current) {
+      setAdjustedPosition(position);
+      return;
+    }
+    const rect = menuRef.current.getBoundingClientRect();
+    setAdjustedPosition(getViewportAwareMenuPosition({
+      position,
+      menuWidth: rect.width,
+      menuHeight: rect.height,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    }));
+  }, [position]);
+
+  if (!position || !adjustedPosition || actions.length === 0) return null;
 
   return (
     <div
+      ref={menuRef}
       role="menu"
-      className="fixed z-50 min-w-44 rounded-md border border-slate-200 bg-white py-1 text-sm shadow-xl shadow-slate-900/15 dark:border-slate-700 dark:bg-slate-900"
-      style={{ left: position.x, top: position.y }}
+      className="fixed z-50 min-w-44 rounded-md border border-slate-200 bg-white py-1 text-sm shadow-xl shadow-slate-900/15 transition-[left,top] duration-75 dark:border-slate-700 dark:bg-slate-900"
+      style={{ left: adjustedPosition.x, top: adjustedPosition.y }}
       onClick={(event) => event.stopPropagation()}
     >
       {actions.map((action) => (

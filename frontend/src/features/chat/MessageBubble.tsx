@@ -4,8 +4,8 @@ import type { ChatMessage, ChatMessageStatus } from "./types";
 import { AudioPlayer } from "./AudioPlayer";
 import { getKnownMessageFallback, getMessagePreviewText, getMessageStatusLabel } from "./chatDisplay";
 import { MessageMenuButton } from "./MessageContextMenu";
-import { EmojiPicker } from "./EmojiPicker";
-import { QUICK_REACTIONS } from "./emojiOptions";
+import { EmojiMartPopup } from "./EmojiMartPopup";
+import { QUICK_REACTIONS } from "./chatReactions";
 
 type MessageBubbleProps = {
   message: ChatMessage;
@@ -129,7 +129,7 @@ export function MessageBubble({ message, quotedMessage, onReact, onOpenMenu, onO
             ) : null}
             {showFullPicker ? (
               <div className={`absolute bottom-full z-50 mb-2 ${fromMe ? "right-0" : "left-0"}`}>
-                <EmojiPicker onSelect={handleSelectEmoji} onClose={() => setShowFullPicker(false)} />
+                <EmojiMartPopup onSelect={handleSelectEmoji} onClose={() => setShowFullPicker(false)} />
               </div>
             ) : null}
           </div>

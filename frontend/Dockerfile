@@ -3,6 +3,7 @@ FROM node:20-bookworm-slim AS builder
 WORKDIR /app
 
 COPY package*.json ./
+COPY .npmrc ./
 RUN npm ci
 
 COPY tsconfig*.json ./

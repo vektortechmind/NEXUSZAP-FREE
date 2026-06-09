@@ -681,7 +681,9 @@ export function createChatService(deps: {
       await ensureInstance(input.instanceId);
       const jid = normalizeChatJid(input.jid);
       if (input.mode === "panel_and_whatsapp") {
-        await baileys.clearChat({ instanceId: input.instanceId, jid });
+        await baileys.clearChat({ instanceId: input.instanceId, jid }).catch((err) => {
+          console.warn("[Chat] Falha ao limpar conversa no WhatsApp; limpando apenas o painel:", safeLogError(err));
+        });
       }
       const deleted = await store.softDeleteConversationMessages({ instanceId: input.instanceId, jid });
       deleted.forEach((message) => chatRealtime.emitMessageDeleted({ instanceId: input.instanceId, message }));

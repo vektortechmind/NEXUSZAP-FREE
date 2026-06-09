@@ -1,8 +1,8 @@
 import { Download, MessageSquareReply, Plus, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { ChatMessage } from "./types";
-import { EmojiPicker } from "./EmojiPicker";
-import { QUICK_REACTIONS } from "./emojiOptions";
+import { EmojiMartPopup } from "./EmojiMartPopup";
+import { QUICK_REACTIONS } from "./chatReactions";
 
 type MediaViewerProps = {
   message: ChatMessage;
@@ -81,7 +81,7 @@ export function MediaViewer({ message, onClose, onReact, onReply }: MediaViewerP
             >
               <Plus size={15} aria-hidden="true" />
             </button>
-            {showPicker ? <EmojiPicker className="absolute bottom-full left-0 mb-2" onSelect={selectEmoji} onClose={() => setShowPicker(false)} /> : null}
+            {showPicker ? <EmojiMartPopup className="absolute bottom-full left-0 mb-2" onSelect={selectEmoji} onClose={() => setShowPicker(false)} /> : null}
           </div>
         ) : null}
         <button
