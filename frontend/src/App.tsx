@@ -8,6 +8,7 @@ import { Instancia } from "./pages/Instancia";
 import { Agente } from "./pages/Agente";
 import { Apis } from "./pages/Apis";
 import { Dashboard } from "./pages/Dashboard";
+import { ChatPage } from "./pages/ChatPage";
 import { Integracoes } from "./pages/Integracoes";
 import { IntegracoesDocumentacao } from "./pages/IntegracoesDocumentacao";
 import { DockerSetup } from "./pages/DockerSetup";
@@ -114,6 +115,7 @@ function AppRoutes() {
         <Route path="integracoes/documentacao" element={<IntegracoesDocumentacao />} />
         <Route path="telegram" element={<Navigate to="/agente" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
+        <Route path="chat" element={<ChatPage />} />
         <Route path="settings" element={<Apis />} />
       </Route>
     </Routes>
@@ -133,4 +135,3 @@ export default function App() {
     </ThemeProvider>
   );
 }
-

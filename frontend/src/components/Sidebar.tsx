@@ -1,6 +1,10 @@
 import { Link, useLocation } from "react-router-dom";
 import { LogOut, X } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { api } from "../lib/axios";
+import { CHAT_UNREAD_TOTAL_EVENT, type ChatConversation, type ChatUnreadTotalEvent } from "../features/chat/types";
+import { getUnreadTotal } from "../features/chat/useConversations";
 import { APP_NAV_GROUPS } from "../features/navigation/appNavigation";
 import { BrandLogo } from "./BrandLogo";
 
@@ -12,7 +16,31 @@ type SidebarProps = {
 export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
   const { pathname } = useLocation();
   const { logout } = useAuth();
+  const [chatUnreadTotal, setChatUnreadTotal] = useState(0);
   const navItems = APP_NAV_GROUPS.flatMap((group) => group.items);
+
+  useEffect(() => {
+    let active = true;
+    async function loadUnreadTotal() {
+      try {
+        const res = await api.get<{ conversations: ChatConversation[] }>("/chat/conversations");
+        if (active) setChatUnreadTotal(getUnreadTotal(res.data.conversations));
+      } catch {
+        if (active) setChatUnreadTotal(0);
+      }
+    }
+    const handleUnreadTotal = (event: Event) => {
+      setChatUnreadTotal((event as ChatUnreadTotalEvent).detail.total);
+    };
+    void loadUnreadTotal();
+    const interval = window.setInterval(() => void loadUnreadTotal(), 30_000);
+    window.addEventListener(CHAT_UNREAD_TOTAL_EVENT, handleUnreadTotal);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      window.removeEventListener(CHAT_UNREAD_TOTAL_EVENT, handleUnreadTotal);
+    };
+  }, []);
 
   return (
     <>
@@ -64,6 +92,11 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
                     <Icon size={20} strokeWidth={1.85} />
                   </span>
                   <span className="ml-3 truncate transition-all duration-200 xl:max-w-0 xl:overflow-hidden xl:opacity-0 xl:group-hover/sidebar:max-w-[160px] xl:group-hover/sidebar:opacity-100">{nav.name}</span>
+                  {nav.path === "/chat" && chatUnreadTotal > 0 ? (
+                    <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-emerald-600 px-1.5 py-0.5 text-[11px] font-bold text-white transition-opacity dark:bg-emerald-500 dark:text-slate-950 xl:absolute xl:right-3 xl:opacity-0 xl:group-hover/sidebar:opacity-100">
+                      {chatUnreadTotal > 99 ? "99+" : chatUnreadTotal}
+                    </span>
+                  ) : null}
                 </Link>
               );
             })}

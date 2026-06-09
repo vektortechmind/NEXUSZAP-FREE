@@ -69,6 +69,17 @@ function connectClient(baseUrl, token) {
   });
 }
 
+function connectClientWithCookie(baseUrl, token) {
+  return createClient(`${baseUrl}${CHAT_SOCKET_NAMESPACE}`, {
+    path: CHAT_SOCKET_PATH,
+    extraHeaders: { cookie: `token=${encodeURIComponent(token)}` },
+    transports: ["websocket"],
+    reconnection: false,
+    timeout: 1000,
+    forceNew: true,
+  });
+}
+
 async function createHarness() {
   const app = Fastify({ logger: false });
   await app.register(jwt, { secret: process.env.JWT_SECRET });
@@ -110,6 +121,10 @@ async function createHarness() {
   const socketA = connectClient(harness.baseUrl, harness.tokenFor(["instance-a"]));
   const socketB = connectClient(harness.baseUrl, harness.tokenFor(["instance-b"]));
   await Promise.all([waitFor(socketA, "connect"), waitFor(socketB, "connect")]);
+
+  const cookieSocket = connectClientWithCookie(harness.baseUrl, harness.tokenFor(["instance-a"]));
+  await waitFor(cookieSocket, "connect");
+  cookieSocket.close();
 
   const messageNewPromise = waitFor(socketA, "message:new");
   const conversationUpdatePromise = waitFor(socketA, "conversation:update");

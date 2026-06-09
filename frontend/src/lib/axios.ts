@@ -1,6 +1,6 @@
 import axios from "axios";
 
-const configuredBase = import.meta.env.VITE_API_URL;
+const configuredBase = (import.meta as ImportMeta & { env?: { VITE_API_URL?: string } }).env?.VITE_API_URL;
 const base = configuredBase || "/api";
 
 const publicPaths = new Set(["/login", "/docker-setup", "/criar-admin"]);

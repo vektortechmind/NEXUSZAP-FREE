@@ -23,6 +23,22 @@ function normalizeBearerToken(value: unknown): string | null {
   return trimmed.toLowerCase().startsWith("bearer ") ? trimmed.slice(7).trim() : trimmed;
 }
 
+function tokenFromCookieHeader(cookieHeader: unknown): string | null {
+  if (typeof cookieHeader !== "string" || !cookieHeader.trim()) return null;
+  for (const chunk of cookieHeader.split(";")) {
+    const [rawName, ...rawValue] = chunk.split("=");
+    if (rawName?.trim() !== "token") continue;
+    const value = rawValue.join("=").trim();
+    if (!value) return null;
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  }
+  return null;
+}
+
 function instanceIdsFromPayload(payload: JwtPayloadWithInstances): string[] {
   const value = Array.isArray(payload.instances) ? payload.instances : payload.instanceIds;
   if (!Array.isArray(value)) return [];
@@ -51,7 +67,7 @@ export function createChatSocketServer(fastify: FastifyInstance, deps: ChatSocke
   const chatNamespace: Namespace = io.of(CHAT_SOCKET_NAMESPACE);
 
   chatNamespace.use(async (socket, next) => {
-    const token = normalizeBearerToken(socket.handshake.auth?.token);
+    const token = normalizeBearerToken(socket.handshake.auth?.token) ?? tokenFromCookieHeader(socket.handshake.headers.cookie);
     if (!token) return next(new Error("Unauthorized"));
 
     try {
