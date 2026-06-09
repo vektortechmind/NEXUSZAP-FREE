@@ -826,8 +826,10 @@ export function createChatService(deps: {
     async clearConversation(input: { instanceId: string; jid: string }) {
       await ensureInstance(input.instanceId);
       const jid = normalizeChatJid(input.jid);
-      const deleted = await store.softDeleteConversationMessages({ instanceId: input.instanceId, jid });
-      const conversation = await store.resetUnreadCount({ instanceId: input.instanceId, jid });
+      const [deleted, conversation] = await Promise.all([
+        store.softDeleteConversationMessages({ instanceId: input.instanceId, jid }),
+        store.resetUnreadCount({ instanceId: input.instanceId, jid }),
+      ]);
       if (conversation) chatRealtime.emitConversationCleared({ instanceId: input.instanceId, conversation });
       return { deletedCount: deleted.length };
     },

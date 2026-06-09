@@ -12,7 +12,8 @@
     "build:frontend": "npm run build --prefix frontend",
     "build": "npm run build:backend && npm run build:frontend",
     "test": "npm run test --prefix backend && npm run test:chat-frontend --prefix frontend",
-    "test:smoke": "npm run test --prefix backend"
+    "test:smoke": "npm run test --prefix backend",
+    "doctor": "npx react-doctor@latest"
   },
   "dependencies": {
     "fastify": "^5.8.5"

@@ -201,8 +201,10 @@ export function createIntegrationCredentialsSurfaceService(
   }
 
   async function buildDetail(instanceId: string, endpointUrl: string | null) {
-    const instance = await ensureInstance(instanceId);
-    const credential = await store.findLatestCredentialByInstanceId(instanceId);
+    const [instance, credential] = await Promise.all([
+      ensureInstance(instanceId),
+      store.findLatestCredentialByInstanceId(instanceId),
+    ]);
     return mapDetail({ instance, credential, endpointUrl, secretToken: null });
   }
 
@@ -225,14 +227,18 @@ export function createIntegrationCredentialsSurfaceService(
     },
 
     async issueInstanceCredential(input: { instanceId: string; endpointUrl?: string | null; now?: Date }) {
-      const instance = await ensureInstance(input.instanceId);
-      const issued = await authService.issueCredential({ instanceId: input.instanceId, now: input.now });
+      const [instance, issued] = await Promise.all([
+        ensureInstance(input.instanceId),
+        authService.issueCredential({ instanceId: input.instanceId, now: input.now }),
+      ]);
       return mapIssuedDetail({ instance, endpointUrl: input.endpointUrl ?? null, issued });
     },
 
     async rotateInstanceCredential(input: { instanceId: string; endpointUrl?: string | null; now?: Date }) {
-      const instance = await ensureInstance(input.instanceId);
-      const issued = await authService.rotateCredential({ instanceId: input.instanceId, now: input.now });
+      const [instance, issued] = await Promise.all([
+        ensureInstance(input.instanceId),
+        authService.rotateCredential({ instanceId: input.instanceId, now: input.now }),
+      ]);
       return mapIssuedDetail({ instance, endpointUrl: input.endpointUrl ?? null, issued });
     },
   };

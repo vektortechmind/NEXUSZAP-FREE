@@ -297,6 +297,13 @@ test("chat input renders reply mode and cancel button", () => {
   assert.match(html, /Anexar documento/);
 });
 
+test("chat input does not use a form submit wrapper", () => {
+  const source = fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/ChatInput.tsx"), "utf8");
+  assert.equal(source.includes("<form"), false);
+  assert.equal(source.includes("onSubmit"), false);
+  assert.match(source, /onClick=\{\(\) => void submit\(\)\}/);
+});
+
 test("known empty media/reply messages use readable fallback instead of generic empty text", () => {
   assert.equal(getKnownMessageFallback({ ...textMessage, body: null, messageType: "AUDIO", mediaUrl: null }), "Audio recebido");
   assert.equal(getKnownMessageFallback({ ...textMessage, body: null, messageType: "UNKNOWN", mediaMimeType: "audio/ogg" }), "Audio recebido");

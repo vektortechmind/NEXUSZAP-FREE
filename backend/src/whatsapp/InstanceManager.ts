@@ -44,8 +44,10 @@ export class InstanceManager {
 
   private static async createSocket(instanceId: string, onQr?: (qr: string) => void) {
     const runtime = this.ensureRuntime(instanceId);
-    const { state, saveCreds } = await usePrismaAuthState(instanceId);
-    const { version } = await fetchLatestBaileysVersion();
+    const [{ state, saveCreds }, { version }] = await Promise.all([
+      usePrismaAuthState(instanceId),
+      fetchLatestBaileysVersion(),
+    ]);
 
     const msgRetryCounterCache = new NodeCache();
     const logger = P({ level: "silent" }) as any;

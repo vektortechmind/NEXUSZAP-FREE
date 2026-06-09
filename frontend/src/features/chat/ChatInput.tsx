@@ -42,12 +42,8 @@ export function ChatInput({ disabled, sending, replyingTo, onCancelReply, onSend
   ];
 
   return (
-    <form
+    <div
       className="border-t border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void submit();
-      }}
     >
       {replyingTo ? (
         <div className="mb-2 flex items-center gap-2 rounded-md border-l-4 border-emerald-500 bg-slate-100 px-3 py-2 dark:bg-slate-900">
@@ -113,10 +109,10 @@ export function ChatInput({ disabled, sending, replyingTo, onCancelReply, onSend
           placeholder="Digite uma mensagem"
           className="max-h-32 min-h-11 flex-1 resize-none rounded-lg border border-slate-300 bg-slate-50 px-3 py-2.5 text-sm text-slate-900 placeholder-slate-500 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder-slate-500"
         />
-        <Button type="submit" size="md" disabled={!value.trim() || disabled} loading={sending} aria-label="Enviar mensagem">
+        <Button type="button" size="md" disabled={!value.trim() || disabled} loading={sending} aria-label="Enviar mensagem" onClick={() => void submit()}>
           <SendHorizontal size={17} aria-hidden="true" />
         </Button>
       </div>
-    </form>
+    </div>
   );
 }
