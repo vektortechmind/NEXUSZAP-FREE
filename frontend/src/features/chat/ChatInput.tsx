@@ -1,5 +1,5 @@
-import { SendHorizontal, X } from "lucide-react";
-import { useState } from "react";
+import { FileText, Image, Mic, SendHorizontal, Video, X } from "lucide-react";
+import { useRef, useState } from "react";
 import { Button } from "../../components/ui/Button";
 import type { ChatMessage } from "./types";
 import { getMessagePreviewText } from "./chatDisplay";
@@ -10,10 +10,15 @@ type ChatInputProps = {
   replyingTo?: ChatMessage | null;
   onCancelReply?: () => void;
   onSend: (body: string) => Promise<void> | void;
+  onSendMedia?: (input: { file: File; messageType: "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT"; caption?: string | null }) => Promise<void> | void;
 };
 
-export function ChatInput({ disabled, sending, replyingTo, onCancelReply, onSend }: ChatInputProps) {
+export function ChatInput({ disabled, sending, replyingTo, onCancelReply, onSend, onSendMedia }: ChatInputProps) {
   const [value, setValue] = useState("");
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const videoInputRef = useRef<HTMLInputElement | null>(null);
+  const audioInputRef = useRef<HTMLInputElement | null>(null);
+  const documentInputRef = useRef<HTMLInputElement | null>(null);
 
   const submit = async () => {
     const body = value.trim();
@@ -21,6 +26,20 @@ export function ChatInput({ disabled, sending, replyingTo, onCancelReply, onSend
     setValue("");
     await onSend(body);
   };
+
+  const submitMedia = async (file: File | undefined, messageType: "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT") => {
+    if (!file || disabled || sending || !onSendMedia) return;
+    const caption = value.trim() || null;
+    setValue("");
+    await onSendMedia({ file, messageType, caption });
+  };
+
+  const attachmentButtons = [
+    { label: "Anexar imagem", icon: Image, ref: imageInputRef, accept: "image/jpeg,image/png,image/webp,image/gif", type: "IMAGE" as const },
+    { label: "Anexar video", icon: Video, ref: videoInputRef, accept: "video/mp4,video/mpeg,video/quicktime,video/webm", type: "VIDEO" as const },
+    { label: "Anexar audio", icon: Mic, ref: audioInputRef, accept: "audio/mpeg,audio/mp4,audio/ogg,audio/webm,audio/wav,audio/aac", type: "AUDIO" as const },
+    { label: "Anexar documento", icon: FileText, ref: documentInputRef, accept: ".pdf,.txt,.doc,.docx,application/pdf,text/plain,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document", type: "DOCUMENT" as const },
+  ];
 
   return (
     <form
@@ -47,6 +66,37 @@ export function ChatInput({ disabled, sending, replyingTo, onCancelReply, onSend
         </div>
       ) : null}
       <div className="flex items-end gap-2">
+        <div className="flex h-11 items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 px-1 dark:border-slate-800 dark:bg-slate-900">
+          {attachmentButtons.map((item) => {
+            const Icon = item.icon;
+            return (
+              <span key={item.type}>
+                <input
+                  ref={item.ref}
+                  type="file"
+                  accept={item.accept}
+                  className="sr-only"
+                  disabled={disabled || sending || !onSendMedia}
+                  onChange={(event) => {
+                    const file = event.currentTarget.files?.[0];
+                    event.currentTarget.value = "";
+                    void submitMedia(file, item.type);
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => item.ref.current?.click()}
+                  disabled={disabled || sending || !onSendMedia}
+                  className="flex h-8 w-8 items-center justify-center rounded-md text-slate-600 transition hover:bg-white hover:text-emerald-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-emerald-300"
+                  aria-label={item.label}
+                  title={item.label}
+                >
+                  <Icon size={16} aria-hidden="true" />
+                </button>
+              </span>
+            );
+          })}
+        </div>
         <label className="sr-only" htmlFor="chat-message-input">Mensagem</label>
         <textarea
           id="chat-message-input"

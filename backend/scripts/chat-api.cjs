@@ -11,7 +11,12 @@ process.env.ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || Buffer.alloc(32, 11).
 require("ts-node/register");
 
 const assert = require("assert");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 const Fastify = require("fastify");
+const multipart = require("@fastify/multipart");
+process.env.CHAT_MEDIA_STORAGE_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), "nexus-chat-media-"));
 const { createChatRoutes } = require("../src/routes/chat.routes.ts");
 const {
   createChatService,
@@ -19,9 +24,11 @@ const {
 } = require("../src/services/chat.service.ts");
 const { chatRealtime } = require("../src/services/chat.realtime.ts");
 const { ChatProviderSendError } = require("../src/services/chat.baileys.ts");
+const { cleanupOldChatMedia, writeChatMedia } = require("../src/services/chat.mediaStorage.ts");
 
 function createBaileysMock(options = {}) {
   const sent = [];
+  const mediaSent = [];
   const reactions = [];
   const edits = [];
   const deletes = [];
@@ -29,6 +36,7 @@ function createBaileysMock(options = {}) {
   const profileRequests = [];
   return {
     sent,
+    mediaSent,
     reactions,
     edits,
     deletes,
@@ -38,6 +46,11 @@ function createBaileysMock(options = {}) {
       sent.push(input);
       if (options.failSend) throw new ChatProviderSendError("provider unavailable");
       return { providerMessageId: options.providerMessageId || "wamid.sent.1", raw: null };
+    },
+    async sendMediaMessage(input) {
+      mediaSent.push(input);
+      if (options.failSend) throw new ChatProviderSendError("provider unavailable");
+      return { providerMessageId: options.mediaProviderMessageId || "wamid.media.1", raw: null };
     },
     async sendReaction(input) {
       reactions.push(input);
@@ -62,8 +75,24 @@ function createBaileysMock(options = {}) {
   };
 }
 
+function multipartBody(fields, file) {
+  const boundary = `----nexuszap-${Date.now().toString(36)}`;
+  const chunks = [];
+  for (const [name, value] of Object.entries(fields)) {
+    chunks.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${name}"\r\n\r\n${value}\r\n`));
+  }
+  chunks.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${file.filename}"\r\nContent-Type: ${file.mimeType}\r\n\r\n`));
+  chunks.push(file.buffer);
+  chunks.push(Buffer.from(`\r\n--${boundary}--\r\n`));
+  return {
+    payload: Buffer.concat(chunks),
+    headers: { "content-type": `multipart/form-data; boundary=${boundary}` },
+  };
+}
+
 function createApp({ store, baileys, events }) {
   const app = Fastify();
+  app.register(multipart, { limits: { fileSize: 60 * 1024 * 1024 } });
   const service = createChatService({
     store,
     baileys,
@@ -192,6 +221,58 @@ function createApp({ store, baileys, events }) {
   assert.equal(JSON.parse(quotedSendResponse.body).message.quotedMessageId, "wamid.in.1");
   assert.equal(baileys.sent[1].quotedMessage.key.id, "wamid.in.1");
 
+  const mediaUpload = multipartBody(
+    {
+      instanceId: "instance-a",
+      jid: "5511999990000@s.whatsapp.net",
+      messageType: "IMAGE",
+      caption: "Imagem com legenda",
+      quotedMessageId: "wamid.in.1",
+    },
+    { filename: "foto.jpg", mimeType: "image/jpeg", buffer: Buffer.from("fake-jpeg") }
+  );
+  const mediaResponse = await app.inject({
+    method: "POST",
+    url: "/api/chat/send/media",
+    ...mediaUpload,
+  });
+  assert.equal(mediaResponse.statusCode, 201, mediaResponse.body);
+  const mediaMessage = JSON.parse(mediaResponse.body).message;
+  assert.equal(mediaMessage.messageType, "IMAGE");
+  assert.equal(mediaMessage.status, "SENT");
+  assert.equal(mediaMessage.providerMessageId, "wamid.media.1");
+  assert.equal(mediaMessage.mediaMimeType, "image/jpeg");
+  assert.match(mediaMessage.mediaUrl, /\/api\/chat\/media\/instance-a\/wamid\.media\.1/);
+  assert.equal(baileys.mediaSent.length, 1);
+  assert.equal(baileys.mediaSent[0].caption, "Imagem com legenda");
+  assert.equal(baileys.mediaSent[0].quotedMessage.key.id, "wamid.in.1");
+
+  const oldStored = await writeChatMedia({
+    instanceId: "instance-a",
+    providerMessageId: "wamid.old.media",
+    buffer: Buffer.from("old"),
+    messageType: "DOCUMENT",
+    mimeType: "text/plain",
+  });
+  const oldAbsolute = path.join(process.env.CHAT_MEDIA_STORAGE_ROOT, oldStored.storagePath);
+  const oldDate = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000);
+  fs.utimesSync(oldAbsolute, oldDate, oldDate);
+  const cleanupResult = await cleanupOldChatMedia();
+  assert.equal(cleanupResult.removed >= 1, true, "cleanup deve remover midias com mais de 30 dias");
+  assert.equal(fs.existsSync(oldAbsolute), false);
+
+  const largeImageUpload = multipartBody(
+    { instanceId: "instance-a", jid: "5511999990000@s.whatsapp.net", messageType: "IMAGE" },
+    { filename: "grande.jpg", mimeType: "image/jpeg", buffer: Buffer.alloc(10 * 1024 * 1024 + 1) }
+  );
+  const largeImageResponse = await app.inject({
+    method: "POST",
+    url: "/api/chat/send/media",
+    ...largeImageUpload,
+  });
+  assert.equal(largeImageResponse.statusCode, 413, largeImageResponse.body);
+  assert.equal(baileys.mediaSent.length, 1, "arquivo grande deve ser rejeitado antes de enviar ao WhatsApp");
+
   const editInboundResponse = await app.inject({
     method: "POST",
     url: "/api/chat/edit",
@@ -242,7 +323,7 @@ function createApp({ store, baileys, events }) {
   });
   assert.equal(deleteForMeResponse.statusCode, 200, deleteForMeResponse.body);
   assert.equal(JSON.parse(deleteForMeResponse.body).message.isDeleted, true);
-  assert.equal(baileys.deletes.length, 2);
+  assert.equal(baileys.deletes.length, 1, "for_me nao deve enviar delete remoto ao WhatsApp");
 
   const reactionResponse = await app.inject({
     method: "POST",
@@ -321,6 +402,8 @@ function createApp({ store, baileys, events }) {
   });
   assert.equal(JSON.parse(clearFailureMessages.body).messages.length, 0);
   assert.equal(realtimeEvents.some((item) => item.event === "conversation:update" && item.payload.unreadCount === 0), true);
+  assert.equal(realtimeEvents.filter((item) => item.event === "message:deleted").length, 0, "clearConversation deve emitir somente evento de lote");
+  assert.equal(realtimeEvents.some((item) => item.event === "conversation:update" && item.payload.cleared === true), true);
   chatRealtime.setEmitter(null);
 
   await service.persistInboundMessage({

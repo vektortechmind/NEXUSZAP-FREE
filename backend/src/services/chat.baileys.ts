@@ -19,6 +19,16 @@ export class ChatProviderSendError extends Error {
 
 export type ChatBaileysAdapter = {
   sendTextMessage(input: { instanceId: string; jid: string; body: string; quotedMessage?: WAMessage | null }): Promise<{ providerMessageId: string | null; raw: WAMessage | null }>;
+  sendMediaMessage(input: {
+    instanceId: string;
+    jid: string;
+    messageType: "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT";
+    buffer: Buffer;
+    mimeType: string;
+    caption?: string | null;
+    fileName?: string | null;
+    quotedMessage?: WAMessage | null;
+  }): Promise<{ providerMessageId: string | null; raw: WAMessage | null }>;
   sendReaction(input: { instanceId: string; jid: string; providerMessageId: string; emoji: string; targetFromMe: boolean }): Promise<void>;
   editMessage(input: { instanceId: string; jid: string; providerMessageId: string; body: string }): Promise<void>;
   deleteMessage(input: { instanceId: string; jid: string; providerMessageId: string }): Promise<void>;
@@ -37,6 +47,32 @@ export const baileysChatAdapter: ChatBaileysAdapter = {
     const sock = getSocket(input.instanceId);
     try {
       const sent = await sock.sendMessage(input.jid, { text: input.body }, input.quotedMessage ? { quoted: input.quotedMessage } : undefined);
+      return {
+        providerMessageId: sent?.key?.id ?? null,
+        raw: sent ?? null,
+      };
+    } catch (err) {
+      if (err instanceof ChatInstanceOfflineError) throw err;
+      throw new ChatProviderSendError(err instanceof Error ? err.message : undefined);
+    }
+  },
+
+  async sendMediaMessage(input) {
+    const sock = getSocket(input.instanceId);
+    try {
+      const payload = input.messageType === "IMAGE"
+        ? { image: input.buffer, mimetype: input.mimeType, caption: input.caption ?? undefined }
+        : input.messageType === "VIDEO"
+          ? { video: input.buffer, mimetype: input.mimeType, caption: input.caption ?? undefined }
+          : input.messageType === "AUDIO"
+            ? { audio: input.buffer, mimetype: input.mimeType }
+            : {
+                document: input.buffer,
+                mimetype: input.mimeType,
+                fileName: input.fileName ?? "arquivo",
+                caption: input.caption ?? undefined,
+              };
+      const sent = await sock.sendMessage(input.jid, payload, input.quotedMessage ? { quoted: input.quotedMessage } : undefined);
       return {
         providerMessageId: sent?.key?.id ?? null,
         raw: sent ?? null,

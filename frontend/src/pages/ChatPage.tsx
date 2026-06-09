@@ -53,6 +53,7 @@ export function ChatPage() {
     loadConversations,
     loadMessages,
     sendTextMessage,
+    sendMediaMessage,
     sendReaction,
     editMessage,
     deleteMessage,
@@ -75,12 +76,16 @@ export function ChatPage() {
   }, [conversations, publishUnreadTotal]);
 
   const handleConversationUpdate = useCallback((conversation: ChatConversation) => {
+    if (conversation.cleared && selectedConversation && conversationKey(conversation) === conversationKey(selectedConversation)) {
+      setMessages([]);
+      setReplyingTo(null);
+    }
     setConversations((current) => {
       const next = upsertConversation(current, conversation);
       publishUnreadTotal(next);
       return next;
     });
-  }, [publishUnreadTotal, setConversations]);
+  }, [publishUnreadTotal, selectedConversation, setConversations]);
 
   const handleMessage = useCallback((message: ChatMessage) => {
     if (messageBelongsToConversation(message, selectedConversation)) {
@@ -144,13 +149,18 @@ export function ChatPage() {
     setSelectedKey(key);
     setMobileThreadOpen(true);
     setMessagesLoading(true);
+    const previousUnreadCount = conversation.unreadCount;
     setConversations((current) => current.map((item) => conversationKey(item) === key ? { ...item, unreadCount: 0 } : item));
-    try {
-      if (conversation.unreadCount > 0) {
-        void markConversationRead({ instanceId: conversation.instanceId, jid: conversation.jid }).catch((err) => {
-          console.error(err);
-        });
+    if (conversation.unreadCount > 0) {
+      try {
+        await markConversationRead({ instanceId: conversation.instanceId, jid: conversation.jid });
+      } catch (err) {
+        console.error(err);
+        setConversations((current) => current.map((item) => conversationKey(item) === key ? { ...item, unreadCount: previousUnreadCount } : item));
+        addToast("Nao foi possivel marcar a conversa como lida.", "error");
       }
+    }
+    try {
       const result = await loadMessages({ instanceId: conversation.instanceId, jid: conversation.jid });
       setMessages(result.messages);
       setNextCursor(result.nextCursor);
@@ -218,6 +228,28 @@ export function ChatPage() {
       setSending(false);
     }
   }, [addToast, replyingTo, selectedConversation, sendTextMessage]);
+
+  const sendMedia = useCallback(async (input: { file: File; messageType: "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT"; caption?: string | null }) => {
+    if (!selectedConversation) return;
+    setSending(true);
+    try {
+      const message = await sendMediaMessage({
+        instanceId: selectedConversation.instanceId,
+        jid: selectedConversation.jid,
+        file: input.file,
+        messageType: input.messageType,
+        caption: input.caption,
+        quotedMessageId: replyingTo?.providerMessageId ?? null,
+      });
+      setMessages((current) => upsertMessage(current, message));
+      setReplyingTo(null);
+    } catch (err) {
+      console.error(err);
+      addToast("Nao foi possivel enviar a midia.", "error");
+    } finally {
+      setSending(false);
+    }
+  }, [addToast, replyingTo, selectedConversation, sendMediaMessage]);
 
   const reactToMessage = useCallback(async (message: ChatMessage, emoji: string) => {
     if (!selectedConversation || !message.providerMessageId) return;
@@ -324,6 +356,7 @@ export function ChatPage() {
             onCancelReply={() => setReplyingTo(null)}
             onLoadMore={() => void loadOlderMessages()}
             onSend={(body) => void sendMessage(body)}
+            onSendMedia={(input) => void sendMedia(input)}
             onReact={(message, emoji) => void reactToMessage(message, emoji)}
             onOpenMenu={(message, position) => setContextMenu({ message, position })}
             onOpenMedia={setMediaViewerMessage}

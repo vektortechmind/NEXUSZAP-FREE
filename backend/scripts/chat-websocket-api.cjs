@@ -24,6 +24,9 @@ function createBaileysMock(providerMessageId = "wamid.sent.ws") {
     async sendTextMessage() {
       return { providerMessageId, raw: null };
     },
+    async sendMediaMessage() {
+      return { providerMessageId: "wamid.media.ws", raw: null };
+    },
     async sendReaction() {},
     async editMessage() {},
     async deleteMessage() {},
@@ -100,6 +103,9 @@ async function createHarness() {
     tokenFor(instances) {
       return app.jwt.sign({ email: "admin@example.com", role: "admin", instances });
     },
+    tokenForPayload(payload) {
+      return app.jwt.sign(payload);
+    },
     async close() {
       chatRealtime.setEmitter(null);
       socketServer.close();
@@ -123,6 +129,11 @@ async function createHarness() {
   const invalidError = await waitFor(invalidSocket, "connect_error");
   assert.match(invalidError.message, /Invalid token|Unauthorized/);
   invalidSocket.close();
+
+  const noInstanceSocket = connectClient(harness.baseUrl, harness.tokenForPayload({ email: "user@example.com", role: "operator" }));
+  const noInstanceError = await waitFor(noInstanceSocket, "connect_error");
+  assert.match(noInstanceError.message, /No instances available/);
+  noInstanceSocket.close();
 
   const socketA = connectClient(harness.baseUrl, harness.tokenFor(["instance-a"]));
   const socketB = connectClient(harness.baseUrl, harness.tokenFor(["instance-b"]));

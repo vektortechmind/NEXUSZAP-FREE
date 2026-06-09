@@ -39,6 +39,7 @@ export type ChatConversation = {
   createdAt: string;
   updatedAt: string;
   lastMessage: ChatMessage | null;
+  cleared?: boolean;
 };
 
 export type ChatInstanceOption = {

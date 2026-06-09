@@ -9,6 +9,7 @@ export type ChatRealtimeConversationPayload = Omit<ChatConversationSummary, "cre
   updatedAt: string;
   lastMessageAt: string;
   lastMessage: ChatRealtimeMessagePayload | null;
+  cleared?: boolean;
 };
 
 export type ChatRealtimeStatusPayload = ChatRealtimeMessagePayload;
@@ -85,6 +86,13 @@ class ChatRealtimeHub {
 
   emitConversationUpdate(input: { instanceId: string; conversation: ChatConversationSummary }) {
     this.emitter?.emitToInstance(input.instanceId, "conversation:update", serializeConversation(input.conversation));
+  }
+
+  emitConversationCleared(input: { instanceId: string; conversation: ChatConversationSummary }) {
+    this.emitter?.emitToInstance(input.instanceId, "conversation:update", {
+      ...serializeConversation(input.conversation),
+      cleared: true,
+    } satisfies ChatRealtimeConversationPayload);
   }
 
   emitPresenceUpdate(payload: ChatRealtimePresencePayload) {

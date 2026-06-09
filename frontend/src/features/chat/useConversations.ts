@@ -8,6 +8,7 @@ type ConversationsResponse = { conversations: ChatConversation[] };
 type MessagesResponse = { messages: ChatMessage[]; nextCursor: string | null };
 type ReactionResponse = { success: boolean; message: ChatMessage | null };
 type DeleteMode = "for_me" | "for_everyone" | "for_everyone_and_erase";
+type SendMediaType = "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT";
 
 export function getContactDisplayName(conversation: Pick<ChatConversation, "name" | "jid">) {
   return conversation.name?.trim() || conversation.jid.split("@")[0] || "Contato";
@@ -94,6 +95,18 @@ export function useConversations(selectedInstanceId: string, search: string) {
     return res.data.message;
   }, []);
 
+  const sendMediaMessage = useCallback(async (input: { instanceId: string; jid: string; file: File; messageType: SendMediaType; caption?: string | null; quotedMessageId?: string | null }) => {
+    const form = new FormData();
+    form.append("instanceId", input.instanceId);
+    form.append("jid", input.jid);
+    form.append("messageType", input.messageType);
+    if (input.caption?.trim()) form.append("caption", input.caption.trim());
+    if (input.quotedMessageId?.trim()) form.append("quotedMessageId", input.quotedMessageId.trim());
+    form.append("file", input.file);
+    const res = await api.post<{ message: ChatMessage }>("/chat/send/media", form);
+    return res.data.message;
+  }, []);
+
   const sendReaction = useCallback(async (input: { instanceId: string; jid: string; providerMessageId: string; emoji: string }) => {
     const res = await api.post<ReactionResponse>("/chat/react", input);
     return res.data.message;
@@ -133,6 +146,7 @@ export function useConversations(selectedInstanceId: string, search: string) {
     loadConversations,
     loadMessages,
     sendTextMessage,
+    sendMediaMessage,
     sendReaction,
     editMessage,
     deleteMessage,

@@ -87,4 +87,18 @@ export async function authRoutes(fastify: FastifyInstance) {
   fastify.get("/me", { preValidation: [verifyJwt] }, async (request, reply) => {
     return reply.send({ user: request.user });
   });
+
+  fastify.get("/ws-token", { preValidation: [verifyJwt] }, async (request, reply) => {
+    const user = request.user as Record<string, unknown>;
+    const token = fastify.jwt.sign(
+      {
+        email: typeof user.email === "string" ? user.email : undefined,
+        role: typeof user.role === "string" ? user.role : undefined,
+        instances: Array.isArray(user.instances) ? user.instances : undefined,
+        instanceIds: Array.isArray(user.instanceIds) ? user.instanceIds : undefined,
+      },
+      { expiresIn: "5m" }
+    );
+    return reply.send({ token });
+  });
 }

@@ -10,6 +10,7 @@ import {
   type ChatEventRecorder,
 } from "../services/chat.service";
 import { ChatInstanceOfflineError, ChatProviderSendError, type ChatBaileysAdapter } from "../services/chat.baileys";
+import { ChatMediaStorageValidationError } from "../services/chat.mediaStorage";
 
 type ChatRoutesDeps = {
   service?: ReturnType<typeof createChatService>;
@@ -42,6 +43,14 @@ const sendBodySchema = z.object({
   instanceId: z.string().trim().min(1).max(191),
   jid: z.string().trim().min(1).max(191),
   body: z.string().trim().min(1).max(4000),
+  quotedMessageId: z.string().trim().min(1).max(191).optional().nullable(),
+});
+
+const sendMediaFieldsSchema = z.object({
+  instanceId: z.string().trim().min(1).max(191),
+  jid: z.string().trim().min(1).max(191),
+  messageType: z.enum(["IMAGE", "VIDEO", "AUDIO", "DOCUMENT"]),
+  caption: z.string().trim().max(4000).optional().nullable(),
   quotedMessageId: z.string().trim().min(1).max(191).optional().nullable(),
 });
 
@@ -100,6 +109,9 @@ function sendKnownError(reply: FastifyReply, err: unknown) {
   if (err instanceof ChatMediaNotFoundError) {
     return reply.status(404).send({ error: err.message, code: err.code });
   }
+  if (err instanceof ChatMediaStorageValidationError) {
+    return reply.status(err.statusCode).send({ error: err.message, code: err.code });
+  }
   if (err instanceof ChatInstanceOfflineError) {
     return reply.status(503).send({ error: err.message, code: err.code });
   }
@@ -107,6 +119,12 @@ function sendKnownError(reply: FastifyReply, err: unknown) {
     return reply.status(502).send({ error: err.message, code: err.code });
   }
   throw err;
+}
+
+function multipartFieldValue(value: unknown): string | undefined {
+  if (!value || typeof value !== "object" || !("value" in value)) return undefined;
+  const fieldValue = (value as { value?: unknown }).value;
+  return typeof fieldValue === "string" ? fieldValue : undefined;
 }
 
 export function createChatRoutes(deps: ChatRoutesDeps = {}) {
@@ -164,6 +182,42 @@ export function createChatRoutes(deps: ChatRoutesDeps = {}) {
       try {
         const body = sendBodySchema.parse(request.body);
         const message = await service.sendTextMessage(body);
+        return reply.status(201).send({ message: serializeMessage(message) });
+      } catch (err) {
+        return sendKnownError(reply, err);
+      }
+    });
+
+    fastify.post("/send/media", async (request, reply) => {
+      try {
+        const multipartRequest = request as typeof request & {
+          isMultipart(): boolean;
+          file(): Promise<{
+            filename: string;
+            mimetype: string;
+            fields: Record<string, unknown>;
+            toBuffer(): Promise<Buffer>;
+          } | undefined>;
+        };
+        if (!multipartRequest.isMultipart()) {
+          throw new ChatValidationError("Requisicao multipart/form-data obrigatoria.");
+        }
+        const uploaded = await multipartRequest.file();
+        if (!uploaded) throw new ChatValidationError("Arquivo obrigatorio.");
+
+        const fields = sendMediaFieldsSchema.parse({
+          instanceId: multipartFieldValue(uploaded.fields.instanceId),
+          jid: multipartFieldValue(uploaded.fields.jid),
+          messageType: multipartFieldValue(uploaded.fields.messageType),
+          caption: multipartFieldValue(uploaded.fields.caption) ?? null,
+          quotedMessageId: multipartFieldValue(uploaded.fields.quotedMessageId) ?? null,
+        });
+        const message = await service.sendMediaMessage({
+          ...fields,
+          buffer: await uploaded.toBuffer(),
+          mimeType: uploaded.mimetype,
+          fileName: uploaded.filename,
+        });
         return reply.status(201).send({ message: serializeMessage(message) });
       } catch (err) {
         return sendKnownError(reply, err);

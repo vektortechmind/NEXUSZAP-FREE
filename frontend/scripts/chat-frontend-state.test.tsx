@@ -291,6 +291,10 @@ test("chat input renders reply mode and cancel button", () => {
   assert.match(html, /Respondendo/);
   assert.match(html, /Oi, preciso de ajuda/);
   assert.match(html, /Cancelar resposta/);
+  assert.match(html, /Anexar imagem/);
+  assert.match(html, /Anexar video/);
+  assert.match(html, /Anexar audio/);
+  assert.match(html, /Anexar documento/);
 });
 
 test("known empty media/reply messages use readable fallback instead of generic empty text", () => {
@@ -333,10 +337,32 @@ test("message thread exposes a new messages jump button for open chats", () => {
 
 test("chat realtime client subscribes to message reaction events", () => {
   const source = fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/useChat.ts"), "utf8");
+  assert.match(source, /\/auth\/ws-token/);
+  assert.match(source, /auth: token \? \{ token \} : undefined/);
   assert.match(source, /message:reaction/);
   assert.match(source, /message:edited/);
   assert.match(source, /message:deleted/);
   assert.match(source, /onMessageReaction/);
+});
+
+test("chat media upload uses multipart endpoint", () => {
+  const source = fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/useConversations.ts"), "utf8");
+  assert.match(source, /sendMediaMessage/);
+  assert.match(source, /new FormData\(\)/);
+  assert.match(source, /form\.append\("file", input\.file\)/);
+  assert.equal(source.indexOf('form.append("instanceId"') < source.indexOf('form.append("file"'), true);
+  assert.equal(source.indexOf('form.append("messageType"') < source.indexOf('form.append("file"'), true);
+  assert.match(source, /\/chat\/send\/media/);
+});
+
+test("chat page handles read rollback and clear batch", () => {
+  const source = fs.readFileSync(path.resolve(import.meta.dirname, "../src/pages/ChatPage.tsx"), "utf8");
+  assert.match(source, /previousUnreadCount/);
+  assert.match(source, /await markConversationRead/);
+  assert.match(source, /Nao foi possivel marcar a conversa como lida/);
+  assert.match(source, /conversation\.cleared/);
+  assert.match(source, /setMessages\(\[\]\)/);
+  assert.match(source, /sendMediaMessage/);
 });
 
 test("app wrapper lets chat route escape the default max width", () => {

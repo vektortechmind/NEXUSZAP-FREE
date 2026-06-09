@@ -294,7 +294,13 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
       mediaBuffer = await downloadMediaFromMessage(sock, m);
       if (mediaBuffer && mediaBuffer.length > 0) {
         try {
-          const stored = await writeChatMedia({ instanceId, providerMessageId: key.id, buffer: mediaBuffer });
+          const stored = await writeChatMedia({
+            instanceId,
+            providerMessageId: key.id,
+            buffer: mediaBuffer,
+            messageType: chatMessageType === "IMAGE" || chatMessageType === "VIDEO" || chatMessageType === "AUDIO" || chatMessageType === "DOCUMENT" ? chatMessageType : undefined,
+            mimeType: audioMessage?.mimetype || imageMessage?.mimetype || videoMessage?.mimetype || content.documentMessage?.mimetype || null,
+          });
           await chatService.attachMessageMedia({
             instanceId,
             messageId: persistedMessage.id,

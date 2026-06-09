@@ -20,6 +20,7 @@ import { integrationRoutes } from "./routes/integration.routes";
 import { chatRoutes } from "./routes/chat.routes";
 import { chatRealtime } from "./services/chat.realtime";
 import { createChatSocketServer } from "./services/chat.websocket";
+import { startChatMediaCleanupJob } from "./services/chat.mediaStorage";
 import { InstanceManager } from "./whatsapp/InstanceManager";
 import { TelegramBotManager } from "./telegram/TelegramBotManager";
 import { buildAllowedOrigins, createOriginGuard, isCorsOriginAllowedForRequest, verifyCsrf } from "./security/middlewares";
@@ -73,7 +74,7 @@ export async function buildServer() {
 
   await fastify.register(multipart, {
     limits: {
-      fileSize: 5 * 1024 * 1024,
+      fileSize: 50 * 1024 * 1024,
     },
   });
 
@@ -107,8 +108,10 @@ export async function buildServer() {
   await fastify.register(chatRoutes, { prefix: "/api/chat" });
 
   const chatSocketServer = createChatSocketServer(fastify);
+  const chatMediaCleanupTimer = startChatMediaCleanupJob();
   fastify.addHook("onClose", async () => {
     chatRealtime.setEmitter(null);
+    clearInterval(chatMediaCleanupTimer);
     chatSocketServer.close();
   });
 

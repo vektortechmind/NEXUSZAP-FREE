@@ -49,8 +49,8 @@ async function defaultInstanceResolver(payload: JwtPayloadWithInstances): Promis
   const fromToken = instanceIdsFromPayload(payload);
   if (fromToken.length > 0) return fromToken;
 
-  // Current admin JWTs do not carry instance ACLs yet. Until per-user ACLs exist,
-  // an authenticated admin receives all configured instances.
+  if (payload.role !== "admin") return [];
+
   const instances = await prisma.instance.findMany({ select: { id: true } });
   return instances.map((instance) => instance.id);
 }

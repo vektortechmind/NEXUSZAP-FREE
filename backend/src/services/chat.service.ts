@@ -3,7 +3,7 @@ import { WAMessageStatus, type WAMessage, type WAMessageUpdate } from "@whiskeys
 import { prisma } from "../database/prisma";
 import { safeLogError } from "../utils/redaction";
 import { recordMessageEvent } from "./analytics/messageEvent.service";
-import { readChatMedia } from "./chat.mediaStorage";
+import { readChatMedia, validateChatMedia, writeChatMedia, type ChatMediaKind } from "./chat.mediaStorage";
 import {
   baileysChatAdapter,
   ChatInstanceOfflineError,
@@ -111,6 +111,7 @@ export class ChatMediaNotFoundError extends Error {
 
 export type ChatDeleteMode = "for_me" | "for_everyone" | "for_everyone_and_erase";
 const EDIT_WINDOW_MS = 15 * 60 * 1000;
+const DELETE_FOR_EVERYONE_WINDOW_MS = 48 * 60 * 60 * 1000;
 
 function newId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
@@ -680,6 +681,85 @@ export function createChatService(deps: {
       }
     },
 
+    async sendMediaMessage(input: {
+      instanceId: string;
+      jid: string;
+      messageType: ChatMediaKind;
+      buffer: Buffer;
+      mimeType: string;
+      caption?: string | null;
+      fileName?: string | null;
+      quotedMessageId?: string | null;
+    }) {
+      await ensureInstance(input.instanceId);
+      const jid = normalizeChatJid(input.jid);
+      if (input.buffer.length === 0) throw new ChatValidationError("Arquivo obrigatorio.");
+      validateChatMedia({ messageType: input.messageType, mimeType: input.mimeType, sizeBytes: input.buffer.length });
+
+      const quotedProviderMessageId = input.quotedMessageId?.trim() || null;
+      const quotedMessage = quotedProviderMessageId
+        ? await store.findMessageByProviderId({ instanceId: input.instanceId, providerMessageId: quotedProviderMessageId })
+        : null;
+      if (quotedProviderMessageId && !quotedMessage) throw new ChatValidationError("Mensagem citada nao encontrada.");
+
+      const result = await store.persistMessage({
+        instanceId: input.instanceId,
+        jid,
+        fromMe: true,
+        body: input.caption?.trim() || null,
+        messageType: input.messageType,
+        status: "PENDING",
+        mediaMimeType: input.mimeType,
+        quotedMessageId: quotedProviderMessageId,
+      });
+      chatRealtime.emitMessageSent({ instanceId: input.instanceId, message: result.message });
+
+      try {
+        const sent = await baileys.sendMediaMessage({
+          instanceId: input.instanceId,
+          jid,
+          messageType: input.messageType,
+          buffer: input.buffer,
+          mimeType: input.mimeType,
+          caption: input.caption,
+          fileName: input.fileName,
+          quotedMessage: quotedMessage ? buildQuotedWAMessage(quotedMessage) : null,
+        });
+        const providerMessageId = sent.providerMessageId ?? result.message.id;
+        const stored = await writeChatMedia({
+          instanceId: input.instanceId,
+          providerMessageId,
+          buffer: input.buffer,
+          messageType: input.messageType,
+          mimeType: input.mimeType,
+        });
+        const withProvider = await store.updateMessageStatus({
+          messageId: result.message.id,
+          status: "SENT",
+          providerMessageId,
+        });
+        const updated = await store.updateMessageMedia({
+          messageId: withProvider.id,
+          mediaUrl: stored.mediaUrl,
+          mediaMimeType: input.mimeType,
+        });
+        await eventRecorder({ instanceId: input.instanceId, channel: "WHATSAPP", direction: "OUTBOUND", usedAi: false }).catch((eventErr) => {
+          console.error("[Chat] Falha ao registrar MessageEvent outbound media:", safeLogError(eventErr));
+        });
+        chatRealtime.emitMessageSent({ instanceId: input.instanceId, message: updated });
+        chatRealtime.emitConversationUpdate({
+          instanceId: input.instanceId,
+          conversation: buildConversationSummary(result.conversation, updated),
+        });
+        return updated;
+      } catch (err) {
+        const failed = await store.updateMessageStatus({ messageId: result.message.id, status: "FAILED" });
+        chatRealtime.emitMessageStatus({ instanceId: input.instanceId, message: failed });
+        if (err instanceof ChatInstanceOfflineError || err instanceof ChatProviderSendError || err instanceof ChatValidationError) throw err;
+        throw new ChatProviderSendError(err instanceof Error ? err.message : undefined);
+      }
+    },
+
     async editMessage(input: { instanceId: string; jid: string; providerMessageId: string; body: string }) {
       await ensureInstance(input.instanceId);
       const jid = normalizeChatJid(input.jid);
@@ -720,7 +800,12 @@ export function createChatService(deps: {
       const message = await store.findMessageByProviderId({ instanceId: input.instanceId, providerMessageId });
       if (!message) throw new ChatValidationError("Mensagem nao encontrada.");
       if (!message.fromMe) throw new ChatValidationError("So pode apagar mensagens proprias por esta acao.");
-      await baileys.deleteMessage({ instanceId: input.instanceId, jid, providerMessageId });
+      if (input.mode !== "for_me") {
+        if (Date.now() - message.createdAt.getTime() > DELETE_FOR_EVERYONE_WINDOW_MS) {
+          throw new ChatValidationError("So pode apagar para todos ate 48 horas apos o envio.", 422);
+        }
+        await baileys.deleteMessage({ instanceId: input.instanceId, jid, providerMessageId });
+      }
       if (input.mode === "for_everyone") return message;
       const updated = await store.softDeleteMessage({ messageId: message.id });
       chatRealtime.emitMessageDeleted({ instanceId: input.instanceId, message: updated });
@@ -742,9 +827,8 @@ export function createChatService(deps: {
       await ensureInstance(input.instanceId);
       const jid = normalizeChatJid(input.jid);
       const deleted = await store.softDeleteConversationMessages({ instanceId: input.instanceId, jid });
-      deleted.forEach((message) => chatRealtime.emitMessageDeleted({ instanceId: input.instanceId, message }));
       const conversation = await store.resetUnreadCount({ instanceId: input.instanceId, jid });
-      if (conversation) chatRealtime.emitConversationUpdate({ instanceId: input.instanceId, conversation });
+      if (conversation) chatRealtime.emitConversationCleared({ instanceId: input.instanceId, conversation });
       return { deletedCount: deleted.length };
     },
 

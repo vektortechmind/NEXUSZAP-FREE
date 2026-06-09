@@ -15,6 +15,7 @@ type MessageThreadProps = {
   sending: boolean;
   onLoadMore: () => void;
   onSend: (body: string) => Promise<void> | void;
+  onSendMedia?: (input: { file: File; messageType: "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT"; caption?: string | null }) => Promise<void> | void;
   onReact?: (message: ChatMessage, emoji: string) => Promise<void> | void;
   replyingTo?: ChatMessage | null;
   onCancelReply?: () => void;
@@ -32,6 +33,7 @@ export function MessageThread({
   sending,
   onLoadMore,
   onSend,
+  onSendMedia,
   onReact,
   replyingTo,
   onCancelReply,
@@ -131,7 +133,7 @@ export function MessageThread({
           Novas mensagens
         </button>
       ) : null}
-      <ChatInput disabled={!conversation} sending={sending} replyingTo={replyingTo} onCancelReply={onCancelReply} onSend={onSend} />
+      <ChatInput disabled={!conversation} sending={sending} replyingTo={replyingTo} onCancelReply={onCancelReply} onSend={onSend} onSendMedia={onSendMedia} />
     </div>
   );
 }

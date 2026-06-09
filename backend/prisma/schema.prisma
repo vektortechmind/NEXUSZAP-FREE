@@ -30,6 +30,7 @@ enum ChatMessageType {
 }
 
 enum ChatMessageStatus {
+  PENDING
   SENT
   DELIVERED
   READ

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { useAuth } from "../../contexts/AuthContext";
+import { api } from "../../lib/axios";
 import type { ChatConnectionState, ChatConversation, ChatMessage, ChatPresence, ChatReactionEvent } from "./types";
 
 const CHAT_NAMESPACE = "/chat";
@@ -51,32 +52,47 @@ export function useChat(callbacks: ChatSocketCallbacks) {
 
   useEffect(() => {
     if (!user) return;
-    const socket = io(`${socketOriginFromApiBase()}${CHAT_NAMESPACE}`, {
-      path: CHAT_SOCKET_PATH,
-      withCredentials: true,
-      reconnection: true,
-      reconnectionAttempts: Infinity,
-      reconnectionDelayMax: 10_000,
-    });
-    socketRef.current = socket;
+    let cancelled = false;
+    let socket: Socket | null = null;
 
-    socket.on("connect", () => setConnectionState("connected"));
-    socket.io.on("reconnect_attempt", () => setConnectionState("reconnecting"));
-    socket.on("connect_error", () => setConnectionState("error"));
-    socket.on("disconnect", () => {
-      setConnectionState(socket.active ? "reconnecting" : "offline");
-    });
-    socket.on("message:new", (message: ChatMessage) => callbacksRef.current.onMessageNew?.(message));
-    socket.on("message:sent", (message: ChatMessage) => callbacksRef.current.onMessageSent?.(message));
-    socket.on("message:status", (message: ChatMessage) => callbacksRef.current.onMessageStatus?.(message));
-    socket.on("message:reaction", (event: ChatReactionEvent) => callbacksRef.current.onMessageReaction?.(event));
-    socket.on("message:edited", (message: ChatMessage) => callbacksRef.current.onMessageEdited?.(message));
-    socket.on("message:deleted", (message: ChatMessage) => callbacksRef.current.onMessageDeleted?.(message));
-    socket.on("conversation:update", (conversation: ChatConversation) => callbacksRef.current.onConversationUpdate?.(conversation));
-    socket.on("presence:update", (presence: ChatPresence) => callbacksRef.current.onPresenceUpdate?.(presence));
+    async function connect() {
+      setConnectionState("connecting");
+      const token = await api.get<{ token: string }>("/auth/ws-token")
+        .then((res) => res.data.token)
+        .catch(() => null);
+      if (cancelled) return;
+
+      socket = io(`${socketOriginFromApiBase()}${CHAT_NAMESPACE}`, {
+        path: CHAT_SOCKET_PATH,
+        auth: token ? { token } : undefined,
+        withCredentials: true,
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelayMax: 10_000,
+      });
+      socketRef.current = socket;
+
+      socket.on("connect", () => setConnectionState("connected"));
+      socket.io.on("reconnect_attempt", () => setConnectionState("reconnecting"));
+      socket.on("connect_error", () => setConnectionState("error"));
+      socket.on("disconnect", () => {
+        setConnectionState(socket?.active ? "reconnecting" : "offline");
+      });
+      socket.on("message:new", (message: ChatMessage) => callbacksRef.current.onMessageNew?.(message));
+      socket.on("message:sent", (message: ChatMessage) => callbacksRef.current.onMessageSent?.(message));
+      socket.on("message:status", (message: ChatMessage) => callbacksRef.current.onMessageStatus?.(message));
+      socket.on("message:reaction", (event: ChatReactionEvent) => callbacksRef.current.onMessageReaction?.(event));
+      socket.on("message:edited", (message: ChatMessage) => callbacksRef.current.onMessageEdited?.(message));
+      socket.on("message:deleted", (message: ChatMessage) => callbacksRef.current.onMessageDeleted?.(message));
+      socket.on("conversation:update", (conversation: ChatConversation) => callbacksRef.current.onConversationUpdate?.(conversation));
+      socket.on("presence:update", (presence: ChatPresence) => callbacksRef.current.onPresenceUpdate?.(presence));
+    }
+
+    void connect();
 
     return () => {
-      socket.disconnect();
+      cancelled = true;
+      socket?.disconnect();
       socketRef.current = null;
     };
   }, [user]);
