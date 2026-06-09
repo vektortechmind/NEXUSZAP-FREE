@@ -254,10 +254,11 @@ test("emoji popup position opens inside viewport", () => {
   assert.equal(bottomPosition.left + 292 <= 792, true);
 });
 
-test("clear conversation menu uses WhatsApp wording", () => {
+test("clear conversation menu exposes only panel cleanup", () => {
   const source = fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/ChatHeader.tsx"), "utf8");
-  assert.match(source, /Limpar painel \+ WhatsApp/);
-  assert.doesNotMatch(source, /Limpar painel \+ aparelho/);
+  assert.match(source, /Limpar painel/);
+  assert.equal(source.includes("onClear?.();"), true);
+  assert.equal((source.match(/Limpar painel/g) ?? []).length, 1);
 });
 
 test("message context menu position stays inside viewport", () => {
@@ -317,7 +318,7 @@ test("chat page keeps desktop split and mobile list-or-thread contract", () => {
   assert.match(source, /loadConversations\(\)/);
   assert.match(source, /markConversationRead/);
   assert.match(source, /MediaViewer/);
-  assert.match(source, /O contato continuara vendo as mensagens/);
+  assert.match(source, /Limpar mensagens apenas do painel/);
 });
 
 test("message thread exposes a new messages jump button for open chats", () => {

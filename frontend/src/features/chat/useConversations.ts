@@ -8,7 +8,6 @@ type ConversationsResponse = { conversations: ChatConversation[] };
 type MessagesResponse = { messages: ChatMessage[]; nextCursor: string | null };
 type ReactionResponse = { success: boolean; message: ChatMessage | null };
 type DeleteMode = "for_me" | "for_everyone" | "for_everyone_and_erase";
-type ClearMode = "panel_only" | "panel_and_whatsapp";
 
 export function getContactDisplayName(conversation: Pick<ChatConversation, "name" | "jid">) {
   return conversation.name?.trim() || conversation.jid.split("@")[0] || "Contato";
@@ -110,10 +109,9 @@ export function useConversations(selectedInstanceId: string, search: string) {
     return res.data.message;
   }, []);
 
-  const clearConversation = useCallback(async (input: { instanceId: string; jid: string; mode: ClearMode }) => {
+  const clearConversation = useCallback(async (input: { instanceId: string; jid: string }) => {
     const res = await api.post<{ success: boolean; deletedCount: number }>(`/chat/conversations/${encodeURIComponent(input.jid)}/clear`, {
       instanceId: input.instanceId,
-      mode: input.mode,
     });
     return res.data;
   }, []);

@@ -269,12 +269,12 @@ export function ChatPage() {
     }
   }, [addToast, deleteMessage, editMessage, handleStatus, selectedConversation]);
 
-  const clearSelectedConversation = useCallback(async (mode: "panel_only" | "panel_and_whatsapp") => {
+  const clearSelectedConversation = useCallback(async () => {
     if (!selectedConversation) return;
-    const confirmed = window.confirm(mode === "panel_only" ? "Limpar mensagens apenas do painel?" : "Isso limpara as mensagens no painel e no seu aparelho WhatsApp. O contato continuara vendo as mensagens normalmente.");
+    const confirmed = window.confirm("Limpar mensagens apenas do painel?");
     if (!confirmed) return;
     try {
-      await clearConversation({ instanceId: selectedConversation.instanceId, jid: selectedConversation.jid, mode });
+      await clearConversation({ instanceId: selectedConversation.instanceId, jid: selectedConversation.jid });
       setMessages([]);
       setReplyingTo(null);
       setConversations((current) => current.map((item) => conversationKey(item) === conversationKey(selectedConversation) ? { ...item, unreadCount: 0 } : item));
@@ -311,7 +311,7 @@ export function ChatPage() {
             connectionState={connectionState}
             isTyping={selectedTyping}
             onBack={() => setMobileThreadOpen(false)}
-            onClear={(mode) => void clearSelectedConversation(mode)}
+            onClear={() => void clearSelectedConversation()}
           />
           <MessageThread
             conversation={selectedConversation}

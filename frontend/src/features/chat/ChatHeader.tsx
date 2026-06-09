@@ -9,7 +9,7 @@ type ChatHeaderProps = {
   connectionState: ChatConnectionState;
   isTyping: boolean;
   onBack: () => void;
-  onClear?: (mode: "panel_only" | "panel_and_whatsapp") => void;
+  onClear?: () => void;
 };
 
 function Avatar({ conversation }: { conversation: ChatConversation }) {
@@ -80,13 +80,9 @@ export function ChatHeader({ conversation, instances, connectionState, isTyping,
         ) : null}
         {menuOpen ? (
           <div className="absolute right-0 top-11 z-40 min-w-56 rounded-md border border-slate-200 bg-white py-1 text-sm shadow-xl shadow-slate-900/15 dark:border-slate-700 dark:bg-slate-900">
-            <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800" onClick={() => { setMenuOpen(false); onClear?.("panel_only"); }}>
+            <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800" onClick={() => { setMenuOpen(false); onClear?.(); }}>
               <Trash2 size={15} aria-hidden="true" />
-              Limpar so painel
-            </button>
-            <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800" onClick={() => { setMenuOpen(false); onClear?.("panel_and_whatsapp"); }}>
-              <Trash2 size={15} aria-hidden="true" />
-              Limpar painel + WhatsApp
+              Limpar painel
             </button>
           </div>
         ) : null}

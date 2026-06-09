@@ -25,7 +25,6 @@ function createBaileysMock(options = {}) {
   const reactions = [];
   const edits = [];
   const deletes = [];
-  const clearChats = [];
   const markReads = [];
   const profileRequests = [];
   return {
@@ -33,7 +32,6 @@ function createBaileysMock(options = {}) {
     reactions,
     edits,
     deletes,
-    clearChats,
     markReads,
     profileRequests,
     async sendTextMessage(input) {
@@ -52,10 +50,6 @@ function createBaileysMock(options = {}) {
     async deleteMessage(input) {
       deletes.push(input);
       if (options.failDelete) throw new ChatProviderSendError("delete unavailable");
-    },
-    async clearChat(input) {
-      clearChats.push(input);
-      if (options.failClearChat) throw new ChatProviderSendError("clear unavailable");
     },
     async markRead(input) {
       markReads.push(input);
@@ -288,7 +282,7 @@ function createApp({ store, baileys, events }) {
   const clearPanelResponse = await app.inject({
     method: "POST",
     url: `/api/chat/conversations/${encodeURIComponent("5511888880000@s.whatsapp.net")}/clear`,
-    payload: { instanceId: "instance-a", mode: "panel_only" },
+    payload: { instanceId: "instance-a" },
   });
   assert.equal(clearPanelResponse.statusCode, 200, clearPanelResponse.body);
   assert.equal(JSON.parse(clearPanelResponse.body).deletedCount, 3);
@@ -298,42 +292,13 @@ function createApp({ store, baileys, events }) {
   });
   assert.equal(JSON.parse(clearedMessagesResponse.body).messages.length, 0);
 
-  await service.persistOutboundMessage({
-    instanceId: "instance-a",
-    jid: "5511777770000@s.whatsapp.net",
-    body: "Limpar WhatsApp",
-    messageType: "TEXT",
-    providerMessageId: "wamid.clear.whatsapp.1",
-    createdAt: new Date("2026-06-09T10:08:00.000Z"),
-  });
-  const clearWhatsappResponse = await app.inject({
-    method: "POST",
-    url: `/api/chat/conversations/${encodeURIComponent("5511777770000@s.whatsapp.net")}/clear`,
-    payload: { instanceId: "instance-a", mode: "panel_and_whatsapp" },
-  });
-  assert.equal(clearWhatsappResponse.statusCode, 200, clearWhatsappResponse.body);
-  assert.equal(JSON.parse(clearWhatsappResponse.body).deletedCount, 1);
-  assert.equal(baileys.clearChats.length, 1);
-  assert.equal(baileys.clearChats[0].jid, "5511777770000@s.whatsapp.net");
-  assert.deepEqual(baileys.clearChats[0].lastMessages, [
-    {
-      key: { id: "wamid.clear.whatsapp.1", remoteJid: "5511777770000@s.whatsapp.net", fromMe: true },
-      messageTimestamp: 1780999680,
-    },
-  ]);
-  assert.equal(baileys.deletes.some((item) => item.providerMessageId === "wamid.clear.whatsapp.1"), false);
-
   const realtimeEvents = [];
   chatRealtime.setEmitter({
     emitToInstance(instanceId, event, payload) {
       realtimeEvents.push({ instanceId, event, payload });
     },
   });
-  const clearFailureStore = createInMemoryChatStore({ instances: [{ id: "instance-a" }] });
-  const clearFailureBaileys = createBaileysMock({ failClearChat: true });
-  const { app: clearFailureApp, service: clearFailureService } = createApp({ store: clearFailureStore, baileys: clearFailureBaileys, events: [] });
-  await clearFailureApp.ready();
-  await clearFailureService.persistInboundMessage({
+  await service.persistInboundMessage({
     instanceId: "instance-a",
     jid: "5511555550000@s.whatsapp.net",
     body: "Limpar mesmo offline",
@@ -341,28 +306,20 @@ function createApp({ store, baileys, events }) {
     providerMessageId: "wamid.clear.fail.1",
     createdAt: new Date("2026-06-09T10:08:30.000Z"),
   });
-  const clearFailureResponse = await clearFailureApp.inject({
+  const clearRealtimeResponse = await app.inject({
     method: "POST",
     url: `/api/chat/conversations/${encodeURIComponent("5511555550000@s.whatsapp.net")}/clear`,
-    payload: { instanceId: "instance-a", mode: "panel_and_whatsapp" },
+    payload: { instanceId: "instance-a" },
   });
-  assert.equal(clearFailureResponse.statusCode, 200, clearFailureResponse.body);
-  assert.equal(JSON.parse(clearFailureResponse.body).deletedCount, 1);
-  assert.equal(clearFailureBaileys.clearChats.length, 1);
-  assert.deepEqual(clearFailureBaileys.clearChats[0].lastMessages, [
-    {
-      key: { id: "wamid.clear.fail.1", remoteJid: "5511555550000@s.whatsapp.net", fromMe: false },
-      messageTimestamp: 1780999710,
-    },
-  ]);
-  const clearFailureMessages = await clearFailureApp.inject({
+  assert.equal(clearRealtimeResponse.statusCode, 200, clearRealtimeResponse.body);
+  assert.equal(JSON.parse(clearRealtimeResponse.body).deletedCount, 1);
+  const clearFailureMessages = await app.inject({
     method: "GET",
     url: `/api/chat/conversations/${encodeURIComponent("5511555550000@s.whatsapp.net")}/messages?instanceId=instance-a`,
   });
   assert.equal(JSON.parse(clearFailureMessages.body).messages.length, 0);
   assert.equal(realtimeEvents.some((item) => item.event === "conversation:update" && item.payload.unreadCount === 0), true);
   chatRealtime.setEmitter(null);
-  await clearFailureApp.close();
 
   await service.persistInboundMessage({
     instanceId: "instance-a",

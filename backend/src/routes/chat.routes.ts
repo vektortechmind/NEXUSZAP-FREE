@@ -68,7 +68,6 @@ const deleteBodySchema = z.object({
 
 const clearConversationBodySchema = z.object({
   instanceId: z.string().trim().min(1).max(191),
-  mode: z.enum(["panel_only", "panel_and_whatsapp"]),
 });
 
 function serializeDate<T extends Record<string, unknown>>(row: T): T {

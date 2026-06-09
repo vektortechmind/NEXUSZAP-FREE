@@ -27,7 +27,6 @@ function createBaileysMock(providerMessageId = "wamid.sent.ws") {
     async sendReaction() {},
     async editMessage() {},
     async deleteMessage() {},
-    async clearChat() {},
     async markRead() {},
     async getContactProfile() {
       return { name: "Contato WS", profilePicUrl: "https://img.example.com/ws.jpg" };

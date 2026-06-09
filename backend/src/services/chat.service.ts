@@ -1,5 +1,5 @@
 import type { ChatMessageStatus, ChatMessageType, MessageDirection } from "@prisma/client";
-import { WAMessageStatus, type MinimalMessage, type WAMessage, type WAMessageUpdate } from "@whiskeysockets/baileys";
+import { WAMessageStatus, type WAMessage, type WAMessageUpdate } from "@whiskeysockets/baileys";
 import { prisma } from "../database/prisma";
 import { safeLogError } from "../utils/redaction";
 import { recordMessageEvent } from "./analytics/messageEvent.service";
@@ -109,8 +109,6 @@ export class ChatMediaNotFoundError extends Error {
 }
 
 export type ChatDeleteMode = "for_me" | "for_everyone" | "for_everyone_and_erase";
-export type ChatClearMode = "panel_only" | "panel_and_whatsapp";
-
 const EDIT_WINDOW_MS = 15 * 60 * 1000;
 
 function newId(prefix: string) {
@@ -151,23 +149,6 @@ function buildQuotedWAMessage(message: ChatMessage): WAMessage {
     },
     messageTimestamp: Math.floor(message.createdAt.getTime() / 1000),
   } as WAMessage;
-}
-
-function buildLastMessagesForChatModify(messages: ChatMessage[], jid: string): MinimalMessage[] {
-  const lastMessage = [...messages]
-    .reverse()
-    .find((message) => message.providerMessageId?.trim());
-  if (!lastMessage?.providerMessageId) return [];
-  return [
-    {
-      key: {
-        id: lastMessage.providerMessageId,
-        remoteJid: jid,
-        fromMe: lastMessage.fromMe,
-      },
-      messageTimestamp: Math.floor(lastMessage.createdAt.getTime() / 1000),
-    },
-  ];
 }
 
 export function normalizeChatJid(value: string): string {
@@ -694,19 +675,9 @@ export function createChatService(deps: {
       return updated;
     },
 
-    async clearConversation(input: { instanceId: string; jid: string; mode: ChatClearMode }) {
+    async clearConversation(input: { instanceId: string; jid: string }) {
       await ensureInstance(input.instanceId);
       const jid = normalizeChatJid(input.jid);
-      const messages = await store.listMessagesForConversation({ instanceId: input.instanceId, jid });
-      if (input.mode === "panel_and_whatsapp") {
-        await baileys.clearChat({
-          instanceId: input.instanceId,
-          jid,
-          lastMessages: buildLastMessagesForChatModify(messages, jid),
-        }).catch((err) => {
-          console.warn("[Chat] Falha ao limpar conversa no WhatsApp; limpando apenas o painel:", safeLogError(err));
-        });
-      }
       const deleted = await store.softDeleteConversationMessages({ instanceId: input.instanceId, jid });
       deleted.forEach((message) => chatRealtime.emitMessageDeleted({ instanceId: input.instanceId, message }));
       const conversation = await store.resetUnreadCount({ instanceId: input.instanceId, jid });
