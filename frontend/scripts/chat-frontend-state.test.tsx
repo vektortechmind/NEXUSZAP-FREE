@@ -107,6 +107,8 @@ test("message bubbles render direction, status and inline audio controls", () =>
   const sentHtml = renderToStaticMarkup(<MessageBubble message={{ ...textMessage, fromMe: true, status: "READ" }} />);
   const audioHtml = renderToStaticMarkup(<MessageBubble message={audioMessage} />);
   assert.match(sentHtml, /Oi, preciso de ajuda/);
+  assert.match(sentHtml, /w-fit/);
+  assert.match(sentHtml, /group-hover:w-auto/);
   assert.match(sentHtml, /Lida/);
   assert.equal(getMessageStatusLabel("DELIVERED"), "Entregue");
   assert.match(audioHtml, /Reproduzir audio/);
@@ -140,6 +142,8 @@ test("chat page keeps desktop split and mobile list-or-thread contract", () => {
   assert.match(source, /mobileThreadOpen \? "hidden" : "block"/);
   assert.match(source, /mobileThreadOpen \? "flex" : "hidden"/);
   assert.match(source, /h-\[calc\(100svh-3\.5rem\)\]/);
+  assert.match(source, /connectionState !== "connected"/);
+  assert.match(source, /loadConversations\(\)/);
 });
 
 test("app wrapper lets chat route escape the default max width", () => {

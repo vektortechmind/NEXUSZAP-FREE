@@ -59,6 +59,10 @@ export function createChatSocketServer(fastify: FastifyInstance, deps: ChatSocke
   const instanceResolver = deps.instanceResolver ?? defaultInstanceResolver;
   const io = new SocketServer(fastify.server, {
     path: CHAT_SOCKET_PATH,
+    connectionStateRecovery: {
+      maxDisconnectionDuration: 120_000,
+      skipMiddlewares: false,
+    },
     cors: {
       origin: true,
       credentials: true,

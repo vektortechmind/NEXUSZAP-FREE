@@ -21,14 +21,17 @@ const { ChatProviderSendError } = require("../src/services/chat.baileys.ts");
 
 function createBaileysMock(options = {}) {
   const sent = [];
+  const profileRequests = [];
   return {
     sent,
+    profileRequests,
     async sendTextMessage(input) {
       sent.push(input);
       if (options.failSend) throw new ChatProviderSendError("provider unavailable");
       return { providerMessageId: options.providerMessageId || "wamid.sent.1", raw: null };
     },
     async getContactProfile(input) {
+      profileRequests.push(input);
       return { name: `Contato ${input.jid.slice(0, 4)}`, profilePicUrl: `https://img.example.com/${encodeURIComponent(input.jid)}.jpg` };
     },
   };
@@ -63,6 +66,7 @@ function createApp({ store, baileys, events }) {
     createdAt: new Date("2026-06-09T10:00:00.000Z"),
   });
   assert.equal(firstInbound.status, "DELIVERED");
+  assert.equal(baileys.profileRequests.length, 0, "mensagem recebida nao deve aguardar consulta de perfil para aparecer no chat");
 
   const duplicateInbound = await service.persistInboundMessage({
     instanceId: "instance-a",

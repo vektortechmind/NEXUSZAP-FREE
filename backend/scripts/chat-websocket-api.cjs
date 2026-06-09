@@ -106,6 +106,8 @@ async function createHarness() {
 
 (async () => {
   const harness = await createHarness();
+  assert.equal(harness.socketServer.opts.connectionStateRecovery.maxDisconnectionDuration, 120000);
+  assert.equal(harness.socketServer.opts.connectionStateRecovery.skipMiddlewares, false);
   const store = createInMemoryChatStore({ instances: [{ id: "instance-a" }, { id: "instance-b" }] });
   const service = createChatService({
     store,

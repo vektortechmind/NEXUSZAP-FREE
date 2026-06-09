@@ -44,6 +44,7 @@ export function ChatPage() {
     instances,
     loading,
     error,
+    loadConversations,
     loadMessages,
     sendTextMessage,
     unreadTotal,
@@ -100,6 +101,21 @@ export function ChatPage() {
   }), [handleConversationUpdate, handleMessage, handlePresence, handleStatus]);
 
   const { connectionState } = useChat(chatCallbacks);
+  const selectedInstanceForSync = selectedConversation?.instanceId ?? null;
+  const selectedJidForSync = selectedConversation?.jid ?? null;
+
+  useEffect(() => {
+    if (connectionState !== "connected") return;
+    void loadConversations();
+    if (selectedInstanceForSync && selectedJidForSync) {
+      void loadMessages({ instanceId: selectedInstanceForSync, jid: selectedJidForSync }).then((result) => {
+        setMessages(result.messages);
+        setNextCursor(result.nextCursor);
+      }).catch((err) => {
+        console.error(err);
+      });
+    }
+  }, [connectionState, loadConversations, loadMessages, selectedInstanceForSync, selectedJidForSync]);
 
   const selectConversation = useCallback(async (conversation: ChatConversation) => {
     const key = conversationKey(conversation);

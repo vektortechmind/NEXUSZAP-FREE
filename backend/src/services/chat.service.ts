@@ -378,14 +378,13 @@ export function createChatService(deps: {
         const existing = await store.findMessageByProviderId({ instanceId: input.instanceId, providerMessageId: input.providerMessageId });
         if (existing) return existing;
       }
-      const profile = await baileys.getContactProfile({ instanceId: input.instanceId, jid: normalizeChatJid(input.jid) });
       const result = await store.persistMessage({
         ...input,
         jid: normalizeChatJid(input.jid),
         fromMe: false,
         status: "DELIVERED",
-        contactName: input.contactName ?? profile.name,
-        profilePicUrl: input.profilePicUrl ?? profile.profilePicUrl,
+        contactName: input.contactName ?? null,
+        profilePicUrl: input.profilePicUrl ?? null,
       });
       chatRealtime.emitMessageNew({ instanceId: input.instanceId, message: result.message });
       chatRealtime.emitConversationUpdate({ instanceId: input.instanceId, conversation: buildConversationSummary(result.conversation, result.message) });
