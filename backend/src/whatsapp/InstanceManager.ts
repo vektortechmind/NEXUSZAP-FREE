@@ -76,7 +76,27 @@ export class InstanceManager {
         } catch (err) {
           console.error("[Baileys] Falha ao processar recibo de dispatch:", safeLogError(err));
         }
+
+        try {
+          const { chatService } = await import("../services/chat.service");
+          await chatService.recordBaileysMessageUpdate(instanceId, update);
+        } catch (err) {
+          console.error("[Baileys] Falha ao processar recibo do chat:", safeLogError(err));
+        }
       }
+    });
+
+    sock.ev.on("presence.update", (update) => {
+      const jid = typeof update.id === "string" ? update.id : null;
+      if (!jid) return;
+      const presences = Object.values(update.presences ?? {});
+      const isTyping = presences.some((presence) => {
+        const state = String(presence.lastKnownPresence ?? "").toLowerCase();
+        return state === "composing" || state === "recording";
+      });
+      void import("../services/chat.service")
+        .then(({ chatService }) => chatService.emitPresenceUpdate({ instanceId, jid, isTyping }))
+        .catch((err) => console.error("[Baileys] Falha ao emitir presença do chat:", safeLogError(err)));
     });
 
     sock.ev.on("connection.update", async (update) => {
@@ -244,6 +264,7 @@ export class InstanceManager {
       try {
         runtime.sock.ev.removeAllListeners("messages.upsert");
         runtime.sock.ev.removeAllListeners("messages.update");
+        runtime.sock.ev.removeAllListeners("presence.update");
         runtime.sock.ev.removeAllListeners("connection.update");
         await runtime.sock.logout();
       } catch (err) {

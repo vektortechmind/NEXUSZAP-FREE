@@ -18,6 +18,8 @@ import updateRoutes from "./routes/update.routes";
 import { setupRoutes } from "./routes/setup.routes";
 import { integrationRoutes } from "./routes/integration.routes";
 import { chatRoutes } from "./routes/chat.routes";
+import { chatRealtime } from "./services/chat.realtime";
+import { createChatSocketServer } from "./services/chat.websocket";
 import { InstanceManager } from "./whatsapp/InstanceManager";
 import { TelegramBotManager } from "./telegram/TelegramBotManager";
 import { buildAllowedOrigins, createOriginGuard, isCorsOriginAllowedForRequest, verifyCsrf } from "./security/middlewares";
@@ -103,6 +105,12 @@ export async function buildServer() {
   await fastify.register(setupRoutes, { prefix: "/api/setup" });
   await fastify.register(integrationRoutes, { prefix: "/api/integrations" });
   await fastify.register(chatRoutes, { prefix: "/api/chat" });
+
+  const chatSocketServer = createChatSocketServer(fastify);
+  fastify.addHook("onClose", async () => {
+    chatRealtime.setEmitter(null);
+    chatSocketServer.close();
+  });
 
   return fastify;
 }

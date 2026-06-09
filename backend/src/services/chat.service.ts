@@ -1,4 +1,5 @@
 import type { ChatMessageStatus, ChatMessageType, MessageDirection } from "@prisma/client";
+import { WAMessageStatus, type WAMessageUpdate } from "@whiskeysockets/baileys";
 import { prisma } from "../database/prisma";
 import { safeLogError } from "../utils/redaction";
 import { recordMessageEvent } from "./analytics/messageEvent.service";
@@ -8,6 +9,7 @@ import {
   ChatProviderSendError,
   type ChatBaileysAdapter,
 } from "./chat.baileys";
+import { chatRealtime } from "./chat.realtime";
 
 export type ChatConversation = {
   id: string;
@@ -82,6 +84,18 @@ export class ChatInstanceNotFoundError extends Error {
 
 function newId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function buildConversationSummary(conversation: ChatConversation, message: ChatMessage): ChatConversationSummary {
+  return { ...conversation, lastMessage: message };
+}
+
+function chatStatusFromBaileysStatus(status: unknown): ChatMessageStatus | null {
+  if (status === WAMessageStatus.ERROR) return "FAILED";
+  if (status === WAMessageStatus.PENDING || status === WAMessageStatus.SERVER_ACK) return "SENT";
+  if (status === WAMessageStatus.DELIVERY_ACK) return "DELIVERED";
+  if (status === WAMessageStatus.READ || status === WAMessageStatus.PLAYED) return "READ";
+  return null;
 }
 
 export function normalizeChatJid(value: string): string {
@@ -340,6 +354,8 @@ export function createChatService(deps: {
         contactName: input.contactName ?? profile.name,
         profilePicUrl: input.profilePicUrl ?? profile.profilePicUrl,
       });
+      chatRealtime.emitMessageNew({ instanceId: input.instanceId, message: result.message });
+      chatRealtime.emitConversationUpdate({ instanceId: input.instanceId, conversation: buildConversationSummary(result.conversation, result.message) });
       return result.message;
     },
 
@@ -351,6 +367,8 @@ export function createChatService(deps: {
         fromMe: true,
         status: input.status ?? "SENT",
       });
+      chatRealtime.emitMessageSent({ instanceId: input.instanceId, message: result.message });
+      chatRealtime.emitConversationUpdate({ instanceId: input.instanceId, conversation: buildConversationSummary(result.conversation, result.message) });
       return result.message;
     },
 
@@ -360,7 +378,7 @@ export function createChatService(deps: {
       const body = input.body.trim();
       if (!body) throw new ChatValidationError("Corpo da mensagem obrigatorio.");
 
-      const { message } = await store.persistMessage({
+      const result = await store.persistMessage({
         instanceId: input.instanceId,
         jid,
         fromMe: true,
@@ -372,19 +390,44 @@ export function createChatService(deps: {
       try {
         const sent = await baileys.sendTextMessage({ instanceId: input.instanceId, jid, body });
         const updated = await store.updateMessageStatus({
-          messageId: message.id,
+          messageId: result.message.id,
           status: "SENT",
           providerMessageId: sent.providerMessageId,
         });
         await eventRecorder({ instanceId: input.instanceId, channel: "WHATSAPP", direction: "OUTBOUND", usedAi: false }).catch((eventErr) => {
           console.error("[Chat] Falha ao registrar MessageEvent outbound:", safeLogError(eventErr));
         });
+        chatRealtime.emitMessageSent({ instanceId: input.instanceId, message: updated });
+        chatRealtime.emitConversationUpdate({
+          instanceId: input.instanceId,
+          conversation: buildConversationSummary(result.conversation, updated),
+        });
         return updated;
       } catch (err) {
-        await store.updateMessageStatus({ messageId: message.id, status: "FAILED" });
+        const failed = await store.updateMessageStatus({ messageId: result.message.id, status: "FAILED" });
+        chatRealtime.emitMessageStatus({ instanceId: input.instanceId, message: failed });
         if (err instanceof ChatInstanceOfflineError || err instanceof ChatProviderSendError) throw err;
         throw new ChatProviderSendError(err instanceof Error ? err.message : undefined);
       }
+    },
+
+    async recordBaileysMessageUpdate(instanceId: string, update: WAMessageUpdate) {
+      const providerMessageId = typeof update.key?.id === "string" && update.key.id.trim() ? update.key.id : null;
+      if (!providerMessageId) return null;
+
+      const status = chatStatusFromBaileysStatus(update.update?.status);
+      if (!status) return null;
+
+      const existing = await store.findMessageByProviderId({ instanceId, providerMessageId });
+      if (!existing) return null;
+
+      const updated = await store.updateMessageStatus({ messageId: existing.id, status });
+      chatRealtime.emitMessageStatus({ instanceId, message: updated });
+      return updated;
+    },
+
+    emitPresenceUpdate(input: { instanceId: string; jid: string; isTyping: boolean }) {
+      chatRealtime.emitPresenceUpdate(input);
     },
   };
 }
