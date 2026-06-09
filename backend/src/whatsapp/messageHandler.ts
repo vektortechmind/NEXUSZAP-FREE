@@ -143,6 +143,8 @@ function unwrapChatContent(content: WAMessageContent, depth = 0): WAMessageConte
 export function resolveChatMessageType(content: WAMessageContent) {
   const resolved = unwrapChatContent(content);
   if (resolved !== content) return resolveChatMessageType(resolved);
+  const protocolMessage = (resolved as { protocolMessage?: { editedMessage?: WAMessageContent } }).protocolMessage;
+  if (protocolMessage?.editedMessage) return resolveChatMessageType(protocolMessage.editedMessage);
   if (resolved.imageMessage) return "IMAGE" as const;
   if (resolved.audioMessage) return "AUDIO" as const;
   if (resolved.videoMessage) return "VIDEO" as const;
@@ -151,6 +153,12 @@ export function resolveChatMessageType(content: WAMessageContent) {
   if ((resolved as { listResponseMessage?: unknown }).listResponseMessage) return "LIST_REPLY" as const;
   if (resolved.conversation || resolved.extendedTextMessage) return "TEXT" as const;
   return "UNKNOWN" as const;
+}
+
+export function shouldPersistChatMessage(input: { body: string | null; messageType: ReturnType<typeof resolveChatMessageType>; mediaMimeType?: string | null }) {
+  if (input.body?.trim()) return true;
+  if (input.messageType !== "UNKNOWN") return true;
+  return Boolean(input.mediaMimeType?.toLowerCase().startsWith("audio/"));
 }
 
 export function resolveChatBody(content: WAMessageContent): string | null {
@@ -229,6 +237,8 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
       mediaDurationMs: audioMessage?.seconds ? Number(audioMessage.seconds) * 1000 : null,
       createdAt: messageDateFromBaileysTimestamp(m.messageTimestamp),
     };
+    if (!shouldPersistChatMessage(messageInput)) return;
+
     const persistedMessage = fromMe
       ? await chatService.persistOutboundMessage({ ...messageInput, status: "SENT" })
       : await chatService.persistInboundMessage({ ...messageInput, contactName: m.pushName ?? null });

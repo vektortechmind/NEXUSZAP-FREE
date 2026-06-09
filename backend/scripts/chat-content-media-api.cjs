@@ -22,7 +22,7 @@ const Fastify = require("fastify");
 const { createChatRoutes } = require("../src/routes/chat.routes.ts");
 const { createChatService, createInMemoryChatStore } = require("../src/services/chat.service.ts");
 const { writeChatMedia } = require("../src/services/chat.mediaStorage.ts");
-const { resolveChatBody, resolveChatMessageType } = require("../src/whatsapp/messageHandler.ts");
+const { resolveChatBody, resolveChatMessageType, shouldPersistChatMessage } = require("../src/whatsapp/messageHandler.ts");
 
 function createBaileysMock() {
   return {
@@ -54,7 +54,12 @@ function createBaileysMock() {
   assert.equal(resolveChatMessageType({ audioMessage: { mimetype: "audio/ogg" } }), "AUDIO");
   assert.equal(resolveChatMessageType({ videoMessage: { mimetype: "video/mp4" } }), "VIDEO");
   assert.equal(resolveChatMessageType({ documentMessage: { mimetype: "application/pdf" } }), "DOCUMENT");
+  assert.equal(resolveChatMessageType({ protocolMessage: { editedMessage: { conversation: "Texto editado" } } }), "TEXT");
   assert.equal(resolveChatMessageType({}), "UNKNOWN");
+  assert.equal(shouldPersistChatMessage({ body: null, messageType: "UNKNOWN", mediaMimeType: null }), false);
+  assert.equal(shouldPersistChatMessage({ body: "Oi", messageType: "TEXT", mediaMimeType: null }), true);
+  assert.equal(shouldPersistChatMessage({ body: null, messageType: "AUDIO", mediaMimeType: "audio/ogg" }), true);
+  assert.equal(shouldPersistChatMessage({ body: null, messageType: "UNKNOWN", mediaMimeType: "audio/ogg" }), true);
 
   const store = createInMemoryChatStore({ instances: [{ id: "instance-a" }] });
   const service = createChatService({ store, baileys: createBaileysMock() });
