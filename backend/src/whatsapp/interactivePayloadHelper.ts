@@ -308,17 +308,16 @@ export function buildCtaUrlInteractivePayload(rawInput: CtaUrlInteractiveInput):
 export function buildNativeInteractiveFallbackText(input: NativeInteractiveInput): string {
   const body = normalizeText(input.body, "body", MAX_BODY_LENGTH);
   const buttons = normalizeNativeButtons(input.buttons);
-  const fallbackLines = buttons
-    .map((button) => button.kind === "cta_url" ? button.url : button.copyCode)
-    .filter((value) => !body.includes(value));
+  const fallbackLines = buttons.flatMap((button) => {
+    const value = button.kind === "cta_url" ? button.url : button.copyCode;
+    return body.includes(value) ? [] : [value];
+  });
   return [body, ...fallbackLines].join("\n\n");
 }
 
 export function buildCtaUrlFallbackText(input: CtaUrlInteractiveInput): string {
   const body = normalizeText(input.body, "body", MAX_BODY_LENGTH);
   const buttons = normalizeButtons(input);
-  const missingLinks = buttons
-    .map((button) => button.url)
-    .filter((url) => !body.includes(url));
+  const missingLinks = buttons.flatMap((button) => body.includes(button.url) ? [] : [button.url]);
   return [body, ...missingLinks].join("\n\n");
 }

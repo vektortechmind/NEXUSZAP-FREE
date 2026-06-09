@@ -8,18 +8,19 @@ export function defaultOpenAiModelId(): string {
 }
 
 function splitInstructions(messages: ChatMessage[]) {
-  const instructions = messages
-    .filter((message) => message.role === "system")
-    .map((message) => message.content.trim())
-    .filter(Boolean)
-    .join("\n\n");
+  const instructions: string[] = [];
+  const inputLines: string[] = [];
 
-  const input = messages
-    .filter((message) => message.role !== "system")
-    .map((message) => `${message.role === "assistant" ? "ASSISTANT" : "USER"}: ${message.content}`)
-    .join("\n");
+  for (const message of messages) {
+    if (message.role === "system") {
+      const content = message.content.trim();
+      if (content) instructions.push(content);
+      continue;
+    }
+    inputLines.push(`${message.role === "assistant" ? "ASSISTANT" : "USER"}: ${message.content}`);
+  }
 
-  return { instructions, input };
+  return { instructions: instructions.join("\n\n"), input: inputLines.join("\n") };
 }
 
 function extractOutputText(data: unknown): string | null {
@@ -33,10 +34,11 @@ function extractOutputText(data: unknown): string | null {
     return response.output_text;
   }
 
-  const parts = response.output
-    ?.flatMap((item) => item.content ?? [])
-    .map((content) => content.text)
-    .filter((text): text is string => typeof text === "string" && text.trim().length > 0);
+  const parts = response.output?.flatMap((item) => (
+    item.content?.flatMap((content) => (
+      typeof content.text === "string" && content.text.trim().length > 0 ? [content.text] : []
+    )) ?? []
+  ));
 
   return parts && parts.length > 0 ? parts.join("\n") : null;
 }

@@ -102,20 +102,21 @@ export async function ensureAgentForInstanceTx(
     include: { instance: true },
   });
 
-  await tx.instance.update({
-    where: { id: instance.id },
-    data: { agentName },
-  });
-
-  await tx.file.updateMany({
-    where: {
-      instanceId: instance.id,
-      agentId: null,
-    },
-    data: {
-      agentId: agent.id,
-    },
-  });
+  await Promise.all([
+    tx.instance.update({
+      where: { id: instance.id },
+      data: { agentName },
+    }),
+    tx.file.updateMany({
+      where: {
+        instanceId: instance.id,
+        agentId: null,
+      },
+      data: {
+        agentId: agent.id,
+      },
+    }),
+  ]);
 
   return agent;
 }
@@ -175,22 +176,23 @@ export async function createAgent(input: { name: string; instanceId: string }) {
       },
     });
 
-    await tx.instance.update({
-      where: { id: input.instanceId },
-      data: {
-        agentName: input.name,
-      },
-    });
-
-    await tx.file.updateMany({
-      where: {
-        instanceId: input.instanceId,
-        agentId: null,
-      },
-      data: {
-        agentId: agent.id,
-      },
-    });
+    await Promise.all([
+      tx.instance.update({
+        where: { id: input.instanceId },
+        data: {
+          agentName: input.name,
+        },
+      }),
+      tx.file.updateMany({
+        where: {
+          instanceId: input.instanceId,
+          agentId: null,
+        },
+        data: {
+          agentId: agent.id,
+        },
+      }),
+    ]);
 
     return agent;
   });
@@ -219,25 +221,26 @@ export async function updateAgentWorkspace(
     }
 
     const nextName = input.name?.trim();
-    await tx.agent.update({
-      where: { id: agentId },
-      data: {
-        ...(nextName ? { name: nextName } : {}),
-        ...(input.systemPrompt !== undefined ? { systemPrompt: input.systemPrompt } : {}),
-        ...(input.chatProvider !== undefined ? { chatProvider: input.chatProvider } : {}),
-        ...(input.openaiModel !== undefined ? { openaiModel: input.openaiModel } : {}),
-        ...(input.openrouterModel !== undefined ? { openrouterModel: input.openrouterModel } : {}),
-        ...(input.memoryLimit !== undefined ? { memoryLimit: input.memoryLimit } : {}),
-        ...(input.audioTranscriptionEnabled !== undefined ? { audioTranscriptionEnabled: input.audioTranscriptionEnabled } : {}),
-      },
-    });
-
-    await tx.instance.update({
-      where: { id: agent.instanceId },
-      data: {
-        ...(nextName ? { agentName: nextName } : {}),
-      },
-    });
+    await Promise.all([
+      tx.agent.update({
+        where: { id: agentId },
+        data: {
+          ...(nextName ? { name: nextName } : {}),
+          ...(input.systemPrompt !== undefined ? { systemPrompt: input.systemPrompt } : {}),
+          ...(input.chatProvider !== undefined ? { chatProvider: input.chatProvider } : {}),
+          ...(input.openaiModel !== undefined ? { openaiModel: input.openaiModel } : {}),
+          ...(input.openrouterModel !== undefined ? { openrouterModel: input.openrouterModel } : {}),
+          ...(input.memoryLimit !== undefined ? { memoryLimit: input.memoryLimit } : {}),
+          ...(input.audioTranscriptionEnabled !== undefined ? { audioTranscriptionEnabled: input.audioTranscriptionEnabled } : {}),
+        },
+      }),
+      tx.instance.update({
+        where: { id: agent.instanceId },
+        data: {
+          ...(nextName ? { agentName: nextName } : {}),
+        },
+      }),
+    ]);
 
     return tx.agent.findUniqueOrThrow({
       where: { id: agentId },
@@ -261,14 +264,15 @@ export async function deleteAgent(agentId: string) {
       where: { agentId: agent.id },
     });
 
-    await tx.agent.delete({
-      where: { id: agent.id },
-    });
-
-    await tx.instance.update({
-      where: { id: agent.instanceId },
-      data: { agentName: null },
-    });
+    await Promise.all([
+      tx.agent.delete({
+        where: { id: agent.id },
+      }),
+      tx.instance.update({
+        where: { id: agent.instanceId },
+        data: { agentName: null },
+      }),
+    ]);
 
     return {
       id: agent.id,

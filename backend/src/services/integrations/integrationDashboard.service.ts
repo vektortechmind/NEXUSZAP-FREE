@@ -416,19 +416,19 @@ export function createInMemoryIntegrationDashboardStore(seed?: {
   const dispatchLogs = [...(seed?.dispatchLogs ?? [])];
   const instances = [...(seed?.instances ?? [])];
 
+  function sortedByDateDesc<T>(items: T[], getDate: (item: T) => Date) {
+    return Array.from(items).sort((a, b) => getDate(b).getTime() - getDate(a).getTime());
+  }
+
   return {
     async listCredentials() {
-      return [...credentials].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+      return sortedByDateDesc(credentials, (credential) => credential.updatedAt);
     },
     async listRecentIngressLogs(limit) {
-      return [...ingressLogs]
-        .sort((a, b) => b.receivedAt.getTime() - a.receivedAt.getTime())
-        .slice(0, limit);
+      return sortedByDateDesc(ingressLogs, (log) => log.receivedAt).slice(0, limit);
     },
     async listRecentDispatchLogs(limit) {
-      return [...dispatchLogs]
-        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-        .slice(0, limit);
+      return sortedByDateDesc(dispatchLogs, (log) => log.createdAt).slice(0, limit);
     },
     async listInstancesByIds(instanceIds) {
       const ids = new Set(instanceIds);
@@ -571,10 +571,11 @@ export function createIntegrationDashboardService(store: IntegrationDashboardSto
       });
 
       const auditLogs = [
-        ...ingressLogs.filter((log) => log.instanceId).map((log) => {
-          const instanceId = log.instanceId!;
+        ...ingressLogs.flatMap((log) => {
+          if (!log.instanceId) return [];
+          const instanceId = log.instanceId;
           const instance = instanceById.get(instanceId);
-          return {
+          return [{
             identifier: log.id,
             entryType: "ingress" as const,
             instanceId,
@@ -592,12 +593,13 @@ export function createIntegrationDashboardService(store: IntegrationDashboardSto
             nextRetryAt: null,
             lastRetryError: null,
             retryExhaustedAt: null,
-          };
+          }];
         }),
-        ...dispatchLogs.filter((log) => log.instanceId).map((log) => {
-          const instanceId = log.instanceId!;
+        ...dispatchLogs.flatMap((log) => {
+          if (!log.instanceId) return [];
+          const instanceId = log.instanceId;
           const instance = instanceById.get(instanceId);
-          return {
+          return [{
             identifier: log.id,
             entryType: "dispatch" as const,
             instanceId,
@@ -615,7 +617,7 @@ export function createIntegrationDashboardService(store: IntegrationDashboardSto
             nextRetryAt: toIso(log.nextRetryAt),
             lastRetryError: log.lastRetryError ?? null,
             retryExhaustedAt: toIso(log.retryExhaustedAt),
-          };
+          }];
         }),
       ].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).slice(0, recentLogLimit);
 

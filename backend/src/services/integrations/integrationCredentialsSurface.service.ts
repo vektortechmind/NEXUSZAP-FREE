@@ -267,7 +267,7 @@ export function createInMemoryIntegrationCredentialsSurfaceStore(seed?: {
 
   return {
     async listInstances() {
-      return [...instances.values()].sort((left, right) => left.slot - right.slot).map((instance) => ({ ...instance }));
+      return Array.from(instances.values()).sort((left, right) => left.slot - right.slot).map((instance) => ({ ...instance }));
     },
 
     async findInstanceById(instanceId) {
@@ -276,9 +276,11 @@ export function createInMemoryIntegrationCredentialsSurfaceStore(seed?: {
     },
 
     async findLatestCredentialByInstanceId(instanceId) {
-      const credential = credentials
-        .filter((item) => item.instanceId === instanceId)
-        .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())[0];
+      let credential: IntegrationCredentialsSurfaceCredentialRecord | null = null;
+      for (const item of credentials) {
+        if (item.instanceId !== instanceId) continue;
+        if (!credential || item.createdAt > credential.createdAt) credential = item;
+      }
       return credential ? cloneCredential(credential) : null;
     },
   };

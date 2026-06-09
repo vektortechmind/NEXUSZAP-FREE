@@ -240,7 +240,10 @@ function readLogTail(limit = 40): string[] {
   ensureUpdateStorage();
   if (!existsSync(UPDATE_JOB_LOG_FILE)) return [];
   const content = readFileSync(UPDATE_JOB_LOG_FILE, "utf8");
-  return content.split(/\r?\n/).map((line) => line.trimEnd()).filter(Boolean).slice(-limit);
+  return content.split(/\r?\n/).flatMap((line) => {
+    const trimmed = line.trimEnd();
+    return trimmed ? [trimmed] : [];
+  }).slice(-limit);
 }
 
 function isActiveJob(status: UpdateJobStatus) {

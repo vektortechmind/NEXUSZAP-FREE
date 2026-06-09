@@ -19,7 +19,16 @@ export type SupportedIntegrationEventSlug = typeof SUPPORTED_INTEGRATION_EVENT_S
 type IntegrationPayload = Record<string, unknown>;
 
 export const INTEGRATION_CUSTOM_MESSAGE_MAX_LENGTH = 4000;
+const BRL_CURRENCY_FORMATTER = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const INVALID_CUSTOM_MESSAGE_TOKENS = ["undefined", "null", "[object Object]"];
+const CTA_URL_BUTTON_ALLOWED_FIELDS = new Set(["enabled", "text", "url", "buttons"]);
+const CUSTOM_MESSAGE_ALLOWED_FIELDS = new Set(["body", "pix_followup_body", "cta_url_button"]);
+const SUPPORTED_INTEGRATION_EVENT_SLUG_SET = new Set<string>(SUPPORTED_INTEGRATION_EVENT_SLUGS);
 type IntegrationProductSource = Record<string, unknown> | null;
+
+function containsInvalidCustomMessageToken(value: string): boolean {
+  return INVALID_CUSTOM_MESSAGE_TOKENS.some((token) => value.includes(token));
+}
 
 export type IntegrationNormalizedCustomer = {
   name: string | null;
@@ -363,7 +372,7 @@ function normalizeMoneyText(value: unknown, currency: string | null): string | n
   const shouldFormatBrl = !currency || currency.toUpperCase() === "BRL";
 
   if (Number.isFinite(parsed) && isPlainNumeric && shouldFormatBrl) {
-    return new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(parsed).replace(/\u00a0/g, " ");
+    return BRL_CURRENCY_FORMATTER.format(parsed).replace(/\u00a0/g, " ");
   }
 
   return raw;
@@ -431,10 +440,8 @@ function normalizeCustomMessageText(value: unknown, fieldName: string): string {
     throw new InvalidIntegrationCustomMessageError(`${fieldName} excede o limite de ${INTEGRATION_CUSTOM_MESSAGE_MAX_LENGTH} caracteres.`);
   }
 
-  for (const token of ["undefined", "null", "[object Object]"]) {
-    if (normalized.includes(token)) {
-      throw new InvalidIntegrationCustomMessageError(`${fieldName} contem texto invalido.`);
-    }
+  if (containsInvalidCustomMessageToken(normalized)) {
+    throw new InvalidIntegrationCustomMessageError(`${fieldName} contem texto invalido.`);
   }
 
   return normalized;
@@ -446,9 +453,8 @@ function normalizeCtaUrlButton(value: unknown): IntegrationNormalizedCtaUrlButto
     throw new InvalidIntegrationCustomMessageError("message.cta_url_button deve ser objeto.");
   }
 
-  const allowedFields = new Set(["enabled", "text", "url", "buttons"]);
   for (const field of Object.keys(config)) {
-    if (!allowedFields.has(field)) {
+    if (!CTA_URL_BUTTON_ALLOWED_FIELDS.has(field)) {
       throw new InvalidIntegrationCustomMessageError(`Campo message.cta_url_button.${field} nao e aceito no contrato de integracao.`);
     }
   }
@@ -501,9 +507,8 @@ function normalizeMessageOverride(eventSlug: SupportedIntegrationEventSlug, payl
   const message = asRecord(payload.message);
   if (!message) return null;
 
-  const allowedFields = new Set(["body", "pix_followup_body", "cta_url_button"]);
   for (const field of Object.keys(message)) {
-    if (!allowedFields.has(field)) {
+    if (!CUSTOM_MESSAGE_ALLOWED_FIELDS.has(field)) {
       throw new InvalidIntegrationCustomMessageError(`Campo message.${field} nao e aceito no contrato de integracao.`);
     }
   }
@@ -626,7 +631,7 @@ export function extractContext(
 }
 
 export function isSupportedIntegrationEventSlug(value: string): value is SupportedIntegrationEventSlug {
-  return (SUPPORTED_INTEGRATION_EVENT_SLUGS as readonly string[]).includes(value);
+  return SUPPORTED_INTEGRATION_EVENT_SLUG_SET.has(value);
 }
 
 export function normalizeIntegrationEventContext(eventSlug: string, payload: IntegrationPayload): IntegrationNormalizedEventContext {

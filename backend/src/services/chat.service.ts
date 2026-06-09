@@ -368,6 +368,15 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
     return `${instanceId}:${jid}`;
   }
 
+  function latestMessageForConversation(conversationId: string): ChatMessage | null {
+    let latest: ChatMessage | null = null;
+    for (const message of messages.values()) {
+      if (message.conversationId !== conversationId) continue;
+      if (!latest || message.createdAt > latest.createdAt) latest = message;
+    }
+    return latest;
+  }
+
   return {
     conversations,
     messages,
@@ -375,24 +384,23 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
       return instances.get(instanceId) ?? null;
     },
     async listConversations(input) {
-      return Array.from(conversations.values())
-        .filter((conversation) => !input.instanceId || conversation.instanceId === input.instanceId)
-        .sort((a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime())
-        .map((conversation) => ({
-          ...conversation,
-          lastMessage: Array.from(messages.values())
-            .filter((message) => message.conversationId === conversation.id)
-            .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null,
-        }));
+      const rows: ChatConversationSummary[] = [];
+      for (const conversation of conversations.values()) {
+        if (input.instanceId && conversation.instanceId !== input.instanceId) continue;
+        rows.push({ ...conversation, lastMessage: latestMessageForConversation(conversation.id) });
+      }
+      return rows.sort((a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime());
     },
     async listMessages(input) {
       const jid = normalizeChatJid(input.jid);
       const conversation = conversations.get(conversationKey(input.instanceId, jid));
       if (!conversation) return [];
       return Array.from(messages.values())
-        .filter((message) => message.conversationId === conversation.id)
-        .filter((message) => !message.isDeleted)
-        .filter((message) => !input.cursor || message.createdAt < input.cursor)
+        .filter((message) => (
+          message.conversationId === conversation.id
+          && !message.isDeleted
+          && (!input.cursor || message.createdAt < input.cursor)
+        ))
         .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
         .slice(0, input.limit);
     },
@@ -508,10 +516,7 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
         updatedAt: new Date(),
       };
       conversations.set(key, updated);
-      const lastMessage = Array.from(messages.values())
-        .filter((message) => message.conversationId === updated.id)
-        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
-      return { ...updated, lastMessage };
+      return { ...updated, lastMessage: latestMessageForConversation(updated.id) };
     },
     async listMessagesForConversation(input) {
       const jid = normalizeChatJid(input.jid);
@@ -532,10 +537,7 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
       if (!existing) return null;
       const updated = { ...existing, unreadCount: 0, updatedAt: new Date() };
       conversations.set(key, updated);
-      const lastMessage = Array.from(messages.values())
-        .filter((message) => message.conversationId === updated.id)
-        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0] ?? null;
-      return { ...updated, lastMessage };
+      return { ...updated, lastMessage: latestMessageForConversation(updated.id) };
     },
   };
 }

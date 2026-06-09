@@ -117,12 +117,10 @@ export function normalizePublicUrl(input: string): string {
 }
 
 export function mergeCorsOrigins(current: string | undefined, origin: string): string {
-  const values = new Set(
-    (current ?? "")
-      .split(",")
-      .map((value) => value.trim())
-      .filter(Boolean)
-  );
+  const values = new Set((current ?? "").split(",").flatMap((value) => {
+    const trimmed = value.trim();
+    return trimmed ? [trimmed] : [];
+  }));
   values.add(origin);
   return Array.from(values).join(",");
 }

@@ -180,12 +180,18 @@ export class MemoryManager {
   private enforceMaxConversations(): void {
     if (this.memory.size <= this.maxConversations) return;
 
-    const entries = [...this.memory.entries()].sort(
-      (a, b) => a[1].lastAccessedAt - b[1].lastAccessedAt
-    );
     const removeCount = this.memory.size - this.maxConversations;
-    for (const [key] of entries.slice(0, removeCount)) {
-      this.memory.delete(key);
+    for (let removed = 0; removed < removeCount; removed += 1) {
+      let oldestKey: string | null = null;
+      let oldestAccess = Number.POSITIVE_INFINITY;
+      for (const [key, entry] of this.memory.entries()) {
+        if (entry.lastAccessedAt < oldestAccess) {
+          oldestKey = key;
+          oldestAccess = entry.lastAccessedAt;
+        }
+      }
+      if (!oldestKey) break;
+      this.memory.delete(oldestKey);
     }
     this.stats.conversationsEvicted += removeCount;
     this.logger.warn("conversas descartadas por limite maximo", {

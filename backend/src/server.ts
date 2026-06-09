@@ -40,8 +40,10 @@ export async function buildServer() {
   const defaultOrigins = ["http://localhost:5173", "http://127.0.0.1:5173"];
   const extraOrigins =
     env.CORS_ORIGINS?.split(",")
-      .map((o) => o.trim())
-      .filter(Boolean) ?? [];
+      .flatMap((origin) => {
+        const trimmed = origin.trim();
+        return trimmed ? [trimmed] : [];
+      }) ?? [];
   const corsOrigins = [...defaultOrigins, ...extraOrigins];
 
   const allowedOrigins = buildAllowedOrigins(corsOrigins, env.NODE_ENV);

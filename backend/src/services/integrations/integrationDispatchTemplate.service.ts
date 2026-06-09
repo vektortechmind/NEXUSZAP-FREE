@@ -5,6 +5,11 @@ import type {
 import integrationEventCatalog = require("./integrationEventCatalog.service");
 
 const { normalizeIntegrationEventContext } = integrationEventCatalog;
+const INVALID_RENDERED_TEXT_TOKENS = ["undefined", "null", "[object Object]"];
+
+function containsInvalidRenderedTextToken(value: string): boolean {
+  return INVALID_RENDERED_TEXT_TOKENS.some((token) => value.includes(token));
+}
 
 export type IntegrationDispatchMessageType = "text" | "link" | "document" | "image" | "template";
 
@@ -71,9 +76,10 @@ function compactWhitespace(value: string): string {
 }
 
 function joinParagraphs(paragraphs: Array<string | null | undefined>): string {
-  const filtered = paragraphs
-    .map((paragraph) => normalizeTextValue(paragraph))
-    .filter(Boolean);
+  const filtered = paragraphs.flatMap((paragraph) => {
+    const normalized = normalizeTextValue(paragraph);
+    return normalized ? [normalized] : [];
+  });
 
   return compactWhitespace(filtered.join("\n\n"));
 }
@@ -168,10 +174,8 @@ function assertRenderedText(value: string, eventSlug: SupportedIntegrationEventS
     throw new IntegrationDispatchTemplateRenderError(`Template do evento ${eventSlug} gerou corpo vazio.`);
   }
 
-  for (const token of ["undefined", "null", "[object Object]"]) {
-    if (normalized.includes(token)) {
-      throw new IntegrationDispatchTemplateRenderError(`Template do evento ${eventSlug} gerou texto inválido.`);
-    }
+  if (containsInvalidRenderedTextToken(normalized)) {
+    throw new IntegrationDispatchTemplateRenderError(`Template do evento ${eventSlug} gerou texto inválido.`);
   }
 
   return normalized;

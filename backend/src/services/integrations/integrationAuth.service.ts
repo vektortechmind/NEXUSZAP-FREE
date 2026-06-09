@@ -573,9 +573,11 @@ export function createInMemoryIntegrationAuthStore(seed?: {
     },
 
     async findActiveCredentialByInstanceId(instanceId) {
-      const found = Array.from(credentials.values())
-        .filter((credential) => credential.instanceId === instanceId && credential.status === IntegrationCredentialStatus.ACTIVE)
-        .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())[0];
+      let found: IntegrationCredentialRecord | null = null;
+      for (const credential of credentials.values()) {
+        if (credential.instanceId !== instanceId || credential.status !== IntegrationCredentialStatus.ACTIVE) continue;
+        if (!found || credential.createdAt > found.createdAt) found = credential;
+      }
       return found ? cloneCredential(found) : null;
     },
 

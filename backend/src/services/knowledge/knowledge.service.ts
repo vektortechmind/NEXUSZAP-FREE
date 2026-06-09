@@ -20,6 +20,13 @@ type KnowledgeBinaryRecord = {
   channel?: string;
 };
 
+const EXTRACTABLE_KNOWLEDGE_MIMETYPES = new Set([
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/json",
+  "text/plain",
+]);
+
 export async function getKnowledgeOwnerByAgent(agentId: string) {
   return prisma.agent.findUnique({
     where: { id: agentId },
@@ -79,12 +86,7 @@ export async function ensureKnowledgeExtracted(
   for (const file of files) {
     if (file.extracted && file.extracted.trim()) continue;
 
-    const canExtract = [
-      "application/pdf",
-      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      "application/json",
-      "text/plain"
-    ].includes(file.mimetype);
+    const canExtract = EXTRACTABLE_KNOWLEDGE_MIMETYPES.has(file.mimetype);
 
     if (!canExtract) continue;
 

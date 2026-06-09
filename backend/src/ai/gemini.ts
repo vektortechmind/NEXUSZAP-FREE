@@ -34,14 +34,18 @@ const GEMINI_MODELS = [
 ];
 
 export async function geminiChat(apiKey: string, messages: ChatMessage[]) {
-  const systemText = messages
-    .filter((m) => m.role === "system")
-    .map((m) => m.content)
-    .join("\n\n");
+  const systemParts: string[] = [];
+  const dialogParts: { role: string; content: string }[] = [];
+  for (const message of messages) {
+    if (message.role === "system") {
+      systemParts.push(message.content);
+    } else {
+      dialogParts.push({ role: message.role as string, content: String(message.content ?? "") });
+    }
+  }
+  const systemText = systemParts.join("\n\n");
 
-  let dialog = messages
-    .filter((m) => m.role !== "system")
-    .map((m) => ({ role: m.role as string, content: String(m.content ?? "") }));
+  let dialog = dialogParts;
 
   dialog = mergeConsecutiveRoles(dialog);
 

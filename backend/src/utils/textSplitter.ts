@@ -3,7 +3,10 @@ export function splitLongText(text: string, maxChunkLen: number): string[] {
   if (!t) return [];
 
   // Quebra por parágrafos
-  const paragraphs = t.split(/\n{2,}/g).map((p) => p.trim()).filter(Boolean);
+  const paragraphs = t.split(/\n{2,}/g).flatMap((p) => {
+    const paragraph = p.trim();
+    return paragraph ? [paragraph] : [];
+  });
 
   const chunks: string[] = [];
   
