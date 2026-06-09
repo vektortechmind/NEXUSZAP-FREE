@@ -30,6 +30,8 @@ function createBaileysMock() {
       return { providerMessageId: "wamid.sent.1", raw: null };
     },
     async sendReaction() {},
+    async editMessage() {},
+    async deleteMessage() {},
     async getContactProfile() {
       return { name: null, profilePicUrl: null };
     },
@@ -68,6 +70,10 @@ function createBaileysMock() {
   const handlerSource = fs.readFileSync(path.resolve(__dirname, "../src/whatsapp/messageHandler.ts"), "utf8");
   assert.match(handlerSource, /reactionMessage/);
   assert.match(handlerSource, /persistReaction/);
+  assert.match(handlerSource, /ProtocolMessage\.Type\.REVOKE/);
+  assert.match(handlerSource, /ProtocolMessage\.Type\.MESSAGE_EDIT/);
+  assert.match(handlerSource, /markMessageDeleted/);
+  assert.match(handlerSource, /editMessageFromProvider/);
   assert.match(handlerSource, /downloadMediaFromMessage/);
 
   const store = createInMemoryChatStore({ instances: [{ id: "instance-a" }] });
@@ -107,6 +113,17 @@ function createBaileysMock() {
   assert.equal(response.headers["content-type"], "audio/ogg; codecs=opus");
   assert.equal(response.headers["content-disposition"], "inline");
   assert.equal(response.rawPayload.toString(), "audio-bytes");
+
+  const providerEdited = await service.editMessageFromProvider({
+    instanceId: "instance-a",
+    providerMessageId: "wamid.audio.1",
+    body: "Audio editado pelo provider",
+  });
+  assert.equal(providerEdited.body, "Audio editado pelo provider");
+  assert.ok(providerEdited.editedAt);
+
+  const providerDeleted = await service.markMessageDeleted({ instanceId: "instance-a", providerMessageId: "wamid.audio.1" });
+  assert.equal(providerDeleted.isDeleted, true);
 
   const image = await service.persistInboundMessage({
     instanceId: "instance-a",

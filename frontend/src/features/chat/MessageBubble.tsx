@@ -1,11 +1,14 @@
-import { AlertTriangle, Check, CheckCheck, Eye, X } from "lucide-react";
+import { AlertTriangle, Check, CheckCheck, Eye, Pencil, X } from "lucide-react";
 import type { ChatMessage, ChatMessageStatus } from "./types";
 import { AudioPlayer } from "./AudioPlayer";
-import { getKnownMessageFallback, getMessageStatusLabel } from "./chatDisplay";
+import { getKnownMessageFallback, getMessagePreviewText, getMessageStatusLabel } from "./chatDisplay";
+import { MessageMenuButton } from "./MessageContextMenu";
 
 type MessageBubbleProps = {
   message: ChatMessage;
+  quotedMessage?: ChatMessage | null;
   onReact?: (message: ChatMessage, emoji: string) => Promise<void> | void;
+  onOpenMenu?: (message: ChatMessage, position: { x: number; y: number }) => void;
 };
 
 const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "🙏"];
@@ -27,12 +30,13 @@ function MessageMeta({ message, inline = false }: { message: ChatMessage; inline
   return (
     <span className={`${inline ? "ml-2 inline-flex align-baseline" : "mt-1 flex justify-end"} items-center gap-1 text-[11px] ${fromMe ? "text-white/78 dark:text-slate-950/70" : "text-slate-500 dark:text-slate-400"}`}>
       <time dateTime={message.createdAt}>{formatTime(message.createdAt)}</time>
+      {message.editedAt ? <Pencil size={11} aria-label="Editado" /> : null}
       {fromMe ? <MessageStatus status={message.status} /> : null}
     </span>
   );
 }
 
-export function MessageBubble({ message, onReact }: MessageBubbleProps) {
+export function MessageBubble({ message, quotedMessage, onReact, onOpenMenu }: MessageBubbleProps) {
   const fromMe = message.fromMe;
   const showAudio = message.messageType === "AUDIO" && Boolean(message.mediaUrl);
   const showImage = message.messageType === "IMAGE" && Boolean(message.mediaUrl);
@@ -42,12 +46,24 @@ export function MessageBubble({ message, onReact }: MessageBubbleProps) {
   const showInlineMeta = !showMedia;
   const isViewOnce = Boolean(showMedia && message.body?.startsWith("Visualizacao unica"));
   const displayBody = isViewOnce ? message.body?.replace(/^Visualizacao unica\n?/, "").trim() : message.body;
-  const canReact = Boolean(onReact && message.providerMessageId);
+  const canReact = Boolean(onReact && message.providerMessageId && !message.isDeleted);
   return (
     <div className={`flex ${fromMe ? "justify-end" : "justify-start"}`}>
       <div
         className={`group relative w-fit max-w-[min(82%,42rem)] rounded-lg px-2.5 py-1.5 shadow-[0_1px_0_rgba(15,23,42,0.08)] ${fromMe ? "bg-emerald-600 text-white dark:bg-emerald-500 dark:text-slate-950" : "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100"}`}
+        onContextMenu={(event) => {
+          if (!onOpenMenu) return;
+          event.preventDefault();
+          onOpenMenu(message, { x: event.clientX, y: event.clientY });
+        }}
       >
+        {onOpenMenu && !message.isDeleted ? (
+          <MessageMenuButton onClick={(event) => {
+            event.stopPropagation();
+            const rect = event.currentTarget.getBoundingClientRect();
+            onOpenMenu(message, { x: rect.left, y: rect.bottom + 4 });
+          }} />
+        ) : null}
         {canReact ? (
           <div className={`absolute top-0 z-10 hidden -translate-y-1/2 items-center gap-0.5 rounded-full border border-slate-200 bg-white px-1 py-0.5 text-sm shadow-lg shadow-slate-900/10 group-hover:flex group-focus-within:flex dark:border-slate-700 dark:bg-slate-900 ${fromMe ? "right-full mr-1" : "left-full ml-1"}`}>
             {QUICK_REACTIONS.map((emoji) => (
@@ -79,19 +95,28 @@ export function MessageBubble({ message, onReact }: MessageBubbleProps) {
             <span>Visualizacao unica</span>
           </div>
         ) : null}
-        {showAudio ? <AudioPlayer src={message.mediaUrl!} durationMs={message.mediaDurationMs} fromMe={fromMe} /> : null}
-        {showImage ? <img src={message.mediaUrl!} alt="" loading="lazy" className="max-h-[24rem] max-w-full rounded-md object-contain" /> : null}
-        {showVideo ? <video src={message.mediaUrl!} controls className="max-h-[24rem] max-w-full rounded-md" /> : null}
-        {displayBody ? (
+        {message.isDeleted ? (
+          <p className="pr-5 text-sm italic opacity-65">Mensagem apagada{showInlineMeta ? <MessageMeta message={message} inline /> : null}</p>
+        ) : null}
+        {!message.isDeleted && quotedMessage ? (
+          <div className={`mb-1 max-w-72 rounded-md border-l-4 px-2 py-1 ${fromMe ? "border-white/70 bg-white/15 dark:border-slate-950/40 dark:bg-slate-950/10" : "border-emerald-500 bg-white/70 dark:bg-slate-900/70"}`}>
+            <p className="text-xs font-semibold">{quotedMessage.fromMe ? "Voce" : "Contato"}</p>
+            <p className="truncate text-xs opacity-80">{getMessagePreviewText(quotedMessage)}</p>
+          </div>
+        ) : null}
+        {!message.isDeleted && showAudio ? <AudioPlayer src={message.mediaUrl!} durationMs={message.mediaDurationMs} fromMe={fromMe} /> : null}
+        {!message.isDeleted && showImage ? <img src={message.mediaUrl!} alt="" loading="lazy" className="max-h-[24rem] max-w-full rounded-md object-contain" /> : null}
+        {!message.isDeleted && showVideo ? <video src={message.mediaUrl!} controls className="max-h-[24rem] max-w-full rounded-md" /> : null}
+        {!message.isDeleted && displayBody ? (
           <p className="whitespace-pre-wrap break-words text-sm leading-5">
             {displayBody}
             {showInlineMeta ? <MessageMeta message={message} inline /> : null}
           </p>
         ) : null}
-        {missingVisualMedia && !displayBody ? (
+        {!message.isDeleted && missingVisualMedia && !displayBody ? (
           <p className="text-sm italic opacity-75">{message.messageType === "IMAGE" ? "[Imagem]" : "[Video]"}</p>
         ) : null}
-        {!showMedia && !missingVisualMedia && !displayBody ? (
+        {!message.isDeleted && !showMedia && !missingVisualMedia && !displayBody ? (
           <p className="text-sm italic opacity-75">
             {getKnownMessageFallback(message)}
             {showInlineMeta ? <MessageMeta message={message} inline /> : null}

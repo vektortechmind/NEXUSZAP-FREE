@@ -66,6 +66,14 @@ class ChatRealtimeHub {
     this.emitter?.emitToInstance(input.instanceId, "message:status", serializeMessage(input.message));
   }
 
+  emitMessageEdited(input: { instanceId: string; message: ChatMessage }) {
+    this.emitter?.emitToInstance(input.instanceId, "message:edited", serializeMessage(input.message));
+  }
+
+  emitMessageDeleted(input: { instanceId: string; message: ChatMessage }) {
+    this.emitter?.emitToInstance(input.instanceId, "message:deleted", serializeMessage(input.message));
+  }
+
   emitReaction(input: { instanceId: string; jid: string; message: ChatMessage }) {
     this.emitter?.emitToInstance(input.instanceId, "message:reaction", {
       messageId: input.message.id,

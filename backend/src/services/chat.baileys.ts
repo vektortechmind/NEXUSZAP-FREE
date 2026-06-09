@@ -18,8 +18,10 @@ export class ChatProviderSendError extends Error {
 }
 
 export type ChatBaileysAdapter = {
-  sendTextMessage(input: { instanceId: string; jid: string; body: string }): Promise<{ providerMessageId: string | null; raw: WAMessage | null }>;
+  sendTextMessage(input: { instanceId: string; jid: string; body: string; quotedMessage?: WAMessage | null }): Promise<{ providerMessageId: string | null; raw: WAMessage | null }>;
   sendReaction(input: { instanceId: string; jid: string; providerMessageId: string; emoji: string; targetFromMe: boolean }): Promise<void>;
+  editMessage(input: { instanceId: string; jid: string; providerMessageId: string; body: string }): Promise<void>;
+  deleteMessage(input: { instanceId: string; jid: string; providerMessageId: string }): Promise<void>;
   getContactProfile(input: { instanceId: string; jid: string }): Promise<{ name: string | null; profilePicUrl: string | null }>;
 };
 
@@ -33,11 +35,36 @@ export const baileysChatAdapter: ChatBaileysAdapter = {
   async sendTextMessage(input) {
     const sock = getSocket(input.instanceId);
     try {
-      const sent = await sock.sendMessage(input.jid, { text: input.body });
+      const sent = await sock.sendMessage(input.jid, { text: input.body }, input.quotedMessage ? { quoted: input.quotedMessage } : undefined);
       return {
         providerMessageId: sent?.key?.id ?? null,
         raw: sent ?? null,
       };
+    } catch (err) {
+      if (err instanceof ChatInstanceOfflineError) throw err;
+      throw new ChatProviderSendError(err instanceof Error ? err.message : undefined);
+    }
+  },
+
+  async editMessage(input) {
+    const sock = getSocket(input.instanceId);
+    try {
+      await sock.sendMessage(input.jid, {
+        text: input.body,
+        edit: { id: input.providerMessageId, remoteJid: input.jid, fromMe: true },
+      });
+    } catch (err) {
+      if (err instanceof ChatInstanceOfflineError) throw err;
+      throw new ChatProviderSendError(err instanceof Error ? err.message : undefined);
+    }
+  },
+
+  async deleteMessage(input) {
+    const sock = getSocket(input.instanceId);
+    try {
+      await sock.sendMessage(input.jid, {
+        delete: { id: input.providerMessageId, remoteJid: input.jid, fromMe: true },
+      });
     } catch (err) {
       if (err instanceof ChatInstanceOfflineError) throw err;
       throw new ChatProviderSendError(err instanceof Error ? err.message : undefined);

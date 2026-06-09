@@ -1,5 +1,5 @@
 import type { ChatMessageStatus, ChatMessageType, MessageDirection } from "@prisma/client";
-import { WAMessageStatus, type WAMessageUpdate } from "@whiskeysockets/baileys";
+import { WAMessageStatus, type WAMessage, type WAMessageUpdate } from "@whiskeysockets/baileys";
 import { prisma } from "../database/prisma";
 import { safeLogError } from "../utils/redaction";
 import { recordMessageEvent } from "./analytics/messageEvent.service";
@@ -38,6 +38,9 @@ export type ChatMessage = {
   mediaMimeType: string | null;
   mediaDurationMs: number | null;
   reactionEmoji: string | null;
+  editedAt: Date | null;
+  isDeleted: boolean;
+  quotedMessageId: string | null;
   createdAt: Date;
 };
 
@@ -57,6 +60,7 @@ type PersistMessageInput = {
   mediaMimeType?: string | null;
   mediaDurationMs?: number | null;
   reactionEmoji?: string | null;
+  quotedMessageId?: string | null;
   createdAt?: Date;
   contactName?: string | null;
   profilePicUrl?: string | null;
@@ -71,6 +75,10 @@ export type ChatStore = {
   updateMessageStatus(input: { messageId: string; status: ChatMessageStatus; providerMessageId?: string | null }): Promise<ChatMessage>;
   updateMessageMedia(input: { messageId: string; mediaUrl: string; mediaMimeType?: string | null; mediaDurationMs?: number | null }): Promise<ChatMessage>;
   updateMessageReaction(input: { messageId: string; reactionEmoji: string | null }): Promise<ChatMessage>;
+  updateMessageText(input: { messageId: string; body: string; editedAt?: Date }): Promise<ChatMessage>;
+  softDeleteMessage(input: { messageId: string }): Promise<ChatMessage>;
+  listMessagesForConversation(input: { instanceId: string; jid: string }): Promise<ChatMessage[]>;
+  softDeleteConversationMessages(input: { instanceId: string; jid: string }): Promise<ChatMessage[]>;
 };
 
 export type ChatEventRecorder = (input: { instanceId: string; channel: "WHATSAPP"; direction: MessageDirection; usedAi: boolean }) => Promise<unknown>;
@@ -95,6 +103,9 @@ export class ChatMediaNotFoundError extends Error {
   }
 }
 
+export type ChatDeleteMode = "for_me" | "for_everyone" | "for_everyone_and_erase";
+export type ChatClearMode = "panel_only" | "panel_and_whatsapp";
+
 function newId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -109,6 +120,30 @@ function chatStatusFromBaileysStatus(status: unknown): ChatMessageStatus | null 
   if (status === WAMessageStatus.DELIVERY_ACK) return "DELIVERED";
   if (status === WAMessageStatus.READ || status === WAMessageStatus.PLAYED) return "READ";
   return null;
+}
+
+function messagePreviewBody(message: ChatMessage) {
+  if (message.isDeleted) return "Mensagem apagada";
+  if (message.body?.trim()) return message.body;
+  if (message.messageType === "IMAGE") return "[Imagem]";
+  if (message.messageType === "VIDEO") return "[Video]";
+  if (message.messageType === "AUDIO") return "[Audio]";
+  if (message.messageType === "DOCUMENT") return "[Documento]";
+  return "Mensagem";
+}
+
+function buildQuotedWAMessage(message: ChatMessage): WAMessage {
+  return {
+    key: {
+      id: message.providerMessageId ?? undefined,
+      remoteJid: message.jid,
+      fromMe: message.fromMe,
+    },
+    message: {
+      conversation: messagePreviewBody(message),
+    },
+    messageTimestamp: Math.floor(message.createdAt.getTime() / 1000),
+  } as WAMessage;
 }
 
 export function normalizeChatJid(value: string): string {
@@ -153,6 +188,7 @@ export const prismaChatStore: ChatStore = {
     return prisma.message.findMany({
       where: {
         conversationId: conversation.id,
+        isDeleted: false,
         ...(input.cursor ? { createdAt: { lt: input.cursor } } : {}),
       },
       orderBy: { createdAt: "desc" },
@@ -202,6 +238,7 @@ export const prismaChatStore: ChatStore = {
           mediaMimeType: input.mediaMimeType ?? null,
           mediaDurationMs: input.mediaDurationMs ?? null,
           reactionEmoji: input.reactionEmoji ?? null,
+          quotedMessageId: input.quotedMessageId ?? null,
           createdAt,
         },
       });
@@ -236,6 +273,42 @@ export const prismaChatStore: ChatStore = {
       where: { id: input.messageId },
       data: { reactionEmoji: input.reactionEmoji },
     });
+  },
+
+  async updateMessageText(input) {
+    return prisma.message.update({
+      where: { id: input.messageId },
+      data: { body: input.body, editedAt: input.editedAt ?? new Date() },
+    });
+  },
+
+  async softDeleteMessage(input) {
+    return prisma.message.update({
+      where: { id: input.messageId },
+      data: { isDeleted: true, body: null },
+    });
+  },
+
+  async listMessagesForConversation(input) {
+    const jid = normalizeChatJid(input.jid);
+    return prisma.message.findMany({
+      where: { instanceId: input.instanceId, jid, isDeleted: false },
+      orderBy: { createdAt: "asc" },
+    });
+  },
+
+  async softDeleteConversationMessages(input) {
+    const jid = normalizeChatJid(input.jid);
+    const messages = await prisma.message.findMany({
+      where: { instanceId: input.instanceId, jid, isDeleted: false },
+      orderBy: { createdAt: "asc" },
+    });
+    if (messages.length === 0) return [];
+    await prisma.message.updateMany({
+      where: { id: { in: messages.map((message) => message.id) } },
+      data: { isDeleted: true, body: null },
+    });
+    return messages.map((message) => ({ ...message, isDeleted: true, body: null }));
   },
 };
 
@@ -274,6 +347,7 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
       if (!conversation) return [];
       return Array.from(messages.values())
         .filter((message) => message.conversationId === conversation.id)
+        .filter((message) => !message.isDeleted)
         .filter((message) => !input.cursor || message.createdAt < input.cursor)
         .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
         .slice(0, input.limit);
@@ -323,6 +397,9 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
         mediaMimeType: input.mediaMimeType ?? null,
         mediaDurationMs: input.mediaDurationMs ?? null,
         reactionEmoji: input.reactionEmoji ?? null,
+        editedAt: null,
+        isDeleted: false,
+        quotedMessageId: input.quotedMessageId ?? null,
         createdAt: now,
       };
       messages.set(message.id, message);
@@ -359,6 +436,32 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
         reactionEmoji: input.reactionEmoji,
       };
       messages.set(updated.id, updated);
+      return updated;
+    },
+    async updateMessageText(input) {
+      const existing = messages.get(input.messageId);
+      if (!existing) throw new Error("Mensagem nao encontrada.");
+      const updated = { ...existing, body: input.body, editedAt: input.editedAt ?? new Date() };
+      messages.set(updated.id, updated);
+      return updated;
+    },
+    async softDeleteMessage(input) {
+      const existing = messages.get(input.messageId);
+      if (!existing) throw new Error("Mensagem nao encontrada.");
+      const updated = { ...existing, body: null, isDeleted: true };
+      messages.set(updated.id, updated);
+      return updated;
+    },
+    async listMessagesForConversation(input) {
+      const jid = normalizeChatJid(input.jid);
+      return Array.from(messages.values())
+        .filter((message) => message.instanceId === input.instanceId && message.jid === jid && !message.isDeleted)
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+    },
+    async softDeleteConversationMessages(input) {
+      const rows = await this.listMessagesForConversation(input);
+      const updated = rows.map((message) => ({ ...message, body: null, isDeleted: true }));
+      updated.forEach((message) => messages.set(message.id, message));
       return updated;
     },
   };
@@ -430,11 +533,16 @@ export function createChatService(deps: {
       return result.message;
     },
 
-    async sendTextMessage(input: { instanceId: string; jid: string; body: string }) {
+    async sendTextMessage(input: { instanceId: string; jid: string; body: string; quotedMessageId?: string | null }) {
       await ensureInstance(input.instanceId);
       const jid = normalizeChatJid(input.jid);
       const body = input.body.trim();
       if (!body) throw new ChatValidationError("Corpo da mensagem obrigatorio.");
+      const quotedProviderMessageId = input.quotedMessageId?.trim() || null;
+      const quotedMessage = quotedProviderMessageId
+        ? await store.findMessageByProviderId({ instanceId: input.instanceId, providerMessageId: quotedProviderMessageId })
+        : null;
+      if (quotedProviderMessageId && !quotedMessage) throw new ChatValidationError("Mensagem citada nao encontrada.");
 
       const result = await store.persistMessage({
         instanceId: input.instanceId,
@@ -443,10 +551,16 @@ export function createChatService(deps: {
         body,
         messageType: "TEXT",
         status: "SENT",
+        quotedMessageId: quotedProviderMessageId,
       });
 
       try {
-        const sent = await baileys.sendTextMessage({ instanceId: input.instanceId, jid, body });
+        const sent = await baileys.sendTextMessage({
+          instanceId: input.instanceId,
+          jid,
+          body,
+          quotedMessage: quotedMessage ? buildQuotedWAMessage(quotedMessage) : null,
+        });
         const updated = await store.updateMessageStatus({
           messageId: result.message.id,
           status: "SENT",
@@ -467,6 +581,76 @@ export function createChatService(deps: {
         if (err instanceof ChatInstanceOfflineError || err instanceof ChatProviderSendError) throw err;
         throw new ChatProviderSendError(err instanceof Error ? err.message : undefined);
       }
+    },
+
+    async editMessage(input: { instanceId: string; jid: string; providerMessageId: string; body: string }) {
+      await ensureInstance(input.instanceId);
+      const jid = normalizeChatJid(input.jid);
+      const providerMessageId = input.providerMessageId.trim();
+      const body = input.body.trim();
+      if (!providerMessageId) throw new ChatValidationError("ID da mensagem obrigatorio.");
+      if (!body) throw new ChatValidationError("Corpo da mensagem obrigatorio.");
+      const message = await store.findMessageByProviderId({ instanceId: input.instanceId, providerMessageId });
+      if (!message) throw new ChatValidationError("Mensagem nao encontrada.");
+      if (!message.fromMe) throw new ChatValidationError("So pode editar mensagens proprias.");
+      if (message.messageType !== "TEXT") throw new ChatValidationError("So pode editar mensagens de texto.");
+      if (message.isDeleted) throw new ChatValidationError("Mensagem apagada nao pode ser editada.");
+      await baileys.editMessage({ instanceId: input.instanceId, jid, providerMessageId, body });
+      const updated = await store.updateMessageText({ messageId: message.id, body, editedAt: new Date() });
+      chatRealtime.emitMessageEdited({ instanceId: input.instanceId, message: updated });
+      return updated;
+    },
+
+    async editMessageFromProvider(input: { instanceId: string; providerMessageId: string; body: string | null }) {
+      await ensureInstance(input.instanceId);
+      const providerMessageId = input.providerMessageId.trim();
+      if (!providerMessageId || !input.body?.trim()) return null;
+      const message = await store.findMessageByProviderId({ instanceId: input.instanceId, providerMessageId });
+      if (!message) return null;
+      const updated = await store.updateMessageText({ messageId: message.id, body: input.body.trim(), editedAt: new Date() });
+      chatRealtime.emitMessageEdited({ instanceId: input.instanceId, message: updated });
+      return updated;
+    },
+
+    async deleteMessage(input: { instanceId: string; jid: string; providerMessageId: string; mode: ChatDeleteMode }) {
+      await ensureInstance(input.instanceId);
+      const jid = normalizeChatJid(input.jid);
+      const providerMessageId = input.providerMessageId.trim();
+      if (!providerMessageId) throw new ChatValidationError("ID da mensagem obrigatorio.");
+      const message = await store.findMessageByProviderId({ instanceId: input.instanceId, providerMessageId });
+      if (!message) throw new ChatValidationError("Mensagem nao encontrada.");
+      if (!message.fromMe) throw new ChatValidationError("So pode apagar mensagens proprias por esta acao.");
+      await baileys.deleteMessage({ instanceId: input.instanceId, jid, providerMessageId });
+      if (input.mode === "for_everyone") return message;
+      const updated = await store.softDeleteMessage({ messageId: message.id });
+      chatRealtime.emitMessageDeleted({ instanceId: input.instanceId, message: updated });
+      return updated;
+    },
+
+    async markMessageDeleted(input: { instanceId: string; providerMessageId: string }) {
+      await ensureInstance(input.instanceId);
+      const providerMessageId = input.providerMessageId.trim();
+      if (!providerMessageId) return null;
+      const message = await store.findMessageByProviderId({ instanceId: input.instanceId, providerMessageId });
+      if (!message) return null;
+      const updated = await store.softDeleteMessage({ messageId: message.id });
+      chatRealtime.emitMessageDeleted({ instanceId: input.instanceId, message: updated });
+      return updated;
+    },
+
+    async clearConversation(input: { instanceId: string; jid: string; mode: ChatClearMode }) {
+      await ensureInstance(input.instanceId);
+      const jid = normalizeChatJid(input.jid);
+      const messages = await store.listMessagesForConversation({ instanceId: input.instanceId, jid });
+      if (input.mode === "panel_and_whatsapp") {
+        for (const message of messages) {
+          if (!message.providerMessageId || !message.fromMe) continue;
+          await baileys.deleteMessage({ instanceId: input.instanceId, jid, providerMessageId: message.providerMessageId });
+        }
+      }
+      const deleted = await store.softDeleteConversationMessages({ instanceId: input.instanceId, jid });
+      deleted.forEach((message) => chatRealtime.emitMessageDeleted({ instanceId: input.instanceId, message }));
+      return { deletedCount: deleted.length };
     },
 
     async recordBaileysMessageUpdate(instanceId: string, update: WAMessageUpdate) {

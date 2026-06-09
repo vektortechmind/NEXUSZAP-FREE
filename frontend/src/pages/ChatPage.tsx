@@ -7,6 +7,8 @@ import { upsertMessage } from "../features/chat/chatState";
 import { useChat } from "../features/chat/useChat";
 import { CHAT_UNREAD_TOTAL_EVENT, type ChatConversation, type ChatMessage, type ChatPresence, type ChatReactionEvent } from "../features/chat/types";
 import { getUnreadTotal, useConversations } from "../features/chat/useConversations";
+import { MessageContextMenu } from "../features/chat/MessageContextMenu";
+import type { MessageContextMenuAction } from "../features/chat/messageContextActions";
 
 function conversationKey(conversation: Pick<ChatConversation, "instanceId" | "jid">) {
   return `${conversation.instanceId}:${conversation.jid}`;
@@ -36,6 +38,8 @@ export function ChatPage() {
   const [sending, setSending] = useState(false);
   const [mobileThreadOpen, setMobileThreadOpen] = useState(false);
   const [typing, setTyping] = useState<Record<string, boolean>>({});
+  const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ message: ChatMessage; position: { x: number; y: number } } | null>(null);
 
   const {
     conversations,
@@ -48,6 +52,9 @@ export function ChatPage() {
     loadMessages,
     sendTextMessage,
     sendReaction,
+    editMessage,
+    deleteMessage,
+    clearConversation,
     unreadTotal,
   } = useConversations(selectedInstanceId, search);
 
@@ -89,6 +96,10 @@ export function ChatPage() {
     handleStatus(event.message);
   }, [handleStatus]);
 
+  const handleDeleted = useCallback((message: ChatMessage) => {
+    handleStatus(message);
+  }, [handleStatus]);
+
   const handlePresence = useCallback((presence: ChatPresence) => {
     const key = `${presence.instanceId}:${presence.jid}`;
     setTyping((current) => ({ ...current, [key]: presence.isTyping }));
@@ -102,9 +113,11 @@ export function ChatPage() {
     onMessageSent: handleMessage,
     onMessageStatus: handleStatus,
     onMessageReaction: handleReaction,
+    onMessageEdited: handleStatus,
+    onMessageDeleted: handleDeleted,
     onConversationUpdate: handleConversationUpdate,
     onPresenceUpdate: handlePresence,
-  }), [handleConversationUpdate, handleMessage, handlePresence, handleReaction, handleStatus]);
+  }), [handleConversationUpdate, handleDeleted, handleMessage, handlePresence, handleReaction, handleStatus]);
 
   const { connectionState } = useChat(chatCallbacks);
   const selectedInstanceForSync = selectedConversation?.instanceId ?? null;
@@ -173,13 +186,22 @@ export function ChatPage() {
       mediaMimeType: null,
       mediaDurationMs: null,
       reactionEmoji: null,
+      editedAt: null,
+      isDeleted: false,
+      quotedMessageId: replyingTo?.providerMessageId ?? null,
       createdAt: new Date().toISOString(),
     };
     setMessages((current) => upsertMessage(current, optimisticMessage));
     setSending(true);
     try {
-      const message = await sendTextMessage({ instanceId: selectedConversation.instanceId, jid: selectedConversation.jid, body });
+      const message = await sendTextMessage({
+        instanceId: selectedConversation.instanceId,
+        jid: selectedConversation.jid,
+        body,
+        quotedMessageId: replyingTo?.providerMessageId ?? null,
+      });
       setMessages((current) => upsertMessage(current.filter((item) => item.id !== optimisticId), message));
+      setReplyingTo(null);
     } catch (err) {
       console.error(err);
       setMessages((current) => current.map((item) => item.id === optimisticId ? { ...item, status: "FAILED" } : item));
@@ -187,7 +209,7 @@ export function ChatPage() {
     } finally {
       setSending(false);
     }
-  }, [addToast, selectedConversation, sendTextMessage]);
+  }, [addToast, replyingTo, selectedConversation, sendTextMessage]);
 
   const reactToMessage = useCallback(async (message: ChatMessage, emoji: string) => {
     if (!selectedConversation || !message.providerMessageId) return;
@@ -207,6 +229,52 @@ export function ChatPage() {
       addToast("Nao foi possivel enviar a reacao.", "error");
     }
   }, [addToast, handleStatus, selectedConversation, sendReaction]);
+
+  const handleMessageAction = useCallback(async (action: MessageContextMenuAction, message: ChatMessage) => {
+    setContextMenu(null);
+    if (!selectedConversation || !message.providerMessageId) return;
+    if (action === "reply") {
+      setReplyingTo(message);
+      return;
+    }
+    if (action === "edit") {
+      const body = window.prompt("Editar mensagem", message.body ?? "");
+      if (!body?.trim()) return;
+      try {
+        const updated = await editMessage({ instanceId: selectedConversation.instanceId, jid: selectedConversation.jid, providerMessageId: message.providerMessageId, body });
+        handleStatus(updated);
+      } catch (err) {
+        console.error(err);
+        addToast("Nao foi possivel editar a mensagem.", "error");
+      }
+      return;
+    }
+    const mode = action === "delete_for_me" ? "for_me" : action === "delete_for_everyone" ? "for_everyone" : "for_everyone_and_erase";
+    const confirmed = window.confirm(action === "delete_for_everyone" ? "Apagar para todos?" : action === "delete_forever" ? "Apagar para todos e remover do painel?" : "Apagar para mim?");
+    if (!confirmed) return;
+    try {
+      const updated = await deleteMessage({ instanceId: selectedConversation.instanceId, jid: selectedConversation.jid, providerMessageId: message.providerMessageId, mode });
+      if (updated) handleStatus(updated);
+    } catch (err) {
+      console.error(err);
+      addToast("Nao foi possivel apagar a mensagem.", "error");
+    }
+  }, [addToast, deleteMessage, editMessage, handleStatus, selectedConversation]);
+
+  const clearSelectedConversation = useCallback(async (mode: "panel_only" | "panel_and_whatsapp") => {
+    if (!selectedConversation) return;
+    const confirmed = window.confirm(mode === "panel_only" ? "Limpar mensagens apenas do painel?" : "Limpar mensagens do painel e tentar apagar no WhatsApp?");
+    if (!confirmed) return;
+    try {
+      await clearConversation({ instanceId: selectedConversation.instanceId, jid: selectedConversation.jid, mode });
+      setMessages([]);
+      setReplyingTo(null);
+      addToast("Conversa limpa.", "success");
+    } catch (err) {
+      console.error(err);
+      addToast("Nao foi possivel limpar a conversa.", "error");
+    }
+  }, [addToast, clearConversation, selectedConversation]);
 
   const selectedTyping = selectedConversation ? Boolean(typing[conversationKey(selectedConversation)]) : false;
 
@@ -234,6 +302,7 @@ export function ChatPage() {
             connectionState={connectionState}
             isTyping={selectedTyping}
             onBack={() => setMobileThreadOpen(false)}
+            onClear={(mode) => void clearSelectedConversation(mode)}
           />
           <MessageThread
             conversation={selectedConversation}
@@ -242,12 +311,23 @@ export function ChatPage() {
             loadingMore={loadingMore}
             hasMore={Boolean(nextCursor)}
             sending={sending}
+            replyingTo={replyingTo}
+            onCancelReply={() => setReplyingTo(null)}
             onLoadMore={() => void loadOlderMessages()}
             onSend={(body) => void sendMessage(body)}
             onReact={(message, emoji) => void reactToMessage(message, emoji)}
+            onOpenMenu={(message, position) => setContextMenu({ message, position })}
           />
         </div>
       </div>
+      {contextMenu ? (
+        <MessageContextMenu
+          message={contextMenu.message}
+          position={contextMenu.position}
+          onAction={(action, message) => void handleMessageAction(action, message)}
+          onClose={() => setContextMenu(null)}
+        />
+      ) : null}
       <span className="sr-only">Total de conversas nao lidas: {unreadTotal}</span>
     </section>
   );

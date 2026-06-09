@@ -7,6 +7,8 @@ import type { ChatConversation, ChatInstanceOption, ChatMessage } from "./types"
 type ConversationsResponse = { conversations: ChatConversation[] };
 type MessagesResponse = { messages: ChatMessage[]; nextCursor: string | null };
 type ReactionResponse = { success: boolean; message: ChatMessage | null };
+type DeleteMode = "for_me" | "for_everyone" | "for_everyone_and_erase";
+type ClearMode = "panel_only" | "panel_and_whatsapp";
 
 export function getContactDisplayName(conversation: Pick<ChatConversation, "name" | "jid">) {
   return conversation.name?.trim() || conversation.jid.split("@")[0] || "Contato";
@@ -88,7 +90,7 @@ export function useConversations(selectedInstanceId: string, search: string) {
     };
   }, []);
 
-  const sendTextMessage = useCallback(async (input: { instanceId: string; jid: string; body: string }) => {
+  const sendTextMessage = useCallback(async (input: { instanceId: string; jid: string; body: string; quotedMessageId?: string | null }) => {
     const res = await api.post<{ message: ChatMessage }>("/chat/send", input);
     return res.data.message;
   }, []);
@@ -96,6 +98,24 @@ export function useConversations(selectedInstanceId: string, search: string) {
   const sendReaction = useCallback(async (input: { instanceId: string; jid: string; providerMessageId: string; emoji: string }) => {
     const res = await api.post<ReactionResponse>("/chat/react", input);
     return res.data.message;
+  }, []);
+
+  const editMessage = useCallback(async (input: { instanceId: string; jid: string; providerMessageId: string; body: string }) => {
+    const res = await api.post<{ message: ChatMessage }>("/chat/edit", input);
+    return res.data.message;
+  }, []);
+
+  const deleteMessage = useCallback(async (input: { instanceId: string; jid: string; providerMessageId: string; mode: DeleteMode }) => {
+    const res = await api.post<{ success: boolean; message: ChatMessage | null }>("/chat/delete", input);
+    return res.data.message;
+  }, []);
+
+  const clearConversation = useCallback(async (input: { instanceId: string; jid: string; mode: ClearMode }) => {
+    const res = await api.post<{ success: boolean; deletedCount: number }>(`/chat/conversations/${encodeURIComponent(input.jid)}/clear`, {
+      instanceId: input.instanceId,
+      mode: input.mode,
+    });
+    return res.data;
   }, []);
 
   return {
@@ -109,6 +129,9 @@ export function useConversations(selectedInstanceId: string, search: string) {
     loadMessages,
     sendTextMessage,
     sendReaction,
+    editMessage,
+    deleteMessage,
+    clearConversation,
     unreadTotal: getUnreadTotal(conversations),
   };
 }

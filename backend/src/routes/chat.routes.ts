@@ -42,6 +42,7 @@ const sendBodySchema = z.object({
   instanceId: z.string().trim().min(1).max(191),
   jid: z.string().trim().min(1).max(191),
   body: z.string().trim().min(1).max(4000),
+  quotedMessageId: z.string().trim().min(1).max(191).optional().nullable(),
 });
 
 const reactBodySchema = z.object({
@@ -49,6 +50,25 @@ const reactBodySchema = z.object({
   jid: z.string().trim().min(1).max(191),
   providerMessageId: z.string().trim().min(1).max(191),
   emoji: z.string().max(32),
+});
+
+const editBodySchema = z.object({
+  instanceId: z.string().trim().min(1).max(191),
+  jid: z.string().trim().min(1).max(191),
+  providerMessageId: z.string().trim().min(1).max(191),
+  body: z.string().trim().min(1).max(4000),
+});
+
+const deleteBodySchema = z.object({
+  instanceId: z.string().trim().min(1).max(191),
+  jid: z.string().trim().min(1).max(191),
+  providerMessageId: z.string().trim().min(1).max(191),
+  mode: z.enum(["for_me", "for_everyone", "for_everyone_and_erase"]),
+});
+
+const clearConversationBodySchema = z.object({
+  instanceId: z.string().trim().min(1).max(191),
+  mode: z.enum(["panel_only", "panel_and_whatsapp"]),
 });
 
 function serializeDate<T extends Record<string, unknown>>(row: T): T {
@@ -151,11 +171,42 @@ export function createChatRoutes(deps: ChatRoutesDeps = {}) {
       }
     });
 
+    fastify.post("/edit", async (request, reply) => {
+      try {
+        const body = editBodySchema.parse(request.body);
+        const message = await service.editMessage(body);
+        return reply.status(200).send({ message: serializeMessage(message) });
+      } catch (err) {
+        return sendKnownError(reply, err);
+      }
+    });
+
+    fastify.post("/delete", async (request, reply) => {
+      try {
+        const body = deleteBodySchema.parse(request.body);
+        const message = await service.deleteMessage(body);
+        return reply.status(200).send({ success: true, message: message ? serializeMessage(message) : null });
+      } catch (err) {
+        return sendKnownError(reply, err);
+      }
+    });
+
     fastify.post("/react", async (request, reply) => {
       try {
         const body = reactBodySchema.parse(request.body);
         const message = await service.sendReaction(body);
         return reply.status(200).send({ success: true, message: message ? serializeMessage(message) : null });
+      } catch (err) {
+        return sendKnownError(reply, err);
+      }
+    });
+
+    fastify.post("/conversations/:jid/clear", async (request, reply) => {
+      try {
+        const params = messagesParamsSchema.parse(request.params);
+        const body = clearConversationBodySchema.parse(request.body);
+        const result = await service.clearConversation({ ...body, jid: params.jid });
+        return reply.status(200).send({ success: true, ...result });
       } catch (err) {
         return sendKnownError(reply, err);
       }

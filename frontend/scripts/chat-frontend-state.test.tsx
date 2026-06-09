@@ -7,6 +7,9 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { APP_NAV_GROUPS, getAppRouteTitle } from "../src/features/navigation/appNavigation.ts";
 import { ConversationList } from "../src/features/chat/ConversationList.tsx";
 import { MessageBubble } from "../src/features/chat/MessageBubble.tsx";
+import { ChatInput } from "../src/features/chat/ChatInput.tsx";
+import { MessageContextMenu } from "../src/features/chat/MessageContextMenu.tsx";
+import { getMessageContextActions } from "../src/features/chat/messageContextActions.ts";
 import { getKnownMessageFallback, getMessageStatusLabel } from "../src/features/chat/chatDisplay.ts";
 import { upsertMessage } from "../src/features/chat/chatState.ts";
 import { filterConversations, getUnreadTotal } from "../src/features/chat/useConversations.ts";
@@ -28,6 +31,9 @@ const textMessage: ChatMessage = {
   mediaMimeType: null,
   mediaDurationMs: null,
   reactionEmoji: null,
+  editedAt: null,
+  isDeleted: false,
+  quotedMessageId: null,
   createdAt: "2026-06-09T12:00:00.000Z",
 };
 
@@ -156,6 +162,40 @@ test("message bubbles render image, video, view-once marker and reactions inline
   assert.match(viewOnceHtml, /Legenda/);
 });
 
+test("message bubbles render edited, deleted and quoted states", () => {
+  const editedHtml = renderToStaticMarkup(<MessageBubble message={{ ...textMessage, editedAt: "2026-06-09T12:01:00.000Z" }} />);
+  const deletedHtml = renderToStaticMarkup(<MessageBubble message={{ ...textMessage, body: null, isDeleted: true }} />);
+  const quotedHtml = renderToStaticMarkup(<MessageBubble message={{ ...textMessage, id: "reply", quotedMessageId: "wamid.in.1" }} quotedMessage={textMessage} />);
+  assert.match(editedHtml, /Editado/);
+  assert.match(deletedHtml, /Mensagem apagada/);
+  assert.match(quotedHtml, /Voce|Contato/);
+  assert.match(quotedHtml, /Oi, preciso de ajuda/);
+});
+
+test("message context menu exposes conditional actions", () => {
+  assert.deepEqual(getMessageContextActions({ ...textMessage, fromMe: false }), ["reply"]);
+  assert.deepEqual(getMessageContextActions({ ...textMessage, fromMe: true }).slice(0, 3), ["reply", "edit", "delete_for_me"]);
+  assert.deepEqual(getMessageContextActions({ ...textMessage, isDeleted: true }), []);
+  const html = renderToStaticMarkup(
+    <MessageContextMenu
+      message={{ ...textMessage, fromMe: true }}
+      position={{ x: 10, y: 20 }}
+      onAction={() => undefined}
+      onClose={() => undefined}
+    />,
+  );
+  assert.match(html, /Responder/);
+  assert.match(html, /Editar/);
+  assert.match(html, /Apagar para mim/);
+});
+
+test("chat input renders reply mode and cancel button", () => {
+  const html = renderToStaticMarkup(<ChatInput replyingTo={textMessage} onCancelReply={() => undefined} onSend={() => undefined} />);
+  assert.match(html, /Respondendo/);
+  assert.match(html, /Oi, preciso de ajuda/);
+  assert.match(html, /Cancelar resposta/);
+});
+
 test("known empty media/reply messages use readable fallback instead of generic empty text", () => {
   assert.equal(getKnownMessageFallback({ ...textMessage, body: null, messageType: "AUDIO", mediaUrl: null }), "Audio recebido");
   assert.equal(getKnownMessageFallback({ ...textMessage, body: null, messageType: "UNKNOWN", mediaMimeType: "audio/ogg" }), "Audio recebido");
@@ -194,6 +234,8 @@ test("message thread exposes a new messages jump button for open chats", () => {
 test("chat realtime client subscribes to message reaction events", () => {
   const source = fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/useChat.ts"), "utf8");
   assert.match(source, /message:reaction/);
+  assert.match(source, /message:edited/);
+  assert.match(source, /message:deleted/);
   assert.match(source, /onMessageReaction/);
 });
 

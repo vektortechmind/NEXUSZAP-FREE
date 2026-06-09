@@ -20,3 +20,9 @@ export function getKnownMessageFallback(message: Pick<ChatMessage, "messageType"
   if (message.messageType === "LIST_REPLY") return "Resposta de lista";
   return "Mensagem recebida";
 }
+
+export function getMessagePreviewText(message: Pick<ChatMessage, "body" | "messageType" | "mediaMimeType" | "isDeleted">) {
+  if (message.isDeleted) return "Mensagem apagada";
+  if (message.body?.trim()) return message.body.trim();
+  return getKnownMessageFallback({ messageType: message.messageType, mediaUrl: null, mediaMimeType: message.mediaMimeType });
+}

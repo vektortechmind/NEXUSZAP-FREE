@@ -4,6 +4,7 @@ import { Button } from "../../components/ui/Button";
 import type { ChatConversation, ChatMessage } from "./types";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
+import type { MessageContextMenuAction } from "./messageContextActions";
 
 type MessageThreadProps = {
   conversation: ChatConversation | null;
@@ -15,6 +16,10 @@ type MessageThreadProps = {
   onLoadMore: () => void;
   onSend: (body: string) => Promise<void> | void;
   onReact?: (message: ChatMessage, emoji: string) => Promise<void> | void;
+  replyingTo?: ChatMessage | null;
+  onCancelReply?: () => void;
+  onOpenMenu?: (message: ChatMessage, position: { x: number; y: number }) => void;
+  onMessageAction?: (action: MessageContextMenuAction, message: ChatMessage) => void;
 };
 
 export function MessageThread({
@@ -27,6 +32,9 @@ export function MessageThread({
   onLoadMore,
   onSend,
   onReact,
+  replyingTo,
+  onCancelReply,
+  onOpenMenu,
 }: MessageThreadProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const nearBottomRef = useRef(true);
@@ -98,7 +106,15 @@ export function MessageThread({
           <p className="mt-10 text-center text-sm text-slate-500 dark:text-slate-400">Sem mensagens nesta conversa.</p>
         ) : (
           <div className="space-y-2">
-            {messages.map((message) => <MessageBubble key={message.id} message={message} onReact={onReact} />)}
+            {messages.map((message) => (
+              <MessageBubble
+                key={message.id}
+                message={message}
+                quotedMessage={message.quotedMessageId ? messages.find((item) => item.providerMessageId === message.quotedMessageId) ?? null : null}
+                onReact={onReact}
+                onOpenMenu={onOpenMenu}
+              />
+            ))}
           </div>
         )}
       </div>
@@ -112,7 +128,7 @@ export function MessageThread({
           Novas mensagens
         </button>
       ) : null}
-      <ChatInput disabled={!conversation} sending={sending} onSend={onSend} />
+      <ChatInput disabled={!conversation} sending={sending} replyingTo={replyingTo} onCancelReply={onCancelReply} onSend={onSend} />
     </div>
   );
 }

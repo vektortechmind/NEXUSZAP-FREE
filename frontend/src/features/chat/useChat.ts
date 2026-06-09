@@ -11,6 +11,8 @@ type ChatSocketCallbacks = {
   onMessageSent?: (message: ChatMessage) => void;
   onMessageStatus?: (message: ChatMessage) => void;
   onMessageReaction?: (event: ChatReactionEvent) => void;
+  onMessageEdited?: (message: ChatMessage) => void;
+  onMessageDeleted?: (message: ChatMessage) => void;
   onConversationUpdate?: (conversation: ChatConversation) => void;
   onPresenceUpdate?: (presence: ChatPresence) => void;
 };
@@ -68,6 +70,8 @@ export function useChat(callbacks: ChatSocketCallbacks) {
     socket.on("message:sent", (message: ChatMessage) => callbacksRef.current.onMessageSent?.(message));
     socket.on("message:status", (message: ChatMessage) => callbacksRef.current.onMessageStatus?.(message));
     socket.on("message:reaction", (event: ChatReactionEvent) => callbacksRef.current.onMessageReaction?.(event));
+    socket.on("message:edited", (message: ChatMessage) => callbacksRef.current.onMessageEdited?.(message));
+    socket.on("message:deleted", (message: ChatMessage) => callbacksRef.current.onMessageDeleted?.(message));
     socket.on("conversation:update", (conversation: ChatConversation) => callbacksRef.current.onConversationUpdate?.(conversation));
     socket.on("presence:update", (presence: ChatPresence) => callbacksRef.current.onPresenceUpdate?.(presence));
 

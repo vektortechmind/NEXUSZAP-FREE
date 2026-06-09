@@ -1,4 +1,4 @@
-import { ArrowLeft, Wifi, WifiOff } from "lucide-react";
+import { ArrowLeft, MoreVertical, Trash2, Wifi, WifiOff } from "lucide-react";
 import { useState } from "react";
 import type { ChatConnectionState, ChatConversation, ChatInstanceOption } from "./types";
 import { getContactDisplayName } from "./useConversations";
@@ -9,6 +9,7 @@ type ChatHeaderProps = {
   connectionState: ChatConnectionState;
   isTyping: boolean;
   onBack: () => void;
+  onClear?: (mode: "panel_only" | "panel_and_whatsapp") => void;
 };
 
 function Avatar({ conversation }: { conversation: ChatConversation }) {
@@ -31,9 +32,10 @@ function connectionLabel(state: ChatConnectionState) {
   return "Offline";
 }
 
-export function ChatHeader({ conversation, instances, connectionState, isTyping, onBack }: ChatHeaderProps) {
+export function ChatHeader({ conversation, instances, connectionState, isTyping, onBack, onClear }: ChatHeaderProps) {
   const instanceName = conversation ? instances.find((instance) => instance.id === conversation.instanceId)?.name ?? conversation.instanceId : null;
   const connected = connectionState === "connected";
+  const [menuOpen, setMenuOpen] = useState(false);
 
   return (
     <header className="flex min-h-16 items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-slate-950">
@@ -61,9 +63,33 @@ export function ChatHeader({ conversation, instances, connectionState, isTyping,
           <p className="text-xs text-slate-500 dark:text-slate-400">Mensagens e status aparecem em tempo real.</p>
         </div>
       )}
-      <div className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${connected ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/40 dark:text-emerald-300" : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/35 dark:text-amber-300"}`}>
-        {connected ? <Wifi size={13} aria-hidden="true" /> : <WifiOff size={13} aria-hidden="true" />}
-        {connectionLabel(connectionState)}
+      <div className="relative flex items-center gap-2">
+        <div className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold ${connected ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900/70 dark:bg-emerald-950/40 dark:text-emerald-300" : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/35 dark:text-amber-300"}`}>
+          {connected ? <Wifi size={13} aria-hidden="true" /> : <WifiOff size={13} aria-hidden="true" />}
+          {connectionLabel(connectionState)}
+        </div>
+        {conversation && onClear ? (
+          <button
+            type="button"
+            onClick={() => setMenuOpen((current) => !current)}
+            className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:text-slate-300 dark:hover:bg-slate-900"
+            aria-label="Acoes da conversa"
+          >
+            <MoreVertical size={17} aria-hidden="true" />
+          </button>
+        ) : null}
+        {menuOpen ? (
+          <div className="absolute right-0 top-11 z-40 min-w-56 rounded-md border border-slate-200 bg-white py-1 text-sm shadow-xl shadow-slate-900/15 dark:border-slate-700 dark:bg-slate-900">
+            <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800" onClick={() => { setMenuOpen(false); onClear?.("panel_only"); }}>
+              <Trash2 size={15} aria-hidden="true" />
+              Limpar so painel
+            </button>
+            <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800" onClick={() => { setMenuOpen(false); onClear?.("panel_and_whatsapp"); }}>
+              <Trash2 size={15} aria-hidden="true" />
+              Limpar painel + WhatsApp
+            </button>
+          </div>
+        ) : null}
       </div>
     </header>
   );

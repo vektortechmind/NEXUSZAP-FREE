@@ -15,6 +15,9 @@ export type ChatMessage = {
   mediaMimeType: string | null;
   mediaDurationMs: number | null;
   reactionEmoji: string | null;
+  editedAt: string | null;
+  isDeleted: boolean;
+  quotedMessageId: string | null;
   createdAt: string;
 };
 

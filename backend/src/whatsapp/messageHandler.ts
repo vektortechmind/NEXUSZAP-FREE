@@ -226,6 +226,26 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
     const content = unwrapChatContent(extractMessageContent(norm) ?? norm);
     if (!content) return;
 
+    const protocolMessage = (content as { protocolMessage?: proto.Message.IProtocolMessage }).protocolMessage;
+    if (protocolMessage && protocolMessage.type === proto.Message.ProtocolMessage.Type.REVOKE) {
+      const targetProviderMessageId = protocolMessage.key?.id;
+      if (typeof targetProviderMessageId === "string") {
+        await chatService.markMessageDeleted({ instanceId, providerMessageId: targetProviderMessageId });
+      }
+      return;
+    }
+    if (protocolMessage && protocolMessage.type === proto.Message.ProtocolMessage.Type.MESSAGE_EDIT) {
+      const targetProviderMessageId = protocolMessage.key?.id;
+      if (typeof targetProviderMessageId === "string" && protocolMessage.editedMessage) {
+        await chatService.editMessageFromProvider({
+          instanceId,
+          providerMessageId: targetProviderMessageId,
+          body: resolveChatBody(protocolMessage.editedMessage),
+        });
+      }
+      return;
+    }
+
     const reactionMessage = (content as { reactionMessage?: { key?: { id?: string | null }; text?: string | null } }).reactionMessage;
     if (reactionMessage?.key && typeof reactionMessage.key.id === "string") {
       await chatService.persistReaction({

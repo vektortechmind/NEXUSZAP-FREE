@@ -22,10 +22,14 @@ const { ChatProviderSendError } = require("../src/services/chat.baileys.ts");
 function createBaileysMock(options = {}) {
   const sent = [];
   const reactions = [];
+  const edits = [];
+  const deletes = [];
   const profileRequests = [];
   return {
     sent,
     reactions,
+    edits,
+    deletes,
     profileRequests,
     async sendTextMessage(input) {
       sent.push(input);
@@ -35,6 +39,14 @@ function createBaileysMock(options = {}) {
     async sendReaction(input) {
       reactions.push(input);
       if (options.failReaction) throw new ChatProviderSendError("reaction unavailable");
+    },
+    async editMessage(input) {
+      edits.push(input);
+      if (options.failEdit) throw new ChatProviderSendError("edit unavailable");
+    },
+    async deleteMessage(input) {
+      deletes.push(input);
+      if (options.failDelete) throw new ChatProviderSendError("delete unavailable");
     },
     async getContactProfile(input) {
       profileRequests.push(input);
@@ -162,6 +174,51 @@ function createApp({ store, baileys, events }) {
   assert.equal(events.length, 1);
   assert.equal(events[0].direction, "OUTBOUND");
 
+  const quotedSendResponse = await app.inject({
+    method: "POST",
+    url: "/api/chat/send",
+    payload: { instanceId: "instance-a", jid: "5511999990000@s.whatsapp.net", body: "Resposta com quote", quotedMessageId: "wamid.in.1" },
+  });
+  assert.equal(quotedSendResponse.statusCode, 201, quotedSendResponse.body);
+  assert.equal(JSON.parse(quotedSendResponse.body).message.quotedMessageId, "wamid.in.1");
+  assert.equal(baileys.sent[1].quotedMessage.key.id, "wamid.in.1");
+
+  const editInboundResponse = await app.inject({
+    method: "POST",
+    url: "/api/chat/edit",
+    payload: { instanceId: "instance-a", jid: "5511999990000@s.whatsapp.net", providerMessageId: "wamid.in.1", body: "Nao pode" },
+  });
+  assert.equal(editInboundResponse.statusCode, 400, editInboundResponse.body);
+
+  const editResponse = await app.inject({
+    method: "POST",
+    url: "/api/chat/edit",
+    payload: { instanceId: "instance-a", jid: "5511999990000@s.whatsapp.net", providerMessageId: "wamid.sent.1", body: "Resposta editada" },
+  });
+  assert.equal(editResponse.statusCode, 200, editResponse.body);
+  const editedMessage = JSON.parse(editResponse.body).message;
+  assert.equal(editedMessage.body, "Resposta editada");
+  assert.ok(editedMessage.editedAt);
+  assert.equal(baileys.edits.length, 1);
+
+  const deleteEveryoneResponse = await app.inject({
+    method: "POST",
+    url: "/api/chat/delete",
+    payload: { instanceId: "instance-a", jid: "5511999990000@s.whatsapp.net", providerMessageId: "wamid.sent.1", mode: "for_everyone" },
+  });
+  assert.equal(deleteEveryoneResponse.statusCode, 200, deleteEveryoneResponse.body);
+  assert.equal(JSON.parse(deleteEveryoneResponse.body).message.isDeleted, false);
+  assert.equal(baileys.deletes.length, 1);
+
+  const deleteForMeResponse = await app.inject({
+    method: "POST",
+    url: "/api/chat/delete",
+    payload: { instanceId: "instance-a", jid: "5511999990000@s.whatsapp.net", providerMessageId: "wamid.sent.1", mode: "for_me" },
+  });
+  assert.equal(deleteForMeResponse.statusCode, 200, deleteForMeResponse.body);
+  assert.equal(JSON.parse(deleteForMeResponse.body).message.isDeleted, true);
+  assert.equal(baileys.deletes.length, 2);
+
   const reactionResponse = await app.inject({
     method: "POST",
     url: "/api/chat/react",
@@ -182,6 +239,52 @@ function createApp({ store, baileys, events }) {
   assert.equal(removeReactionResponse.statusCode, 200, removeReactionResponse.body);
   assert.equal(JSON.parse(removeReactionResponse.body).message.reactionEmoji, null);
   assert.equal(baileys.reactions[1].emoji, "");
+
+  await service.persistOutboundMessage({
+    instanceId: "instance-a",
+    jid: "5511888880000@s.whatsapp.net",
+    body: "Limpar 1",
+    messageType: "TEXT",
+    providerMessageId: "wamid.clear.1",
+    createdAt: new Date("2026-06-09T10:06:00.000Z"),
+  });
+  await service.persistOutboundMessage({
+    instanceId: "instance-a",
+    jid: "5511888880000@s.whatsapp.net",
+    body: "Limpar 2",
+    messageType: "TEXT",
+    providerMessageId: "wamid.clear.2",
+    createdAt: new Date("2026-06-09T10:07:00.000Z"),
+  });
+  const clearPanelResponse = await app.inject({
+    method: "POST",
+    url: `/api/chat/conversations/${encodeURIComponent("5511888880000@s.whatsapp.net")}/clear`,
+    payload: { instanceId: "instance-a", mode: "panel_only" },
+  });
+  assert.equal(clearPanelResponse.statusCode, 200, clearPanelResponse.body);
+  assert.equal(JSON.parse(clearPanelResponse.body).deletedCount, 3);
+  const clearedMessagesResponse = await app.inject({
+    method: "GET",
+    url: `/api/chat/conversations/${encodeURIComponent("5511888880000@s.whatsapp.net")}/messages?instanceId=instance-a`,
+  });
+  assert.equal(JSON.parse(clearedMessagesResponse.body).messages.length, 0);
+
+  await service.persistOutboundMessage({
+    instanceId: "instance-a",
+    jid: "5511777770000@s.whatsapp.net",
+    body: "Limpar WhatsApp",
+    messageType: "TEXT",
+    providerMessageId: "wamid.clear.whatsapp.1",
+    createdAt: new Date("2026-06-09T10:08:00.000Z"),
+  });
+  const clearWhatsappResponse = await app.inject({
+    method: "POST",
+    url: `/api/chat/conversations/${encodeURIComponent("5511777770000@s.whatsapp.net")}/clear`,
+    payload: { instanceId: "instance-a", mode: "panel_and_whatsapp" },
+  });
+  assert.equal(clearWhatsappResponse.statusCode, 200, clearWhatsappResponse.body);
+  assert.equal(JSON.parse(clearWhatsappResponse.body).deletedCount, 1);
+  assert.equal(baileys.deletes.some((item) => item.providerMessageId === "wamid.clear.whatsapp.1"), true);
 
   await app.close();
 
