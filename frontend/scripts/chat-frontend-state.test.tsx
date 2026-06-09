@@ -108,7 +108,8 @@ test("message bubbles render direction, status and inline audio controls", () =>
   const audioHtml = renderToStaticMarkup(<MessageBubble message={audioMessage} />);
   assert.match(sentHtml, /Oi, preciso de ajuda/);
   assert.match(sentHtml, /w-fit/);
-  assert.match(sentHtml, /group-hover:w-auto/);
+  assert.match(sentHtml, /<time dateTime="2026-06-09T12:00:00.000Z">/);
+  assert.match(sentHtml, /inline-flex align-baseline/);
   assert.match(sentHtml, /Lida/);
   assert.equal(getMessageStatusLabel("DELIVERED"), "Entregue");
   assert.match(audioHtml, /Reproduzir audio/);

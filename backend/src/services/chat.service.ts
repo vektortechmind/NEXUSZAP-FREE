@@ -393,6 +393,10 @@ export function createChatService(deps: {
 
     async persistOutboundMessage(input: Omit<PersistMessageInput, "fromMe">) {
       await ensureInstance(input.instanceId);
+      if (input.providerMessageId) {
+        const existing = await store.findMessageByProviderId({ instanceId: input.instanceId, providerMessageId: input.providerMessageId });
+        if (existing) return existing;
+      }
       const result = await store.persistMessage({
         ...input,
         jid: normalizeChatJid(input.jid),

@@ -16,5 +16,7 @@ assert.equal(messageHandler.includes("as never"), false, "messageHandler.ts must
 assert.equal(messageHandler.includes("MediaDownloadContext"), true, "messageHandler.ts must type the media download context");
 assert.equal(messageHandler.includes("hasRequiredMessageKey"), true, "messageHandler.ts must narrow messages before media download");
 assert.equal(messageHandler.includes("WAMessageContent"), true, "messageHandler.ts must pass typed WhatsApp message content to Baileys helpers");
+assert.equal(messageHandler.includes("!key || key.fromMe"), false, "messageHandler.ts must not drop phone-sent fromMe messages before chat persistence");
+assert.equal(messageHandler.includes("persistOutboundMessage({ ...messageInput"), true, "messageHandler.ts must persist fromMe Baileys upserts as outbound chat messages");
 
 console.log("message-event-type-contract: OK");

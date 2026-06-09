@@ -182,7 +182,8 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
   try {
     if (!m.message) return;
     const key = m.key;
-    if (!key || key.fromMe) return;
+    if (!key) return;
+    const fromMe = Boolean(key.fromMe);
 
     const remoteJid = key.remoteJid;
     if (!remoteJid || remoteJid.includes("@g.us")) return;
@@ -193,7 +194,7 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
     const instance = (await prisma.instance.findUnique({ where: { id: instanceId } })) as Instance | null;
     if (!instance) return;
 
-    if (instance.aiWhatsappEnabled) {
+    if (!fromMe && instance.aiWhatsappEnabled) {
       try {
         await sock.readMessages([key]);
         await sock.sendPresenceUpdate("available", remoteJid);
@@ -217,7 +218,7 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
 
     const audioMessage = content.audioMessage;
     let audioBuffer: Buffer | null = null;
-    const persistedMessage = await chatService.persistInboundMessage({
+    const messageInput = {
       instanceId,
       jid: remoteJid,
       body: chatBody,
@@ -227,8 +228,10 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
       mediaMimeType: audioMessage?.mimetype || content.imageMessage?.mimetype || content.videoMessage?.mimetype || content.documentMessage?.mimetype || null,
       mediaDurationMs: audioMessage?.seconds ? Number(audioMessage.seconds) * 1000 : null,
       createdAt: messageDateFromBaileysTimestamp(m.messageTimestamp),
-      contactName: m.pushName ?? null,
-    });
+    };
+    const persistedMessage = fromMe
+      ? await chatService.persistOutboundMessage({ ...messageInput, status: "SENT" })
+      : await chatService.persistInboundMessage({ ...messageInput, contactName: m.pushName ?? null });
 
     if (audioMessage && key.id && !persistedMessage.mediaUrl) {
       audioBuffer = await downloadAudioFromMessage(sock, m);
@@ -247,6 +250,8 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
         }
       }
     }
+
+    if (fromMe) return;
 
     const hasSupportedInboundContent = Boolean(textMsg.trim() || audioMessage);
     if (!hasSupportedInboundContent) return;
