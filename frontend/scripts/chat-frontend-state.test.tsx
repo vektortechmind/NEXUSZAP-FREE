@@ -122,7 +122,8 @@ test("message bubbles render direction, status and inline audio controls", () =>
 });
 
 test("known empty media/reply messages use readable fallback instead of generic empty text", () => {
-  assert.equal(getKnownMessageFallback({ ...textMessage, body: null, messageType: "AUDIO", mediaUrl: null }), "Audio indisponivel");
+  assert.equal(getKnownMessageFallback({ ...textMessage, body: null, messageType: "AUDIO", mediaUrl: null }), "Audio recebido");
+  assert.equal(getKnownMessageFallback({ ...textMessage, body: null, messageType: "UNKNOWN", mediaMimeType: "audio/ogg" }), "Audio recebido");
   assert.equal(getKnownMessageFallback({ ...textMessage, body: null, messageType: "DOCUMENT" }), "Documento recebido");
   assert.equal(getKnownMessageFallback({ ...textMessage, body: null, messageType: "VIDEO" }), "Video recebido");
   assert.equal(getKnownMessageFallback({ ...textMessage, body: null, messageType: "UNKNOWN" }), "Mensagem recebida");
@@ -145,6 +146,14 @@ test("chat page keeps desktop split and mobile list-or-thread contract", () => {
   assert.match(source, /h-\[calc\(100svh-3\.5rem\)\]/);
   assert.match(source, /connectionState !== "connected"/);
   assert.match(source, /loadConversations\(\)/);
+});
+
+test("message thread exposes a new messages jump button for open chats", () => {
+  const source = fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/MessageThread.tsx"), "utf8");
+  assert.match(source, /showNewMessagesButton/);
+  assert.match(source, /Novas mensagens/);
+  assert.match(source, /scrollToBottom/);
+  assert.match(source, /bottom-20/);
 });
 
 test("app wrapper lets chat route escape the default max width", () => {

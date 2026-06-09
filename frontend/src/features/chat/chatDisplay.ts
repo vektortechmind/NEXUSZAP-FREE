@@ -9,8 +9,9 @@ export function getMessageStatusLabel(status: ChatMessageStatus) {
   return "Enviada";
 }
 
-export function getKnownMessageFallback(message: Pick<ChatMessage, "messageType" | "mediaUrl">) {
-  if (message.messageType === "AUDIO") return message.mediaUrl ? "Audio recebido" : "Audio indisponivel";
+export function getKnownMessageFallback(message: Pick<ChatMessage, "messageType" | "mediaUrl" | "mediaMimeType">) {
+  const isAudio = message.messageType === "AUDIO" || Boolean(message.mediaMimeType?.toLowerCase().startsWith("audio/"));
+  if (isAudio) return "Audio recebido";
   if (message.messageType === "IMAGE") return "Imagem recebida";
   if (message.messageType === "VIDEO") return "Video recebido";
   if (message.messageType === "DOCUMENT") return "Documento recebido";
