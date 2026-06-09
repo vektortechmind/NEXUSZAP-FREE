@@ -3,6 +3,7 @@ import { WAMessageStatus, type WAMessageUpdate } from "@whiskeysockets/baileys";
 import { prisma } from "../database/prisma";
 import { safeLogError } from "../utils/redaction";
 import { recordMessageEvent } from "./analytics/messageEvent.service";
+import { readChatMedia } from "./chat.mediaStorage";
 import {
   baileysChatAdapter,
   ChatInstanceOfflineError,
@@ -79,6 +80,14 @@ export class ChatInstanceNotFoundError extends Error {
 
   constructor(instanceId: string) {
     super(`Instancia ${instanceId} nao encontrada.`);
+  }
+}
+
+export class ChatMediaNotFoundError extends Error {
+  code = "CHAT_MEDIA_NOT_FOUND";
+
+  constructor() {
+    super("Midia da mensagem nao encontrada.");
   }
 }
 
@@ -428,6 +437,21 @@ export function createChatService(deps: {
 
     emitPresenceUpdate(input: { instanceId: string; jid: string; isTyping: boolean }) {
       chatRealtime.emitPresenceUpdate(input);
+    },
+
+    async getMessageMedia(input: { instanceId: string; providerMessageId: string }) {
+      await ensureInstance(input.instanceId);
+      const message = await store.findMessageByProviderId({ instanceId: input.instanceId, providerMessageId: input.providerMessageId });
+      if (!message || !message.mediaUrl) throw new ChatMediaNotFoundError();
+      try {
+        const buffer = await readChatMedia(input);
+        return {
+          buffer,
+          mimeType: message.mediaMimeType || "application/octet-stream",
+        };
+      } catch {
+        throw new ChatMediaNotFoundError();
+      }
     },
   };
 }

@@ -1,7 +1,7 @@
 import { AlertTriangle, Check, CheckCheck } from "lucide-react";
 import type { ChatMessage, ChatMessageStatus } from "./types";
 import { AudioPlayer } from "./AudioPlayer";
-import { getMessageStatusLabel } from "./chatDisplay";
+import { getKnownMessageFallback, getMessageStatusLabel } from "./chatDisplay";
 
 type MessageBubbleProps = {
   message: ChatMessage;
@@ -29,7 +29,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
       >
         {showAudio ? <AudioPlayer src={message.mediaUrl!} durationMs={message.mediaDurationMs} /> : null}
         {message.body ? <p className="whitespace-pre-wrap break-words text-sm leading-5">{message.body}</p> : null}
-        {!showAudio && !message.body ? <p className="text-sm italic opacity-75">Mensagem sem texto</p> : null}
+        {!showAudio && !message.body ? <p className="text-sm italic opacity-75">{getKnownMessageFallback(message)}</p> : null}
         <div className={`mt-1 flex items-center justify-end gap-1 text-[11px] ${fromMe ? "text-white/78 dark:text-slate-950/70" : "text-slate-500 dark:text-slate-400"}`}>
           <time className="opacity-0 transition-opacity group-hover:opacity-100" dateTime={message.createdAt}>{formatTime(message.createdAt)}</time>
           {fromMe ? <MessageStatus status={message.status} /> : null}

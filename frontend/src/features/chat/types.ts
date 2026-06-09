@@ -1,4 +1,4 @@
-export type ChatMessageType = "TEXT" | "IMAGE" | "AUDIO" | "DOCUMENT" | "VIDEO" | "UNKNOWN";
+export type ChatMessageType = "TEXT" | "IMAGE" | "AUDIO" | "DOCUMENT" | "VIDEO" | "BUTTONS_REPLY" | "LIST_REPLY" | "UNKNOWN";
 export type ChatMessageStatus = "PENDING" | "SENT" | "DELIVERED" | "READ" | "FAILED";
 
 export type ChatMessage = {

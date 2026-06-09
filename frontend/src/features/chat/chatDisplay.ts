@@ -1,4 +1,5 @@
 import type { ChatMessageStatus } from "./types";
+import type { ChatMessage } from "./types";
 
 export function getMessageStatusLabel(status: ChatMessageStatus) {
   if (status === "READ") return "Lida";
@@ -6,4 +7,14 @@ export function getMessageStatusLabel(status: ChatMessageStatus) {
   if (status === "FAILED") return "Falhou";
   if (status === "PENDING") return "Pendente";
   return "Enviada";
+}
+
+export function getKnownMessageFallback(message: Pick<ChatMessage, "messageType" | "mediaUrl">) {
+  if (message.messageType === "AUDIO") return message.mediaUrl ? "Audio recebido" : "Audio indisponivel";
+  if (message.messageType === "IMAGE") return "Imagem recebida";
+  if (message.messageType === "VIDEO") return "Video recebido";
+  if (message.messageType === "DOCUMENT") return "Documento recebido";
+  if (message.messageType === "BUTTONS_REPLY") return "Resposta de botao";
+  if (message.messageType === "LIST_REPLY") return "Resposta de lista";
+  return "Mensagem sem texto";
 }

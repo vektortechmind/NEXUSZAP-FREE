@@ -21,6 +21,7 @@ enum ChatMessageType {
   TEXT
   IMAGE
   AUDIO
+  VIDEO
   DOCUMENT
   BUTTONS_REPLY
   LIST_REPLY

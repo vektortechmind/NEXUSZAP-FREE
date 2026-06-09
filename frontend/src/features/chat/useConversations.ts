@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../lib/axios";
 import type { InstanceStatus } from "../instances/types";
+import { getKnownMessageFallback } from "./chatDisplay";
 import type { ChatConversation, ChatInstanceOption, ChatMessage } from "./types";
 
 type ConversationsResponse = { conversations: ChatConversation[] };
@@ -12,8 +13,7 @@ export function getContactDisplayName(conversation: Pick<ChatConversation, "name
 
 export function getMessagePreview(message: ChatMessage | null) {
   if (!message) return "Sem mensagens";
-  if (message.messageType === "AUDIO") return "Audio recebido";
-  return message.body?.trim() || "Mensagem sem texto";
+  return message.body?.trim() || getKnownMessageFallback(message);
 }
 
 export function getUnreadTotal(conversations: ChatConversation[]) {

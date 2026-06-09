@@ -5,6 +5,7 @@ process.env.ADMIN_EMAIL = "admin@nexuszap.com";
 process.env.ADMIN_PASSWORD = "TempPassword1!";
 process.env.ADMIN_SETUP_REQUIRED = "true";
 process.env.SETUP_TOKEN = "test-setup-token-with-enough-length";
+process.env.CORS_ORIGINS = "http://localhost";
 process.env.PORT = process.env.PORT || "0";
 
 const assert = require("assert");

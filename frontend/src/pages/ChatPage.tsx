@@ -3,6 +3,7 @@ import { useToast } from "../contexts/ToastContext";
 import { ChatHeader } from "../features/chat/ChatHeader";
 import { ConversationList } from "../features/chat/ConversationList";
 import { MessageThread } from "../features/chat/MessageThread";
+import { upsertMessage } from "../features/chat/chatState";
 import { useChat } from "../features/chat/useChat";
 import { CHAT_UNREAD_TOTAL_EVENT, type ChatConversation, type ChatMessage, type ChatPresence } from "../features/chat/types";
 import { getUnreadTotal, useConversations } from "../features/chat/useConversations";
@@ -21,12 +22,6 @@ function upsertConversation(list: ChatConversation[], next: ChatConversation) {
     ? list.map((conversation) => conversationKey(conversation) === conversationKey(next) ? { ...conversation, ...next } : conversation)
     : [next, ...list];
   return merged.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
-}
-
-function upsertMessage(list: ChatMessage[], next: ChatMessage) {
-  const exists = list.some((message) => message.id === next.id);
-  const merged = exists ? list.map((message) => message.id === next.id ? { ...message, ...next } : message) : [...list, next];
-  return merged.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 }
 
 export function ChatPage() {
@@ -96,13 +91,15 @@ export function ChatPage() {
     }
   }, []);
 
-  const { connectionState } = useChat({
+  const chatCallbacks = useMemo(() => ({
     onMessageNew: handleMessage,
     onMessageSent: handleMessage,
     onMessageStatus: handleStatus,
     onConversationUpdate: handleConversationUpdate,
     onPresenceUpdate: handlePresence,
-  });
+  }), [handleConversationUpdate, handleMessage, handlePresence, handleStatus]);
+
+  const { connectionState } = useChat(chatCallbacks);
 
   const selectConversation = useCallback(async (conversation: ChatConversation) => {
     const key = conversationKey(conversation);
@@ -127,7 +124,7 @@ export function ChatPage() {
     setLoadingMore(true);
     try {
       const result = await loadMessages({ instanceId: selectedConversation.instanceId, jid: selectedConversation.jid, cursor: nextCursor });
-      setMessages((current) => [...result.messages, ...current]);
+      setMessages((current) => result.messages.reduce((merged, message) => upsertMessage(merged, message), current));
       setNextCursor(result.nextCursor);
     } catch (err) {
       console.error(err);
@@ -139,12 +136,30 @@ export function ChatPage() {
 
   const sendMessage = useCallback(async (body: string) => {
     if (!selectedConversation) return;
+    const optimisticId = `optimistic-${Date.now().toString(36)}`;
+    const optimisticMessage: ChatMessage = {
+      id: optimisticId,
+      conversationId: selectedConversation.id,
+      instanceId: selectedConversation.instanceId,
+      jid: selectedConversation.jid,
+      fromMe: true,
+      body,
+      messageType: "TEXT",
+      status: "PENDING",
+      providerMessageId: null,
+      mediaUrl: null,
+      mediaMimeType: null,
+      mediaDurationMs: null,
+      createdAt: new Date().toISOString(),
+    };
+    setMessages((current) => upsertMessage(current, optimisticMessage));
     setSending(true);
     try {
       const message = await sendTextMessage({ instanceId: selectedConversation.instanceId, jid: selectedConversation.jid, body });
-      setMessages((current) => upsertMessage(current, message));
+      setMessages((current) => upsertMessage(current.filter((item) => item.id !== optimisticId), message));
     } catch (err) {
       console.error(err);
+      setMessages((current) => current.map((item) => item.id === optimisticId ? { ...item, status: "FAILED" } : item));
       addToast("Nao foi possivel enviar a mensagem.", "error");
     } finally {
       setSending(false);
@@ -154,7 +169,7 @@ export function ChatPage() {
   const selectedTyping = selectedConversation ? Boolean(typing[conversationKey(selectedConversation)]) : false;
 
   return (
-    <section className="h-[calc(100svh-9rem)] min-h-[34rem] overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+    <section className="h-[calc(100svh-3.5rem)] min-h-[38rem] overflow-hidden border-y border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
       <div className="grid h-full min-h-0 md:grid-cols-[320px_minmax(0,1fr)]">
         <div className={`${mobileThreadOpen ? "hidden" : "block"} min-h-0 md:block`}>
           <ConversationList

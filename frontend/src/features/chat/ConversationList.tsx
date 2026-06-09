@@ -53,10 +53,6 @@ export function ConversationList({
   return (
     <aside className="flex min-h-0 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
       <div className="space-y-3 border-b border-slate-200 p-3 dark:border-slate-800">
-        <div>
-          <h1 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Conversas</h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400">Atendimento WhatsApp por instancia.</p>
-        </div>
         <FilterDropdown instances={instances} value={selectedInstanceId} onChange={onInstanceChange} />
         <Input
           value={search}

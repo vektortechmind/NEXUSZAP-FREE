@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useLocation } from "react-router-dom";
 import { AlertTriangle } from "lucide-react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { ToastProvider } from "./contexts/ToastContext";
@@ -23,7 +23,9 @@ import { InlineAlert } from "./components/ui/InlineAlert";
 /** Layout único para rotas autenticadas — evita remontar Sidebar/Header a cada troca de página. */
 const PrivateRoute = () => {
   const { user, loading, error } = useAuth();
+  const { pathname } = useLocation();
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const isChatRoute = pathname.startsWith("/chat");
 
   useEffect(() => {
     const handleResize = () => {
@@ -94,7 +96,7 @@ const PrivateRoute = () => {
       )}
       header={<Header onOpenMobileSidebar={() => setMobileSidebarOpen(true)} />}
     >
-      <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8">
+      <div className={isChatRoute ? "w-full px-0 py-0" : "mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8 lg:px-8"}>
         <Outlet />
       </div>
     </AppShell>

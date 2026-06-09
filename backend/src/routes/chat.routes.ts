@@ -3,6 +3,7 @@ import { z } from "zod";
 import {
   chatService,
   ChatInstanceNotFoundError,
+  ChatMediaNotFoundError,
   ChatValidationError,
   createChatService,
   type ChatStore,
@@ -24,6 +25,11 @@ const conversationsQuerySchema = z.object({
 
 const messagesParamsSchema = z.object({
   jid: z.string().trim().min(1).max(191),
+});
+
+const mediaParamsSchema = z.object({
+  instanceId: z.string().trim().min(1).max(191),
+  providerMessageId: z.string().trim().min(1).max(191),
 });
 
 const messagesQuerySchema = z.object({
@@ -63,6 +69,9 @@ function sendKnownError(reply: FastifyReply, err: unknown) {
     return reply.status(400).send({ error: err.message, code: err.code });
   }
   if (err instanceof ChatInstanceNotFoundError) {
+    return reply.status(404).send({ error: err.message, code: err.code });
+  }
+  if (err instanceof ChatMediaNotFoundError) {
     return reply.status(404).send({ error: err.message, code: err.code });
   }
   if (err instanceof ChatInstanceOfflineError) {
@@ -106,6 +115,20 @@ export function createChatRoutes(deps: ChatRoutesDeps = {}) {
         });
         const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
         return reply.send({ messages: messages.map(serializeMessage), nextCursor: lastMessage?.createdAt.toISOString() ?? null });
+      } catch (err) {
+        return sendKnownError(reply, err);
+      }
+    });
+
+    fastify.get("/media/:instanceId/:providerMessageId", async (request, reply) => {
+      try {
+        const params = mediaParamsSchema.parse(request.params);
+        const media = await service.getMessageMedia(params);
+        reply.header("Content-Type", media.mimeType);
+        reply.header("Content-Disposition", "inline");
+        reply.header("X-Content-Type-Options", "nosniff");
+        reply.header("Cache-Control", "private, max-age=3600");
+        return reply.send(media.buffer);
       } catch (err) {
         return sendKnownError(reply, err);
       }

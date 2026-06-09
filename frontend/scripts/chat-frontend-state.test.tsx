@@ -7,7 +7,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { APP_NAV_GROUPS, getAppRouteTitle } from "../src/features/navigation/appNavigation.ts";
 import { ConversationList } from "../src/features/chat/ConversationList.tsx";
 import { MessageBubble } from "../src/features/chat/MessageBubble.tsx";
-import { getMessageStatusLabel } from "../src/features/chat/chatDisplay.ts";
+import { getKnownMessageFallback, getMessageStatusLabel } from "../src/features/chat/chatDisplay.ts";
+import { upsertMessage } from "../src/features/chat/chatState.ts";
 import { filterConversations, getUnreadTotal } from "../src/features/chat/useConversations.ts";
 import type { ChatConversation, ChatMessage } from "../src/features/chat/types.ts";
 
@@ -94,7 +95,7 @@ test("conversation list renders avatar, preview, unread badge and instance badge
       onSearchChange={() => undefined}
     />,
   );
-  assert.match(html, /Conversas/);
+  assert.doesNotMatch(html, /<h1[^>]*>Conversas<\/h1>/);
   assert.match(html, /Cliente Alpha/);
   assert.match(html, /Oi, preciso de ajuda/);
   assert.match(html, /Vendas/);
@@ -109,7 +110,26 @@ test("message bubbles render direction, status and inline audio controls", () =>
   assert.match(sentHtml, /Lida/);
   assert.equal(getMessageStatusLabel("DELIVERED"), "Entregue");
   assert.match(audioHtml, /Reproduzir audio/);
+  assert.doesNotMatch(audioHtml, /Mensagem sem texto/);
+  assert.doesNotMatch(audioHtml, /<audio[^>]*controls(\s|=|>)/);
+  assert.doesNotMatch(audioHtml, /<a\s[^>]*download/i);
+  assert.doesNotMatch(audioHtml, />\s*Baixar\s*</i);
   assert.match(audioHtml, /https:\/\/media.example.com\/audio.ogg/);
+});
+
+test("known empty media/reply messages use readable fallback instead of generic empty text", () => {
+  assert.equal(getKnownMessageFallback({ ...textMessage, body: null, messageType: "AUDIO", mediaUrl: null }), "Audio indisponivel");
+  assert.equal(getKnownMessageFallback({ ...textMessage, body: null, messageType: "DOCUMENT" }), "Documento recebido");
+  assert.equal(getKnownMessageFallback({ ...textMessage, body: null, messageType: "VIDEO" }), "Video recebido");
+});
+
+test("message upsert preserves chronological order and deduplicates older pages", () => {
+  const older = { ...textMessage, id: "older", body: "Antiga", createdAt: "2026-06-09T11:00:00.000Z" };
+  const current = { ...textMessage, id: "current", body: "Atual", createdAt: "2026-06-09T12:00:00.000Z" };
+  const duplicate = { ...older, body: "Antiga editada" };
+  const merged = [older, duplicate].reduce((items, message) => upsertMessage(items, message), [current]);
+  assert.deepEqual(merged.map((message) => message.id), ["older", "current"]);
+  assert.equal(merged[0].body, "Antiga editada");
 });
 
 test("chat page keeps desktop split and mobile list-or-thread contract", () => {
@@ -117,4 +137,11 @@ test("chat page keeps desktop split and mobile list-or-thread contract", () => {
   assert.match(source, /md:grid-cols-\[320px_minmax\(0,1fr\)\]/);
   assert.match(source, /mobileThreadOpen \? "hidden" : "block"/);
   assert.match(source, /mobileThreadOpen \? "flex" : "hidden"/);
+  assert.match(source, /h-\[calc\(100svh-3\.5rem\)\]/);
+});
+
+test("app wrapper lets chat route escape the default max width", () => {
+  const source = fs.readFileSync(path.resolve(import.meta.dirname, "../src/App.tsx"), "utf8");
+  assert.match(source, /pathname\.startsWith\("\/chat"\)/);
+  assert.match(source, /isChatRoute \? "w-full px-0 py-0"/);
 });

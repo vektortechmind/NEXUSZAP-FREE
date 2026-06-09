@@ -12,9 +12,10 @@ type HeaderProps = {
 export function Header({ onOpenMobileSidebar, actions }: HeaderProps) {
   const { pathname } = useLocation();
   const title = getAppRouteTitle(pathname);
+  const compact = pathname.startsWith("/chat");
 
   return (
-    <header className="px-4 pt-4 sm:px-6 sm:pt-6 lg:px-8">
+    <header className={compact ? "px-3 py-2 sm:px-4" : "px-4 pt-4 sm:px-6 sm:pt-6 lg:px-8"}>
       <div className="flex items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
           <button
@@ -26,9 +27,9 @@ export function Header({ onOpenMobileSidebar, actions }: HeaderProps) {
           >
             <Menu size={18} />
           </button>
-          <div className="min-w-0">
+          {!compact ? <div className="min-w-0">
             <h1 className="truncate text-xl font-semibold tracking-normal text-slate-950 dark:text-slate-50 sm:text-2xl">{title}</h1>
-          </div>
+          </div> : null}
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {actions}

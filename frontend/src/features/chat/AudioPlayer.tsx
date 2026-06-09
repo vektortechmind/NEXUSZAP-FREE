@@ -51,7 +51,7 @@ export function AudioPlayer({ src, durationMs }: AudioPlayerProps) {
 
   return (
     <div className="flex min-w-[13rem] items-center gap-3 rounded-lg border border-slate-200 bg-white/70 px-3 py-2 dark:border-slate-700 dark:bg-slate-950/45">
-      <audio ref={audioRef} src={src} preload="metadata" />
+      <audio ref={audioRef} src={src} preload="metadata" controlsList="nodownload" />
       <button
         type="button"
         onClick={() => void toggle()}

@@ -16,6 +16,7 @@ import { getResolvedAgentPrompt } from "../services/runtime-ai/agentPrompt.servi
 import { buildCompleteSystemPrompt, resolveAgentDisplayName } from "../ai/systemPrompt";
 import { recordMessageEvent } from "../services/analytics/messageEvent.service";
 import { chatService } from "../services/chat.service";
+import { writeChatMedia } from "../services/chat.mediaStorage";
 import { resolveContactPhoneDisplay } from "../utils/whatsappJid";
 import { recordLastMessageForChat } from "./lastMessageCache";
 import { globalMemoryManager } from "../utils/ai/memoryManager";
@@ -121,9 +122,10 @@ function messageDateFromBaileysTimestamp(timestamp: proto.IWebMessageInfo["messa
   return new Date(raw * 1000);
 }
 
-function resolveChatMessageType(content: WAMessageContent) {
+export function resolveChatMessageType(content: WAMessageContent) {
   if (content.imageMessage) return "IMAGE" as const;
   if (content.audioMessage) return "AUDIO" as const;
+  if (content.videoMessage) return "VIDEO" as const;
   if (content.documentMessage) return "DOCUMENT" as const;
   if ((content as { buttonsResponseMessage?: unknown }).buttonsResponseMessage) return "BUTTONS_REPLY" as const;
   if ((content as { listResponseMessage?: unknown }).listResponseMessage) return "LIST_REPLY" as const;
@@ -131,13 +133,25 @@ function resolveChatMessageType(content: WAMessageContent) {
   return "UNKNOWN" as const;
 }
 
-function resolveChatBody(content: WAMessageContent): string | null {
+export function resolveChatBody(content: WAMessageContent): string | null {
+  const listResponse = (content as { listResponseMessage?: { title?: string; description?: string } }).listResponseMessage;
+  const buttonsResponse = (content as { buttonsResponseMessage?: { selectedDisplayText?: string; selectedButtonId?: string } }).buttonsResponseMessage;
+  const templateButtonReply = (content as { templateButtonReplyMessage?: { selectedDisplayText?: string; selectedId?: string } }).templateButtonReplyMessage;
+  const interactiveResponse = (content as { interactiveResponseMessage?: { body?: { text?: string }; nativeFlowResponseMessage?: { name?: string } } }).interactiveResponseMessage;
   return content.conversation ||
     content.extendedTextMessage?.text ||
     content.imageMessage?.caption ||
+    content.videoMessage?.caption ||
     content.documentMessage?.caption ||
-    (content as { listResponseMessage?: { title?: string; description?: string } }).listResponseMessage?.title ||
-    (content as { buttonsResponseMessage?: { selectedDisplayText?: string } }).buttonsResponseMessage?.selectedDisplayText ||
+    content.documentMessage?.fileName ||
+    listResponse?.title ||
+    listResponse?.description ||
+    buttonsResponse?.selectedDisplayText ||
+    buttonsResponse?.selectedButtonId ||
+    templateButtonReply?.selectedDisplayText ||
+    templateButtonReply?.selectedId ||
+    interactiveResponse?.body?.text ||
+    interactiveResponse?.nativeFlowResponseMessage?.name ||
     null;
 }
 
@@ -177,13 +191,29 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
       "";
 
     const audioMessage = content.audioMessage;
+    let audioBuffer: Buffer | null = null;
+    let mediaUrl: string | null = null;
+    if (audioMessage && key.id) {
+      audioBuffer = await downloadAudioFromMessage(sock, m);
+      if (audioBuffer && audioBuffer.length > 0) {
+        try {
+          const stored = await writeChatMedia({ instanceId, providerMessageId: key.id, buffer: audioBuffer });
+          mediaUrl = stored.mediaUrl;
+        } catch (err) {
+          console.error("[Chat] Falha ao salvar audio recebido:", safeLogError(err));
+          mediaUrl = null;
+        }
+      }
+    }
+
     await chatService.persistInboundMessage({
       instanceId,
       jid: remoteJid,
       body: resolveChatBody(content),
       messageType: resolveChatMessageType(content),
       providerMessageId: key.id ?? null,
-      mediaMimeType: audioMessage?.mimetype || content.imageMessage?.mimetype || content.documentMessage?.mimetype || null,
+      mediaUrl,
+      mediaMimeType: audioMessage?.mimetype || content.imageMessage?.mimetype || content.videoMessage?.mimetype || content.documentMessage?.mimetype || null,
       mediaDurationMs: audioMessage?.seconds ? Number(audioMessage.seconds) * 1000 : null,
       createdAt: messageDateFromBaileysTimestamp(m.messageTimestamp),
       contactName: m.pushName ?? null,
@@ -205,7 +235,6 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
 
     if (audioMessage && await isAudioTranscriptionEnabled(instanceId)) {
       try {
-        const audioBuffer = await downloadAudioFromMessage(sock, m);
         if (audioBuffer && audioBuffer.length > 0) {
           const mimeType = audioMessage.mimetype || "audio/ogg; codecs=opus";
           const transcribed = await transcribeAudio(instanceId, audioBuffer, mimeType, "pt");
