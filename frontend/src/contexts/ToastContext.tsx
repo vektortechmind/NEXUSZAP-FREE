@@ -19,6 +19,20 @@ interface ToastContextType {
 
 const ToastContext = React.createContext<ToastContextType | undefined>(undefined);
 
+function getToastIcon(type: ToastType) {
+  const iconProps = { className: "w-5 h-5" };
+  switch (type) {
+    case "success":
+      return <Check {...iconProps} />;
+    case "error":
+      return <AlertCircle {...iconProps} />;
+    case "warning":
+      return <AlertTriangle {...iconProps} />;
+    default:
+      return <Info {...iconProps} />;
+  }
+}
+
 export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
   const { theme } = useTheme();
   const [toasts, setToasts] = React.useState<Toast[]>([]);
@@ -36,20 +50,6 @@ export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
       setTimeout(() => removeToast(id), duration);
     }
   }, [removeToast]);
-
-  const getIcon = (type: ToastType) => {
-    const iconProps = { className: "w-5 h-5" };
-    switch (type) {
-      case "success":
-        return <Check {...iconProps} />;
-      case "error":
-        return <AlertCircle {...iconProps} />;
-      case "warning":
-        return <AlertTriangle {...iconProps} />;
-      default:
-        return <Info {...iconProps} />;
-    }
-  };
 
   const getColors = (type: ToastType) => {
     const isDark = theme === "dark";
@@ -98,7 +98,7 @@ export const ToastProvider = ({ children }: { children: React.ReactNode }) => {
               onClick={() => removeToast(toast.id)}
               aria-label={`Dispensar notificação: ${toast.message}`}
             >
-              <div className={colors.icon}>{getIcon(toast.type)}</div>
+              <div className={colors.icon}>{getToastIcon(toast.type)}</div>
               <p className={`${colors.text} font-medium flex-1`}>{toast.message}</p>
               <span
                 aria-hidden="true"

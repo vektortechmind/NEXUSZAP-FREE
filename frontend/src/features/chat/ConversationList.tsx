@@ -19,10 +19,12 @@ type ConversationListProps = {
   onSearchChange: (value: string) => void;
 };
 
+const CONVERSATION_TIME_FORMATTER = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
 function formatTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "--:--";
-  return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(date);
+  return CONVERSATION_TIME_FORMATTER.format(date);
 }
 
 function Avatar({ conversation }: { conversation: ChatConversation }) {

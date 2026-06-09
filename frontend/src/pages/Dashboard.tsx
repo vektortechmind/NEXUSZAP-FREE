@@ -69,10 +69,16 @@ function channelLabel(channel: MessageStats["channel"]): string {
   return channel === "WHATSAPP" ? "WhatsApp" : "Telegram";
 }
 
+const DASHBOARD_DISPLAY_DATE_FORMATTER = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" });
+
 function formatDisplayDate(value: string): string {
   const date = new Date(`${value}T00:00:00`);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(date);
+  return DASHBOARD_DISPLAY_DATE_FORMATTER.format(date);
+}
+
+function sortMessagesByTotalDesc(messages: MessageStats[]): MessageStats[] {
+  return Array.from(messages).sort((a, b) => b.totalCount - a.totalCount);
 }
 
 function DashboardSkeleton() {
@@ -222,9 +228,7 @@ export function Dashboard() {
 
   const maxTimelineCount = Math.max(...timeline.map((item) => item.count), 1);
   const topActivity = useMemo(() => {
-    return [...filteredMessages]
-      .sort((a, b) => b.totalCount - a.totalCount)
-      .slice(0, 6);
+    return sortMessagesByTotalDesc(filteredMessages).slice(0, 6);
   }, [filteredMessages]);
 
   const handleFilter = () => {

@@ -7,6 +7,8 @@ import { Section } from "../../../components/ui/Section";
 import { Skeleton } from "../../../components/ui/Skeleton";
 import type { KnowledgeFile } from "../types";
 
+const KNOWLEDGE_FILE_DATE_FORMATTER = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "numeric" });
+
 function fileKind(file: KnowledgeFile) {
   return file.mimetype.split("/")[1]?.toUpperCase() || file.mimetype || "DOC";
 }
@@ -15,7 +17,7 @@ function formatDate(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? "Data indisponível"
-    : new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", year: "numeric" }).format(date);
+    : KNOWLEDGE_FILE_DATE_FORMATTER.format(date);
 }
 
 export function KnowledgeFilesSection({

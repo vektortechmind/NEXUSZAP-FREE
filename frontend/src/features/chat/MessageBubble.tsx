@@ -111,10 +111,12 @@ function MessageStatus({ status }: { status: ChatMessageStatus }) {
   return <CheckCheck size={14} className={status === "READ" ? "text-sky-500" : undefined} aria-label={getMessageStatusLabel(status)} />;
 }
 
+const MESSAGE_TIME_FORMATTER = new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" });
+
 function formatTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "--:--";
-  return new Intl.DateTimeFormat("pt-BR", { hour: "2-digit", minute: "2-digit" }).format(date);
+  return MESSAGE_TIME_FORMATTER.format(date);
 }
 
 function MessageMeta({ message, inline = false }: { message: ChatMessage; inline?: boolean }) {

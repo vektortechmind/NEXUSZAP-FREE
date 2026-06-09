@@ -15,15 +15,17 @@ import {
   INTEGRATION_AUDIT_VISIBLE_LIMIT,
 } from "./integrationAuditOverview";
 
+const AUDIT_DATE_TIME_FORMATTER = new Intl.DateTimeFormat("pt-BR", {
+  day: "2-digit",
+  month: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
 function formatDateTime(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
+  return AUDIT_DATE_TIME_FORMATTER.format(date);
 }
 
 function DetailField({ label, value, mono = false }: { label: string; value: string | number | null | undefined; mono?: boolean }) {

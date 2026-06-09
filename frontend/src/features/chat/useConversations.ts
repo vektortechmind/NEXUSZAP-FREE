@@ -26,8 +26,8 @@ export function getUnreadTotal(conversations: ChatConversation[]) {
 export function filterConversations(conversations: ChatConversation[], selectedInstanceId: string, search: string) {
   const query = search.trim().toLowerCase();
   return conversations
-    .filter((conversation) => selectedInstanceId === "all" || conversation.instanceId === selectedInstanceId)
     .filter((conversation) => {
+      if (selectedInstanceId !== "all" && conversation.instanceId !== selectedInstanceId) return false;
       if (!query) return true;
       return [getContactDisplayName(conversation), getMessagePreview(conversation.lastMessage), conversation.jid]
         .some((value) => value.toLowerCase().includes(query));
