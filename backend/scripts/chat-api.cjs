@@ -315,6 +315,12 @@ function createApp({ store, baileys, events }) {
   assert.equal(JSON.parse(clearWhatsappResponse.body).deletedCount, 1);
   assert.equal(baileys.clearChats.length, 1);
   assert.equal(baileys.clearChats[0].jid, "5511777770000@s.whatsapp.net");
+  assert.deepEqual(baileys.clearChats[0].lastMessages, [
+    {
+      key: { id: "wamid.clear.whatsapp.1", remoteJid: "5511777770000@s.whatsapp.net", fromMe: true },
+      messageTimestamp: 1780999680,
+    },
+  ]);
   assert.equal(baileys.deletes.some((item) => item.providerMessageId === "wamid.clear.whatsapp.1"), false);
 
   const realtimeEvents = [];
@@ -343,6 +349,12 @@ function createApp({ store, baileys, events }) {
   assert.equal(clearFailureResponse.statusCode, 200, clearFailureResponse.body);
   assert.equal(JSON.parse(clearFailureResponse.body).deletedCount, 1);
   assert.equal(clearFailureBaileys.clearChats.length, 1);
+  assert.deepEqual(clearFailureBaileys.clearChats[0].lastMessages, [
+    {
+      key: { id: "wamid.clear.fail.1", remoteJid: "5511555550000@s.whatsapp.net", fromMe: false },
+      messageTimestamp: 1780999710,
+    },
+  ]);
   const clearFailureMessages = await clearFailureApp.inject({
     method: "GET",
     url: `/api/chat/conversations/${encodeURIComponent("5511555550000@s.whatsapp.net")}/messages?instanceId=instance-a`,

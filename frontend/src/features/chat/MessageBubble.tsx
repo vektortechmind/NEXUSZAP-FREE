@@ -1,11 +1,14 @@
-import { AlertTriangle, Check, CheckCheck, Eye, Pencil, Plus, X } from "lucide-react";
+import { AlertTriangle, Check, CheckCheck, Eye, Pencil, Plus, SmilePlus, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { MouseEvent } from "react";
+import { createPortal } from "react-dom";
 import type { ChatMessage, ChatMessageStatus } from "./types";
 import { AudioPlayer } from "./AudioPlayer";
 import { getKnownMessageFallback, getMessagePreviewText, getMessageStatusLabel } from "./chatDisplay";
 import { MessageMenuButton } from "./MessageContextMenu";
-import { EmojiMartPopup } from "./EmojiMartPopup";
+import { EMOJI_PICKER_HEIGHT, EMOJI_PICKER_WIDTH, EmojiMartPopup } from "./EmojiMartPopup";
 import { QUICK_REACTIONS } from "./chatReactions";
+import { getViewportAwarePopupPosition, type PopupPosition } from "./emojiPickerPosition";
 
 type MessageBubbleProps = {
   message: ChatMessage;
@@ -14,6 +17,93 @@ type MessageBubbleProps = {
   onOpenMenu?: (message: ChatMessage, position: { x: number; y: number }) => void;
   onOpenMedia?: (message: ChatMessage) => void;
 };
+
+const QUICK_REACTION_POPUP_WIDTH = 292;
+const QUICK_REACTION_POPUP_HEIGHT = 44;
+
+function getPopupPosition(anchor: DOMRect, width: number, height: number): PopupPosition {
+  return getViewportAwarePopupPosition({
+    anchorRect: anchor,
+    popupWidth: width,
+    popupHeight: height,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+  });
+}
+
+function QuickReactionPopup({
+  position,
+  hasReaction,
+  onSelect,
+  onMore,
+  onRemove,
+  onClose,
+}: {
+  position: PopupPosition;
+  hasReaction: boolean;
+  onSelect: (emoji: string) => void;
+  onMore: () => void;
+  onRemove: () => void;
+  onClose: () => void;
+}) {
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const onPointerDown = (event: PointerEvent) => {
+      if (!panelRef.current?.contains(event.target as Node)) onClose();
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("pointerdown", onPointerDown);
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("pointerdown", onPointerDown);
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [onClose]);
+
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div
+      ref={panelRef}
+      className="fixed z-[90] flex items-center gap-0.5 rounded-full border border-slate-200 bg-white px-1 py-0.5 text-sm shadow-xl shadow-slate-900/15 dark:border-slate-700 dark:bg-slate-900"
+      style={{ left: position.left, top: position.top, width: QUICK_REACTION_POPUP_WIDTH }}
+      onClick={(event) => event.stopPropagation()}
+    >
+      {QUICK_REACTIONS.map((emoji) => (
+        <button
+          key={emoji}
+          type="button"
+          onClick={() => onSelect(emoji)}
+          className="flex h-8 w-8 items-center justify-center rounded-full text-base transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:hover:bg-slate-800"
+          aria-label={`Reagir com ${emoji}`}
+        >
+          {emoji}
+        </button>
+      ))}
+      <button
+        type="button"
+        onClick={onMore}
+        className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:text-slate-300 dark:hover:bg-slate-800"
+        aria-label="Mais emojis"
+      >
+        <Plus size={14} aria-hidden="true" />
+      </button>
+      {hasReaction ? (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:text-slate-300 dark:hover:bg-slate-800"
+          aria-label="Remover reacao"
+        >
+          <X size={14} aria-hidden="true" />
+        </button>
+      ) : null}
+    </div>,
+    document.body,
+  );
+}
 
 function MessageStatus({ status }: { status: ChatMessageStatus }) {
   if (status === "FAILED") return <AlertTriangle size={13} className="text-red-500" aria-label="Falhou" />;
@@ -41,7 +131,8 @@ function MessageMeta({ message, inline = false }: { message: ChatMessage; inline
 export function MessageBubble({ message, quotedMessage, onReact, onOpenMenu, onOpenMedia }: MessageBubbleProps) {
   const [showQuickReactions, setShowQuickReactions] = useState(false);
   const [showFullPicker, setShowFullPicker] = useState(false);
-  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [quickPosition, setQuickPosition] = useState<PopupPosition | null>(null);
+  const [pickerPosition, setPickerPosition] = useState<PopupPosition | null>(null);
   const fromMe = message.fromMe;
   const showAudio = message.messageType === "AUDIO" && Boolean(message.mediaUrl);
   const showImage = message.messageType === "IMAGE" && Boolean(message.mediaUrl);
@@ -54,85 +145,47 @@ export function MessageBubble({ message, quotedMessage, onReact, onOpenMenu, onO
   const displayBody = isViewOnce ? message.body?.replace(/^Visualizacao unica\n?/, "").trim() : message.body;
   const canReact = Boolean(onReact && message.providerMessageId && !message.isDeleted);
   const bubblePadding = hasVisualMedia ? "p-0 overflow-hidden" : "px-2.5 py-1.5";
-  const handleMouseEnter = useCallback(() => {
-    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    setShowQuickReactions(true);
-  }, []);
-  const handleMouseLeave = useCallback(() => {
-    hideTimerRef.current = setTimeout(() => setShowQuickReactions(false), 200);
-  }, []);
   const handleSelectEmoji = useCallback((emoji: string) => {
+    setShowQuickReactions(false);
     setShowFullPicker(false);
+    setQuickPosition(null);
+    setPickerPosition(null);
     void onReact?.(message, emoji);
   }, [message, onReact]);
 
-  useEffect(() => () => {
-    if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
+  const handleOpenQuickReactions = useCallback((event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    const rect = event.currentTarget.getBoundingClientRect();
+    setQuickPosition(getPopupPosition(rect, QUICK_REACTION_POPUP_WIDTH, QUICK_REACTION_POPUP_HEIGHT));
+    setPickerPosition(getPopupPosition(rect, EMOJI_PICKER_WIDTH, EMOJI_PICKER_HEIGHT));
+    setShowFullPicker(false);
+    setShowQuickReactions((current) => !current);
+  }, []);
+
+  const closeReactions = useCallback(() => {
+    setShowQuickReactions(false);
+    setShowFullPicker(false);
+    setQuickPosition(null);
+    setPickerPosition(null);
   }, []);
 
   return (
     <div className={`flex ${fromMe ? "justify-end" : "justify-start"}`}>
-      <div
-        className={`group relative w-fit max-w-[min(82%,42rem)] rounded-lg shadow-[0_1px_0_rgba(15,23,42,0.08)] ${bubblePadding} ${fromMe ? "bg-emerald-600 text-white dark:bg-emerald-500 dark:text-slate-950" : "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100"}`}
-        onMouseEnter={handleMouseEnter}
-        onMouseLeave={handleMouseLeave}
-        onContextMenu={(event) => {
-          if (!onOpenMenu) return;
-          event.preventDefault();
-          onOpenMenu(message, { x: event.clientX, y: event.clientY });
-        }}
-      >
+      <div className={`group/message-row flex max-w-[min(92%,44rem)] items-center gap-1 ${fromMe ? "flex-row-reverse" : "flex-row"}`}>
+        <div
+          className={`group relative w-fit max-w-full rounded-lg shadow-[0_1px_0_rgba(15,23,42,0.08)] ${bubblePadding} ${fromMe ? "bg-emerald-600 text-white dark:bg-emerald-500 dark:text-slate-950" : "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100"}`}
+          onContextMenu={(event) => {
+            if (!onOpenMenu) return;
+            event.preventDefault();
+            onOpenMenu(message, { x: event.clientX, y: event.clientY });
+          }}
+        >
         {onOpenMenu && !message.isDeleted ? (
           <MessageMenuButton onClick={(event) => {
             event.stopPropagation();
             const rect = event.currentTarget.getBoundingClientRect();
             onOpenMenu(message, { x: rect.left, y: rect.bottom + 4 });
           }} />
-        ) : null}
-        {canReact ? (
-          <div
-            className={`absolute top-0 z-20 -translate-y-1/2 items-center gap-0.5 rounded-full border border-slate-200 bg-white px-1 py-0.5 text-sm shadow-lg shadow-slate-900/10 dark:border-slate-700 dark:bg-slate-900 ${showQuickReactions ? "flex" : "hidden"} ${fromMe ? "right-2" : "left-2"}`}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-          >
-            {QUICK_REACTIONS.map((emoji) => (
-              <button
-                key={emoji}
-                type="button"
-                onClick={() => onReact?.(message, emoji)}
-                className="flex h-7 w-7 items-center justify-center rounded-full transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:hover:bg-slate-800"
-                aria-label={`Reagir com ${emoji}`}
-              >
-                {emoji}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                setShowFullPicker((current) => !current);
-              }}
-              className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:text-slate-300 dark:hover:bg-slate-800"
-              aria-label="Mais emojis"
-            >
-              <Plus size={14} aria-hidden="true" />
-            </button>
-            {message.reactionEmoji ? (
-              <button
-                type="button"
-                onClick={() => onReact?.(message, "")}
-                className="flex h-7 w-7 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:text-slate-300 dark:hover:bg-slate-800"
-                aria-label="Remover reacao"
-              >
-                <X size={14} aria-hidden="true" />
-              </button>
-            ) : null}
-            {showFullPicker ? (
-              <div className={`absolute bottom-full z-50 mb-2 ${fromMe ? "right-0" : "left-0"}`}>
-                <EmojiMartPopup onSelect={handleSelectEmoji} onClose={() => setShowFullPicker(false)} />
-              </div>
-            ) : null}
-          </div>
         ) : null}
         {isViewOnce ? (
           <div className={`mb-1 flex items-center gap-1 text-xs ${fromMe ? "text-white/80 dark:text-slate-950/70" : "text-slate-500 dark:text-slate-400"}`}>
@@ -181,6 +234,32 @@ export function MessageBubble({ message, quotedMessage, onReact, onOpenMenu, onO
             {message.reactionEmoji}
           </span>
         ) : null}
+        </div>
+      {canReact ? (
+        <button
+          type="button"
+          onPointerDown={(event) => event.stopPropagation()}
+          onClick={handleOpenQuickReactions}
+          className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-50 hover:text-emerald-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 ${showQuickReactions || showFullPicker ? "opacity-100" : "opacity-0 group-hover/message-row:opacity-100"}`}
+          aria-label="Abrir reacoes"
+        >
+          <SmilePlus size={16} aria-hidden="true" />
+        </button>
+      ) : null}
+      {showQuickReactions && quickPosition ? (
+        <QuickReactionPopup
+          position={quickPosition}
+          hasReaction={Boolean(message.reactionEmoji)}
+          onSelect={handleSelectEmoji}
+          onMore={() => {
+            setShowQuickReactions(false);
+            setShowFullPicker(true);
+          }}
+          onRemove={() => handleSelectEmoji("")}
+          onClose={closeReactions}
+        />
+      ) : null}
+      {showFullPicker && pickerPosition ? <EmojiMartPopup position={pickerPosition} onSelect={handleSelectEmoji} onClose={closeReactions} /> : null}
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 import type { ChatMessageStatus, ChatMessageType, MessageDirection } from "@prisma/client";
-import { WAMessageStatus, type WAMessage, type WAMessageUpdate } from "@whiskeysockets/baileys";
+import { WAMessageStatus, type MinimalMessage, type WAMessage, type WAMessageUpdate } from "@whiskeysockets/baileys";
 import { prisma } from "../database/prisma";
 import { safeLogError } from "../utils/redaction";
 import { recordMessageEvent } from "./analytics/messageEvent.service";
@@ -151,6 +151,23 @@ function buildQuotedWAMessage(message: ChatMessage): WAMessage {
     },
     messageTimestamp: Math.floor(message.createdAt.getTime() / 1000),
   } as WAMessage;
+}
+
+function buildLastMessagesForChatModify(messages: ChatMessage[], jid: string): MinimalMessage[] {
+  const lastMessage = [...messages]
+    .reverse()
+    .find((message) => message.providerMessageId?.trim());
+  if (!lastMessage?.providerMessageId) return [];
+  return [
+    {
+      key: {
+        id: lastMessage.providerMessageId,
+        remoteJid: jid,
+        fromMe: lastMessage.fromMe,
+      },
+      messageTimestamp: Math.floor(lastMessage.createdAt.getTime() / 1000),
+    },
+  ];
 }
 
 export function normalizeChatJid(value: string): string {
@@ -680,8 +697,13 @@ export function createChatService(deps: {
     async clearConversation(input: { instanceId: string; jid: string; mode: ChatClearMode }) {
       await ensureInstance(input.instanceId);
       const jid = normalizeChatJid(input.jid);
+      const messages = await store.listMessagesForConversation({ instanceId: input.instanceId, jid });
       if (input.mode === "panel_and_whatsapp") {
-        await baileys.clearChat({ instanceId: input.instanceId, jid }).catch((err) => {
+        await baileys.clearChat({
+          instanceId: input.instanceId,
+          jid,
+          lastMessages: buildLastMessagesForChatModify(messages, jid),
+        }).catch((err) => {
           console.warn("[Chat] Falha ao limpar conversa no WhatsApp; limpando apenas o painel:", safeLogError(err));
         });
       }

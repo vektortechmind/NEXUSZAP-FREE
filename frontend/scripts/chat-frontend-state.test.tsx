@@ -12,6 +12,7 @@ import { MessageContextMenu } from "../src/features/chat/MessageContextMenu.tsx"
 import { MediaViewer } from "../src/features/chat/MediaViewer.tsx";
 import { QUICK_REACTIONS } from "../src/features/chat/chatReactions.ts";
 import { getViewportAwareMenuPosition } from "../src/features/chat/messageMenuPosition.ts";
+import { getViewportAwarePopupPosition } from "../src/features/chat/emojiPickerPosition.ts";
 import { getMessageContextActions, isWithinEditWindow } from "../src/features/chat/messageContextActions.ts";
 import { getKnownMessageFallback, getMessageStatusLabel } from "../src/features/chat/chatDisplay.ts";
 import { upsertMessage } from "../src/features/chat/chatState.ts";
@@ -221,6 +222,7 @@ test("emoji picker uses emoji-mart and message bubble plus button", () => {
   const bubbleHtml = renderToStaticMarkup(<MessageBubble message={{ ...textMessage, providerMessageId: "wamid.in.1" }} onReact={() => undefined} />);
   const packageJson = JSON.parse(fs.readFileSync(path.resolve(import.meta.dirname, "../package.json"), "utf8"));
   const popupSource = fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/EmojiMartPopup.tsx"), "utf8");
+  const bubbleSource = fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/MessageBubble.tsx"), "utf8");
   assert.equal(QUICK_REACTIONS.length, 6);
   assert.equal(typeof packageJson.dependencies["emoji-mart"], "string");
   assert.equal(typeof packageJson.dependencies["@emoji-mart/react"], "string");
@@ -228,11 +230,34 @@ test("emoji picker uses emoji-mart and message bubble plus button", () => {
   assert.match(popupSource, /import Picker from "@emoji-mart\/react"/);
   assert.match(popupSource, /emojiVersion="14\.0"/);
   assert.match(popupSource, /theme="auto"/);
+  assert.match(popupSource, /perLine=\{8\}/);
+  assert.match(popupSource, /emojiSize=\{18\}/);
+  assert.match(popupSource, /emojiButtonSize=\{30\}/);
+  assert.match(popupSource, /previewPosition="none"/);
   assert.match(popupSource, /onEmojiSelect/);
   assert.match(popupSource, /pointerdown/);
   assert.match(popupSource, /Escape/);
-  assert.match(bubbleHtml, /Mais emojis/);
-  assert.doesNotMatch(fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/MessageBubble.tsx"), "utf8"), /group-hover:flex/);
+  assert.match(bubbleHtml, /Abrir reacoes/);
+  assert.match(bubbleSource, /Mais emojis/);
+  assert.match(bubbleSource, /SmilePlus/);
+  assert.doesNotMatch(bubbleSource, /group-hover:flex/);
+});
+
+test("emoji popup position opens inside viewport", () => {
+  const topAnchor = { left: 20, right: 52, top: 8, bottom: 40, width: 32, height: 32 } as DOMRect;
+  const bottomAnchor = { left: 740, right: 772, top: 560, bottom: 592, width: 32, height: 32 } as DOMRect;
+  const topPosition = getViewportAwarePopupPosition({ anchorRect: topAnchor, popupWidth: 292, popupHeight: 340, viewportWidth: 800, viewportHeight: 600 });
+  const bottomPosition = getViewportAwarePopupPosition({ anchorRect: bottomAnchor, popupWidth: 292, popupHeight: 340, viewportWidth: 800, viewportHeight: 600 });
+  assert.equal(topPosition.top >= topAnchor.bottom, true);
+  assert.equal(topPosition.left >= 8, true);
+  assert.equal(bottomPosition.top < bottomAnchor.top, true);
+  assert.equal(bottomPosition.left + 292 <= 792, true);
+});
+
+test("clear conversation menu uses device wording", () => {
+  const source = fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/ChatHeader.tsx"), "utf8");
+  assert.match(source, /Limpar painel \+ aparelho/);
+  assert.doesNotMatch(source, /Limpar painel \+ WhatsApp/);
 });
 
 test("message context menu position stays inside viewport", () => {
