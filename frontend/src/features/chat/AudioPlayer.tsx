@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 type AudioPlayerProps = {
   src: string;
   durationMs?: number | null;
+  fromMe?: boolean;
 };
 
 function formatDuration(seconds: number) {
@@ -13,7 +14,7 @@ function formatDuration(seconds: number) {
   return `${minutes}:${rest}`;
 }
 
-export function AudioPlayer({ src, durationMs }: AudioPlayerProps) {
+export function AudioPlayer({ src, durationMs, fromMe = false }: AudioPlayerProps) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -48,23 +49,40 @@ export function AudioPlayer({ src, durationMs }: AudioPlayerProps) {
   };
 
   const progress = duration > 0 ? Math.min((currentTime / duration) * 100, 100) : 0;
+  const bars = Array.from({ length: 32 }, (_, index) => {
+    const height = 7 + ((index * 7) % 18);
+    const active = ((index + 1) / 32) * 100 <= progress;
+    return { height, active };
+  });
+  const buttonClass = fromMe
+    ? "bg-white/90 text-emerald-700 hover:bg-white dark:bg-slate-950/85 dark:text-emerald-300"
+    : "bg-emerald-600 text-white hover:bg-emerald-500 dark:bg-emerald-500 dark:text-slate-950";
+  const inactiveBar = fromMe ? "bg-white/45 dark:bg-slate-950/30" : "bg-slate-300 dark:bg-slate-600";
+  const activeBar = fromMe ? "bg-white dark:bg-slate-950/80" : "bg-emerald-500 dark:bg-emerald-400";
+  const timeClass = fromMe ? "text-white/80 dark:text-slate-950/70" : "text-slate-500 dark:text-slate-400";
 
   return (
-    <div className="flex min-w-[13rem] items-center gap-3 rounded-lg border border-slate-200 bg-white/70 px-3 py-2 dark:border-slate-700 dark:bg-slate-950/45">
+    <div className="flex min-w-[15rem] max-w-[21rem] items-center gap-2.5 py-0.5">
       <audio ref={audioRef} src={src} preload="metadata" controlsList="nodownload" />
       <button
         type="button"
         onClick={() => void toggle()}
-        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white transition hover:bg-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:bg-emerald-500 dark:text-slate-950"
+        className={`inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full shadow-sm transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${buttonClass}`}
         aria-label={playing ? "Pausar audio" : "Reproduzir audio"}
       >
-        {playing ? <Pause size={16} aria-hidden="true" /> : <Play size={16} aria-hidden="true" />}
+        {playing ? <Pause size={17} aria-hidden="true" /> : <Play size={17} className="ml-0.5" aria-hidden="true" />}
       </button>
       <div className="min-w-0 flex-1">
-        <div className="h-1.5 rounded-full bg-slate-200 dark:bg-slate-800" aria-hidden="true">
-          <div className="h-full rounded-full bg-emerald-500" style={{ width: `${progress}%` }} />
+        <div className="flex h-7 items-center gap-[2px]" aria-hidden="true">
+          {bars.map((bar, index) => (
+            <span
+              key={index}
+              className={`w-[3px] rounded-full transition-colors ${bar.active ? activeBar : inactiveBar}`}
+              style={{ height: `${bar.height}px` }}
+            />
+          ))}
         </div>
-        <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+        <p className={`-mt-0.5 text-[11px] font-medium ${timeClass}`}>
           {formatDuration(currentTime)} / {formatDuration(duration)}
         </p>
       </div>

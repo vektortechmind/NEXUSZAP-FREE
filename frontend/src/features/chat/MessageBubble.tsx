@@ -25,9 +25,9 @@ export function MessageBubble({ message }: MessageBubbleProps) {
   return (
     <div className={`flex ${fromMe ? "justify-end" : "justify-start"}`}>
       <div
-        className={`group max-w-[min(78%,42rem)] rounded-lg px-3 py-2 shadow-sm ${fromMe ? "bg-emerald-600 text-white dark:bg-emerald-500 dark:text-slate-950" : "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100"}`}
+        className={`group max-w-[min(82%,42rem)] rounded-lg px-3 py-2 shadow-[0_1px_0_rgba(15,23,42,0.08)] ${fromMe ? "bg-emerald-600 text-white dark:bg-emerald-500 dark:text-slate-950" : "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100"}`}
       >
-        {showAudio ? <AudioPlayer src={message.mediaUrl!} durationMs={message.mediaDurationMs} /> : null}
+        {showAudio ? <AudioPlayer src={message.mediaUrl!} durationMs={message.mediaDurationMs} fromMe={fromMe} /> : null}
         {message.body ? <p className="whitespace-pre-wrap break-words text-sm leading-5">{message.body}</p> : null}
         {!showAudio && !message.body ? <p className="text-sm italic opacity-75">{getKnownMessageFallback(message)}</p> : null}
         <div className={`mt-1 flex items-center justify-end gap-1 text-[11px] ${fromMe ? "text-white/78 dark:text-slate-950/70" : "text-slate-500 dark:text-slate-400"}`}>

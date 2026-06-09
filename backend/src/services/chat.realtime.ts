@@ -11,13 +11,7 @@ export type ChatRealtimeConversationPayload = Omit<ChatConversationSummary, "cre
   lastMessage: ChatRealtimeMessagePayload | null;
 };
 
-export type ChatRealtimeStatusPayload = {
-  messageId: string;
-  providerMessageId: string | null;
-  jid: string;
-  status: ChatMessage["status"];
-  conversationId: string;
-};
+export type ChatRealtimeStatusPayload = ChatRealtimeMessagePayload;
 
 export type ChatRealtimePresencePayload = {
   jid: string;
@@ -62,14 +56,7 @@ class ChatRealtimeHub {
   }
 
   emitMessageStatus(input: { instanceId: string; message: ChatMessage }) {
-    const payload: ChatRealtimeStatusPayload = {
-      messageId: input.message.id,
-      providerMessageId: input.message.providerMessageId,
-      jid: input.message.jid,
-      status: input.message.status,
-      conversationId: input.message.conversationId,
-    };
-    this.emitter?.emitToInstance(input.instanceId, "message:status", payload);
+    this.emitter?.emitToInstance(input.instanceId, "message:status", serializeMessage(input.message));
   }
 
   emitConversationUpdate(input: { instanceId: string; conversation: ChatConversationSummary }) {

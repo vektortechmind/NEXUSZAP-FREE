@@ -122,28 +122,51 @@ function messageDateFromBaileysTimestamp(timestamp: proto.IWebMessageInfo["messa
   return new Date(raw * 1000);
 }
 
+function unwrapChatContent(content: WAMessageContent, depth = 0): WAMessageContent {
+  if (depth > 5) return content;
+  const wrapped = content as WAMessageContent & {
+    ephemeralMessage?: { message?: WAMessageContent | null };
+    viewOnceMessage?: { message?: WAMessageContent | null };
+    viewOnceMessageV2?: { message?: WAMessageContent | null };
+    documentWithCaptionMessage?: { message?: WAMessageContent | null };
+    editedMessage?: { message?: WAMessageContent | null };
+  };
+  const next = wrapped.ephemeralMessage?.message ||
+    wrapped.viewOnceMessage?.message ||
+    wrapped.viewOnceMessageV2?.message ||
+    wrapped.documentWithCaptionMessage?.message ||
+    wrapped.editedMessage?.message ||
+    null;
+  return next ? unwrapChatContent(extractMessageContent(normalizeMessageContent(next)) ?? next, depth + 1) : content;
+}
+
 export function resolveChatMessageType(content: WAMessageContent) {
-  if (content.imageMessage) return "IMAGE" as const;
-  if (content.audioMessage) return "AUDIO" as const;
-  if (content.videoMessage) return "VIDEO" as const;
-  if (content.documentMessage) return "DOCUMENT" as const;
-  if ((content as { buttonsResponseMessage?: unknown }).buttonsResponseMessage) return "BUTTONS_REPLY" as const;
-  if ((content as { listResponseMessage?: unknown }).listResponseMessage) return "LIST_REPLY" as const;
-  if (content.conversation || content.extendedTextMessage) return "TEXT" as const;
+  const resolved = unwrapChatContent(content);
+  if (resolved !== content) return resolveChatMessageType(resolved);
+  if (resolved.imageMessage) return "IMAGE" as const;
+  if (resolved.audioMessage) return "AUDIO" as const;
+  if (resolved.videoMessage) return "VIDEO" as const;
+  if (resolved.documentMessage) return "DOCUMENT" as const;
+  if ((resolved as { buttonsResponseMessage?: unknown }).buttonsResponseMessage) return "BUTTONS_REPLY" as const;
+  if ((resolved as { listResponseMessage?: unknown }).listResponseMessage) return "LIST_REPLY" as const;
+  if (resolved.conversation || resolved.extendedTextMessage) return "TEXT" as const;
   return "UNKNOWN" as const;
 }
 
 export function resolveChatBody(content: WAMessageContent): string | null {
-  const listResponse = (content as { listResponseMessage?: { title?: string; description?: string } }).listResponseMessage;
-  const buttonsResponse = (content as { buttonsResponseMessage?: { selectedDisplayText?: string; selectedButtonId?: string } }).buttonsResponseMessage;
-  const templateButtonReply = (content as { templateButtonReplyMessage?: { selectedDisplayText?: string; selectedId?: string } }).templateButtonReplyMessage;
-  const interactiveResponse = (content as { interactiveResponseMessage?: { body?: { text?: string }; nativeFlowResponseMessage?: { name?: string } } }).interactiveResponseMessage;
-  return content.conversation ||
-    content.extendedTextMessage?.text ||
-    content.imageMessage?.caption ||
-    content.videoMessage?.caption ||
-    content.documentMessage?.caption ||
-    content.documentMessage?.fileName ||
+  const resolved = unwrapChatContent(content);
+  const listResponse = (resolved as { listResponseMessage?: { title?: string; description?: string } }).listResponseMessage;
+  const buttonsResponse = (resolved as { buttonsResponseMessage?: { selectedDisplayText?: string; selectedButtonId?: string } }).buttonsResponseMessage;
+  const templateButtonReply = (resolved as { templateButtonReplyMessage?: { selectedDisplayText?: string; selectedId?: string } }).templateButtonReplyMessage;
+  const interactiveResponse = (resolved as { interactiveResponseMessage?: { body?: { text?: string }; nativeFlowResponseMessage?: { name?: string } } }).interactiveResponseMessage;
+  const protocolMessage = (resolved as { protocolMessage?: { editedMessage?: WAMessageContent } }).protocolMessage;
+  if (protocolMessage?.editedMessage) return resolveChatBody(protocolMessage.editedMessage);
+  return resolved.conversation ||
+    resolved.extendedTextMessage?.text ||
+    resolved.imageMessage?.caption ||
+    resolved.videoMessage?.caption ||
+    resolved.documentMessage?.caption ||
+    resolved.documentMessage?.fileName ||
     listResponse?.title ||
     listResponse?.description ||
     buttonsResponse?.selectedDisplayText ||
@@ -181,43 +204,49 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
 
     const raw: WAMessageContent = m.message;
     const norm = normalizeMessageContent(raw);
-    const content = extractMessageContent(norm) ?? norm;
+    if (!norm) return;
+    const content = unwrapChatContent(extractMessageContent(norm) ?? norm);
     if (!content) return;
 
+    const chatBody = resolveChatBody(content);
+    const chatMessageType = resolveChatMessageType(content);
     const textMsg =
-      content.conversation ||
-      content.extendedTextMessage?.text ||
+      chatBody ||
       (content as { listResponseMessage?: { title?: string } }).listResponseMessage?.title ||
       "";
 
     const audioMessage = content.audioMessage;
     let audioBuffer: Buffer | null = null;
-    let mediaUrl: string | null = null;
-    if (audioMessage && key.id) {
-      audioBuffer = await downloadAudioFromMessage(sock, m);
-      if (audioBuffer && audioBuffer.length > 0) {
-        try {
-          const stored = await writeChatMedia({ instanceId, providerMessageId: key.id, buffer: audioBuffer });
-          mediaUrl = stored.mediaUrl;
-        } catch (err) {
-          console.error("[Chat] Falha ao salvar audio recebido:", safeLogError(err));
-          mediaUrl = null;
-        }
-      }
-    }
-
-    await chatService.persistInboundMessage({
+    const persistedMessage = await chatService.persistInboundMessage({
       instanceId,
       jid: remoteJid,
-      body: resolveChatBody(content),
-      messageType: resolveChatMessageType(content),
+      body: chatBody,
+      messageType: chatMessageType,
       providerMessageId: key.id ?? null,
-      mediaUrl,
+      mediaUrl: null,
       mediaMimeType: audioMessage?.mimetype || content.imageMessage?.mimetype || content.videoMessage?.mimetype || content.documentMessage?.mimetype || null,
       mediaDurationMs: audioMessage?.seconds ? Number(audioMessage.seconds) * 1000 : null,
       createdAt: messageDateFromBaileysTimestamp(m.messageTimestamp),
       contactName: m.pushName ?? null,
     });
+
+    if (audioMessage && key.id && !persistedMessage.mediaUrl) {
+      audioBuffer = await downloadAudioFromMessage(sock, m);
+      if (audioBuffer && audioBuffer.length > 0) {
+        try {
+          const stored = await writeChatMedia({ instanceId, providerMessageId: key.id, buffer: audioBuffer });
+          await chatService.attachMessageMedia({
+            instanceId,
+            messageId: persistedMessage.id,
+            mediaUrl: stored.mediaUrl,
+            mediaMimeType: audioMessage.mimetype || null,
+            mediaDurationMs: audioMessage.seconds ? Number(audioMessage.seconds) * 1000 : null,
+          });
+        } catch (err) {
+          console.error("[Chat] Falha ao salvar audio recebido:", safeLogError(err));
+        }
+      }
+    }
 
     const hasSupportedInboundContent = Boolean(textMsg.trim() || audioMessage);
     if (!hasSupportedInboundContent) return;

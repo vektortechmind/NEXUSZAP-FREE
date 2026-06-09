@@ -16,5 +16,5 @@ export function getKnownMessageFallback(message: Pick<ChatMessage, "messageType"
   if (message.messageType === "DOCUMENT") return "Documento recebido";
   if (message.messageType === "BUTTONS_REPLY") return "Resposta de botao";
   if (message.messageType === "LIST_REPLY") return "Resposta de lista";
-  return "Mensagem sem texto";
+  return "Mensagem recebida";
 }

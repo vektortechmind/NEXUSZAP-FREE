@@ -111,6 +111,7 @@ test("message bubbles render direction, status and inline audio controls", () =>
   assert.equal(getMessageStatusLabel("DELIVERED"), "Entregue");
   assert.match(audioHtml, /Reproduzir audio/);
   assert.doesNotMatch(audioHtml, /Mensagem sem texto/);
+  assert.doesNotMatch(audioHtml, /border border-slate/);
   assert.doesNotMatch(audioHtml, /<audio[^>]*controls(\s|=|>)/);
   assert.doesNotMatch(audioHtml, /<a\s[^>]*download/i);
   assert.doesNotMatch(audioHtml, />\s*Baixar\s*</i);
@@ -121,6 +122,7 @@ test("known empty media/reply messages use readable fallback instead of generic 
   assert.equal(getKnownMessageFallback({ ...textMessage, body: null, messageType: "AUDIO", mediaUrl: null }), "Audio indisponivel");
   assert.equal(getKnownMessageFallback({ ...textMessage, body: null, messageType: "DOCUMENT" }), "Documento recebido");
   assert.equal(getKnownMessageFallback({ ...textMessage, body: null, messageType: "VIDEO" }), "Video recebido");
+  assert.equal(getKnownMessageFallback({ ...textMessage, body: null, messageType: "UNKNOWN" }), "Mensagem recebida");
 });
 
 test("message upsert preserves chronological order and deduplicates older pages", () => {

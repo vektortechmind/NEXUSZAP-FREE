@@ -45,6 +45,9 @@ function createBaileysMock() {
   assert.equal(resolveChatBody({ listResponseMessage: { title: "Plano Pro", description: "Detalhes" } }), "Plano Pro");
   assert.equal(resolveChatBody({ templateButtonReplyMessage: { selectedDisplayText: "Confirmar" } }), "Confirmar");
   assert.equal(resolveChatBody({ interactiveResponseMessage: { body: { text: "Fluxo escolhido" } } }), "Fluxo escolhido");
+  assert.equal(resolveChatBody({ ephemeralMessage: { message: { extendedTextMessage: { text: "Texto em wrapper" } } } }), "Texto em wrapper");
+  assert.equal(resolveChatBody({ viewOnceMessage: { message: { imageMessage: { caption: "Legenda em visualizacao unica" } } } }), "Legenda em visualizacao unica");
+  assert.equal(resolveChatBody({ protocolMessage: { editedMessage: { conversation: "Texto editado" } } }), "Texto editado");
   assert.equal(resolveChatBody({}), null);
 
   assert.equal(resolveChatMessageType({ conversation: "Oi" }), "TEXT");
@@ -59,14 +62,13 @@ function createBaileysMock() {
   app.register(createChatRoutes({ service, preValidationHook: async () => {} }), { prefix: "/api/chat" });
   await app.ready();
 
-  await writeChatMedia({ instanceId: "instance-a", providerMessageId: "wamid.audio.1", buffer: Buffer.from("audio-bytes") });
   const audio = await service.persistInboundMessage({
     instanceId: "instance-a",
     jid: "5511999990000@s.whatsapp.net",
     body: null,
     messageType: "AUDIO",
     providerMessageId: "wamid.audio.1",
-    mediaUrl: "/api/chat/media/instance-a/wamid.audio.1",
+    mediaUrl: null,
     mediaMimeType: "audio/ogg; codecs=opus",
     mediaDurationMs: 12000,
     createdAt: new Date("2026-06-09T12:00:00.000Z"),
@@ -74,7 +76,17 @@ function createBaileysMock() {
 
   assert.equal(audio.messageType, "AUDIO");
   assert.equal(audio.mediaDurationMs, 12000);
-  assert.equal(audio.mediaUrl, "/api/chat/media/instance-a/wamid.audio.1");
+  assert.equal(audio.mediaUrl, null);
+
+  await writeChatMedia({ instanceId: "instance-a", providerMessageId: "wamid.audio.1", buffer: Buffer.from("audio-bytes") });
+  const audioWithMedia = await service.attachMessageMedia({
+    instanceId: "instance-a",
+    messageId: audio.id,
+    mediaUrl: "/api/chat/media/instance-a/wamid.audio.1",
+    mediaMimeType: "audio/ogg; codecs=opus",
+    mediaDurationMs: 12000,
+  });
+  assert.equal(audioWithMedia.mediaUrl, "/api/chat/media/instance-a/wamid.audio.1");
 
   const response = await app.inject({ method: "GET", url: "/api/chat/media/instance-a/wamid.audio.1" });
   assert.equal(response.statusCode, 200, response.body);

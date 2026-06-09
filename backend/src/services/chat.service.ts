@@ -67,6 +67,7 @@ export type ChatStore = {
   findMessageByProviderId(input: { instanceId: string; providerMessageId: string }): Promise<ChatMessage | null>;
   persistMessage(input: PersistMessageInput): Promise<{ conversation: ChatConversation; message: ChatMessage }>;
   updateMessageStatus(input: { messageId: string; status: ChatMessageStatus; providerMessageId?: string | null }): Promise<ChatMessage>;
+  updateMessageMedia(input: { messageId: string; mediaUrl: string; mediaMimeType?: string | null; mediaDurationMs?: number | null }): Promise<ChatMessage>;
 };
 
 export type ChatEventRecorder = (input: { instanceId: string; channel: "WHATSAPP"; direction: MessageDirection; usedAi: boolean }) => Promise<unknown>;
@@ -214,6 +215,17 @@ export const prismaChatStore: ChatStore = {
       },
     });
   },
+
+  async updateMessageMedia(input) {
+    return prisma.message.update({
+      where: { id: input.messageId },
+      data: {
+        mediaUrl: input.mediaUrl,
+        mediaMimeType: input.mediaMimeType ?? undefined,
+        mediaDurationMs: input.mediaDurationMs ?? undefined,
+      },
+    });
+  },
 };
 
 export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }> } = {}): ChatStore & {
@@ -311,6 +323,18 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
         ...existing,
         status: input.status,
         providerMessageId: input.providerMessageId ?? existing.providerMessageId,
+      };
+      messages.set(updated.id, updated);
+      return updated;
+    },
+    async updateMessageMedia(input) {
+      const existing = messages.get(input.messageId);
+      if (!existing) throw new Error("Mensagem nao encontrada.");
+      const updated = {
+        ...existing,
+        mediaUrl: input.mediaUrl,
+        mediaMimeType: input.mediaMimeType ?? existing.mediaMimeType,
+        mediaDurationMs: input.mediaDurationMs ?? existing.mediaDurationMs,
       };
       messages.set(updated.id, updated);
       return updated;
@@ -432,6 +456,13 @@ export function createChatService(deps: {
 
       const updated = await store.updateMessageStatus({ messageId: existing.id, status });
       chatRealtime.emitMessageStatus({ instanceId, message: updated });
+      return updated;
+    },
+
+    async attachMessageMedia(input: { instanceId: string; messageId: string; mediaUrl: string; mediaMimeType?: string | null; mediaDurationMs?: number | null }) {
+      await ensureInstance(input.instanceId);
+      const updated = await store.updateMessageMedia(input);
+      chatRealtime.emitMessageStatus({ instanceId: input.instanceId, message: updated });
       return updated;
     },
 
