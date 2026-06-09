@@ -6,6 +6,7 @@ import type { ChatConversation, ChatInstanceOption, ChatMessage } from "./types"
 
 type ConversationsResponse = { conversations: ChatConversation[] };
 type MessagesResponse = { messages: ChatMessage[]; nextCursor: string | null };
+type ReactionResponse = { success: boolean; message: ChatMessage | null };
 
 export function getContactDisplayName(conversation: Pick<ChatConversation, "name" | "jid">) {
   return conversation.name?.trim() || conversation.jid.split("@")[0] || "Contato";
@@ -92,6 +93,11 @@ export function useConversations(selectedInstanceId: string, search: string) {
     return res.data.message;
   }, []);
 
+  const sendReaction = useCallback(async (input: { instanceId: string; jid: string; providerMessageId: string; emoji: string }) => {
+    const res = await api.post<ReactionResponse>("/chat/react", input);
+    return res.data.message;
+  }, []);
+
   return {
     conversations,
     setConversations,
@@ -102,6 +108,7 @@ export function useConversations(selectedInstanceId: string, search: string) {
     loadConversations,
     loadMessages,
     sendTextMessage,
+    sendReaction,
     unreadTotal: getUnreadTotal(conversations),
   };
 }

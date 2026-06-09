@@ -37,6 +37,7 @@ export type ChatMessage = {
   mediaUrl: string | null;
   mediaMimeType: string | null;
   mediaDurationMs: number | null;
+  reactionEmoji: string | null;
   createdAt: Date;
 };
 
@@ -55,6 +56,7 @@ type PersistMessageInput = {
   mediaUrl?: string | null;
   mediaMimeType?: string | null;
   mediaDurationMs?: number | null;
+  reactionEmoji?: string | null;
   createdAt?: Date;
   contactName?: string | null;
   profilePicUrl?: string | null;
@@ -68,6 +70,7 @@ export type ChatStore = {
   persistMessage(input: PersistMessageInput): Promise<{ conversation: ChatConversation; message: ChatMessage }>;
   updateMessageStatus(input: { messageId: string; status: ChatMessageStatus; providerMessageId?: string | null }): Promise<ChatMessage>;
   updateMessageMedia(input: { messageId: string; mediaUrl: string; mediaMimeType?: string | null; mediaDurationMs?: number | null }): Promise<ChatMessage>;
+  updateMessageReaction(input: { messageId: string; reactionEmoji: string | null }): Promise<ChatMessage>;
 };
 
 export type ChatEventRecorder = (input: { instanceId: string; channel: "WHATSAPP"; direction: MessageDirection; usedAi: boolean }) => Promise<unknown>;
@@ -198,6 +201,7 @@ export const prismaChatStore: ChatStore = {
           mediaUrl: input.mediaUrl ?? null,
           mediaMimeType: input.mediaMimeType ?? null,
           mediaDurationMs: input.mediaDurationMs ?? null,
+          reactionEmoji: input.reactionEmoji ?? null,
           createdAt,
         },
       });
@@ -224,6 +228,13 @@ export const prismaChatStore: ChatStore = {
         mediaMimeType: input.mediaMimeType ?? undefined,
         mediaDurationMs: input.mediaDurationMs ?? undefined,
       },
+    });
+  },
+
+  async updateMessageReaction(input) {
+    return prisma.message.update({
+      where: { id: input.messageId },
+      data: { reactionEmoji: input.reactionEmoji },
     });
   },
 };
@@ -311,6 +322,7 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
         mediaUrl: input.mediaUrl ?? null,
         mediaMimeType: input.mediaMimeType ?? null,
         mediaDurationMs: input.mediaDurationMs ?? null,
+        reactionEmoji: input.reactionEmoji ?? null,
         createdAt: now,
       };
       messages.set(message.id, message);
@@ -335,6 +347,16 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
         mediaUrl: input.mediaUrl,
         mediaMimeType: input.mediaMimeType ?? existing.mediaMimeType,
         mediaDurationMs: input.mediaDurationMs ?? existing.mediaDurationMs,
+      };
+      messages.set(updated.id, updated);
+      return updated;
+    },
+    async updateMessageReaction(input) {
+      const existing = messages.get(input.messageId);
+      if (!existing) throw new Error("Mensagem nao encontrada.");
+      const updated = {
+        ...existing,
+        reactionEmoji: input.reactionEmoji,
       };
       messages.set(updated.id, updated);
       return updated;
@@ -466,6 +488,32 @@ export function createChatService(deps: {
       await ensureInstance(input.instanceId);
       const updated = await store.updateMessageMedia(input);
       chatRealtime.emitMessageStatus({ instanceId: input.instanceId, message: updated });
+      return updated;
+    },
+
+    async persistReaction(input: { instanceId: string; jid: string; targetProviderMessageId: string; emoji: string | null }) {
+      await ensureInstance(input.instanceId);
+      const targetProviderMessageId = input.targetProviderMessageId.trim();
+      if (!targetProviderMessageId) return null;
+      const existing = await store.findMessageByProviderId({ instanceId: input.instanceId, providerMessageId: targetProviderMessageId });
+      if (!existing) return null;
+      const reactionEmoji = input.emoji?.trim() ? input.emoji : null;
+      const updated = await store.updateMessageReaction({ messageId: existing.id, reactionEmoji });
+      chatRealtime.emitReaction({ instanceId: input.instanceId, jid: normalizeChatJid(input.jid), message: updated });
+      return updated;
+    },
+
+    async sendReaction(input: { instanceId: string; jid: string; providerMessageId: string; emoji: string }) {
+      await ensureInstance(input.instanceId);
+      const jid = normalizeChatJid(input.jid);
+      const providerMessageId = input.providerMessageId.trim();
+      if (!providerMessageId) throw new ChatValidationError("ID da mensagem obrigatorio.");
+      const existing = await store.findMessageByProviderId({ instanceId: input.instanceId, providerMessageId });
+      if (!existing) throw new ChatValidationError("Mensagem original nao encontrada.");
+      await baileys.sendReaction({ instanceId: input.instanceId, jid, providerMessageId, emoji: input.emoji, targetFromMe: existing.fromMe });
+      const reactionEmoji = input.emoji?.trim() ? input.emoji : null;
+      const updated = await store.updateMessageReaction({ messageId: existing.id, reactionEmoji });
+      chatRealtime.emitReaction({ instanceId: input.instanceId, jid, message: updated });
       return updated;
     },
 

@@ -15,6 +15,7 @@ export function getKnownMessageFallback(message: Pick<ChatMessage, "messageType"
   if (message.messageType === "IMAGE") return "Imagem recebida";
   if (message.messageType === "VIDEO") return "Video recebido";
   if (message.messageType === "DOCUMENT") return "Documento recebido";
+  if (message.messageType === "REACTION") return "Reacao recebida";
   if (message.messageType === "BUTTONS_REPLY") return "Resposta de botao";
   if (message.messageType === "LIST_REPLY") return "Resposta de lista";
   return "Mensagem recebida";

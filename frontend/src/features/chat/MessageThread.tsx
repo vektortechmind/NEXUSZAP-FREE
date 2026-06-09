@@ -14,6 +14,7 @@ type MessageThreadProps = {
   sending: boolean;
   onLoadMore: () => void;
   onSend: (body: string) => Promise<void> | void;
+  onReact?: (message: ChatMessage, emoji: string) => Promise<void> | void;
 };
 
 export function MessageThread({
@@ -25,6 +26,7 @@ export function MessageThread({
   sending,
   onLoadMore,
   onSend,
+  onReact,
 }: MessageThreadProps) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const nearBottomRef = useRef(true);
@@ -96,7 +98,7 @@ export function MessageThread({
           <p className="mt-10 text-center text-sm text-slate-500 dark:text-slate-400">Sem mensagens nesta conversa.</p>
         ) : (
           <div className="space-y-2">
-            {messages.map((message) => <MessageBubble key={message.id} message={message} />)}
+            {messages.map((message) => <MessageBubble key={message.id} message={message} onReact={onReact} />)}
           </div>
         )}
       </div>

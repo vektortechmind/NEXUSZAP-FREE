@@ -44,7 +44,7 @@ const silentBaileysLogger: MediaDownloadContext["logger"] = {
   error(_obj: unknown, _msg?: string) {},
 };
 
-async function downloadAudioFromMessage(sock: WASocket, m: proto.IWebMessageInfo): Promise<Buffer | null> {
+async function downloadMediaFromMessage(sock: WASocket, m: proto.IWebMessageInfo): Promise<Buffer | null> {
   try {
     if (!hasRequiredMessageKey(m)) return null;
     const buffer = await downloadMediaMessage(
@@ -58,9 +58,17 @@ async function downloadAudioFromMessage(sock: WASocket, m: proto.IWebMessageInfo
     );
     return buffer ? Buffer.from(buffer) : null;
   } catch (err) {
-    console.error("[downloadAudioFromMessage] Erro:", safeLogError(err));
+    console.error("[downloadMediaFromMessage] Erro:", safeLogError(err));
     return null;
   }
+}
+
+function isViewOnceChatContent(content: WAMessageContent): boolean {
+  const wrapped = content as WAMessageContent & {
+    viewOnceMessage?: { message?: WAMessageContent | null };
+    viewOnceMessageV2?: { message?: WAMessageContent | null };
+  };
+  return Boolean(wrapped.viewOnceMessage?.message || wrapped.viewOnceMessageV2?.message);
 }
 
 function sleep(ms: number) {
@@ -214,18 +222,37 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
     const raw: WAMessageContent = m.message;
     const norm = normalizeMessageContent(raw);
     if (!norm) return;
+    const isViewOnce = isViewOnceChatContent(norm);
     const content = unwrapChatContent(extractMessageContent(norm) ?? norm);
     if (!content) return;
 
-    const chatBody = resolveChatBody(content);
+    const reactionMessage = (content as { reactionMessage?: { key?: { id?: string | null }; text?: string | null } }).reactionMessage;
+    if (reactionMessage?.key && typeof reactionMessage.key.id === "string") {
+      await chatService.persistReaction({
+        instanceId,
+        jid: remoteJid,
+        targetProviderMessageId: reactionMessage.key.id,
+        emoji: reactionMessage.text ?? null,
+      });
+      return;
+    }
+
+    const resolvedChatBody = resolveChatBody(content);
     const chatMessageType = resolveChatMessageType(content);
+    const mediaMessage = content.imageMessage || content.videoMessage || content.audioMessage || null;
+    const chatBody = isViewOnce && mediaMessage
+      ? ["Visualizacao unica", resolvedChatBody].filter(Boolean).join("\n")
+      : resolvedChatBody;
     const textMsg =
       chatBody ||
       (content as { listResponseMessage?: { title?: string } }).listResponseMessage?.title ||
       "";
 
     const audioMessage = content.audioMessage;
+    const imageMessage = content.imageMessage;
+    const videoMessage = content.videoMessage;
     let audioBuffer: Buffer | null = null;
+    let mediaBuffer: Buffer | null = null;
     const messageInput = {
       instanceId,
       jid: remoteJid,
@@ -233,7 +260,7 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
       messageType: chatMessageType,
       providerMessageId: key.id ?? null,
       mediaUrl: null,
-      mediaMimeType: audioMessage?.mimetype || content.imageMessage?.mimetype || content.videoMessage?.mimetype || content.documentMessage?.mimetype || null,
+      mediaMimeType: audioMessage?.mimetype || imageMessage?.mimetype || videoMessage?.mimetype || content.documentMessage?.mimetype || null,
       mediaDurationMs: audioMessage?.seconds ? Number(audioMessage.seconds) * 1000 : null,
       createdAt: messageDateFromBaileysTimestamp(m.messageTimestamp),
     };
@@ -243,23 +270,25 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
       ? await chatService.persistOutboundMessage({ ...messageInput, status: "SENT" })
       : await chatService.persistInboundMessage({ ...messageInput, contactName: m.pushName ?? null });
 
-    if (audioMessage && key.id && !persistedMessage.mediaUrl) {
-      audioBuffer = await downloadAudioFromMessage(sock, m);
-      if (audioBuffer && audioBuffer.length > 0) {
+    if (mediaMessage && key.id && !persistedMessage.mediaUrl) {
+      mediaBuffer = await downloadMediaFromMessage(sock, m);
+      if (mediaBuffer && mediaBuffer.length > 0) {
         try {
-          const stored = await writeChatMedia({ instanceId, providerMessageId: key.id, buffer: audioBuffer });
+          const stored = await writeChatMedia({ instanceId, providerMessageId: key.id, buffer: mediaBuffer });
           await chatService.attachMessageMedia({
             instanceId,
             messageId: persistedMessage.id,
             mediaUrl: stored.mediaUrl,
-            mediaMimeType: audioMessage.mimetype || null,
-            mediaDurationMs: audioMessage.seconds ? Number(audioMessage.seconds) * 1000 : null,
+            mediaMimeType: audioMessage?.mimetype || imageMessage?.mimetype || videoMessage?.mimetype || null,
+            mediaDurationMs: audioMessage?.seconds ? Number(audioMessage.seconds) * 1000 : null,
           });
         } catch (err) {
-          console.error("[Chat] Falha ao salvar audio recebido:", safeLogError(err));
+          console.error("[Chat] Falha ao salvar midia recebida:", safeLogError(err));
         }
       }
     }
+
+    if (audioMessage) audioBuffer = mediaBuffer;
 
     if (fromMe) return;
 

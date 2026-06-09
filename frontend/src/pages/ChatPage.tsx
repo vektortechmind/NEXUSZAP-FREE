@@ -5,7 +5,7 @@ import { ConversationList } from "../features/chat/ConversationList";
 import { MessageThread } from "../features/chat/MessageThread";
 import { upsertMessage } from "../features/chat/chatState";
 import { useChat } from "../features/chat/useChat";
-import { CHAT_UNREAD_TOTAL_EVENT, type ChatConversation, type ChatMessage, type ChatPresence } from "../features/chat/types";
+import { CHAT_UNREAD_TOTAL_EVENT, type ChatConversation, type ChatMessage, type ChatPresence, type ChatReactionEvent } from "../features/chat/types";
 import { getUnreadTotal, useConversations } from "../features/chat/useConversations";
 
 function conversationKey(conversation: Pick<ChatConversation, "instanceId" | "jid">) {
@@ -47,6 +47,7 @@ export function ChatPage() {
     loadConversations,
     loadMessages,
     sendTextMessage,
+    sendReaction,
     unreadTotal,
   } = useConversations(selectedInstanceId, search);
 
@@ -84,6 +85,10 @@ export function ChatPage() {
     )));
   }, [setConversations]);
 
+  const handleReaction = useCallback((event: ChatReactionEvent) => {
+    handleStatus(event.message);
+  }, [handleStatus]);
+
   const handlePresence = useCallback((presence: ChatPresence) => {
     const key = `${presence.instanceId}:${presence.jid}`;
     setTyping((current) => ({ ...current, [key]: presence.isTyping }));
@@ -96,9 +101,10 @@ export function ChatPage() {
     onMessageNew: handleMessage,
     onMessageSent: handleMessage,
     onMessageStatus: handleStatus,
+    onMessageReaction: handleReaction,
     onConversationUpdate: handleConversationUpdate,
     onPresenceUpdate: handlePresence,
-  }), [handleConversationUpdate, handleMessage, handlePresence, handleStatus]);
+  }), [handleConversationUpdate, handleMessage, handlePresence, handleReaction, handleStatus]);
 
   const { connectionState } = useChat(chatCallbacks);
   const selectedInstanceForSync = selectedConversation?.instanceId ?? null;
@@ -166,6 +172,7 @@ export function ChatPage() {
       mediaUrl: null,
       mediaMimeType: null,
       mediaDurationMs: null,
+      reactionEmoji: null,
       createdAt: new Date().toISOString(),
     };
     setMessages((current) => upsertMessage(current, optimisticMessage));
@@ -181,6 +188,25 @@ export function ChatPage() {
       setSending(false);
     }
   }, [addToast, selectedConversation, sendTextMessage]);
+
+  const reactToMessage = useCallback(async (message: ChatMessage, emoji: string) => {
+    if (!selectedConversation || !message.providerMessageId) return;
+    const previousEmoji = message.reactionEmoji;
+    setMessages((current) => current.map((item) => item.id === message.id ? { ...item, reactionEmoji: emoji.trim() ? emoji : null } : item));
+    try {
+      const updated = await sendReaction({
+        instanceId: selectedConversation.instanceId,
+        jid: selectedConversation.jid,
+        providerMessageId: message.providerMessageId,
+        emoji,
+      });
+      if (updated) handleStatus(updated);
+    } catch (err) {
+      console.error(err);
+      setMessages((current) => current.map((item) => item.id === message.id ? { ...item, reactionEmoji: previousEmoji } : item));
+      addToast("Nao foi possivel enviar a reacao.", "error");
+    }
+  }, [addToast, handleStatus, selectedConversation, sendReaction]);
 
   const selectedTyping = selectedConversation ? Boolean(typing[conversationKey(selectedConversation)]) : false;
 
@@ -218,6 +244,7 @@ export function ChatPage() {
             sending={sending}
             onLoadMore={() => void loadOlderMessages()}
             onSend={(body) => void sendMessage(body)}
+            onReact={(message, emoji) => void reactToMessage(message, emoji)}
           />
         </div>
       </div>

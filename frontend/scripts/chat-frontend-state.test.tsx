@@ -27,6 +27,7 @@ const textMessage: ChatMessage = {
   mediaUrl: null,
   mediaMimeType: null,
   mediaDurationMs: null,
+  reactionEmoji: null,
   createdAt: "2026-06-09T12:00:00.000Z",
 };
 
@@ -38,6 +39,24 @@ const audioMessage: ChatMessage = {
   mediaUrl: "https://media.example.com/audio.ogg",
   mediaMimeType: "audio/ogg",
   mediaDurationMs: 31_000,
+};
+
+const imageMessage: ChatMessage = {
+  ...textMessage,
+  id: "message-image",
+  body: null,
+  messageType: "IMAGE",
+  mediaUrl: "/api/chat/media/instance-a/wamid.image.1",
+  mediaMimeType: "image/jpeg",
+};
+
+const videoMessage: ChatMessage = {
+  ...textMessage,
+  id: "message-video",
+  body: null,
+  messageType: "VIDEO",
+  mediaUrl: "/api/chat/media/instance-a/wamid.video.1",
+  mediaMimeType: "video/mp4",
 };
 
 const conversations: ChatConversation[] = [
@@ -121,6 +140,22 @@ test("message bubbles render direction, status and inline audio controls", () =>
   assert.match(audioHtml, /https:\/\/media.example.com\/audio.ogg/);
 });
 
+test("message bubbles render image, video, view-once marker and reactions inline", () => {
+  const imageHtml = renderToStaticMarkup(<MessageBubble message={imageMessage} />);
+  const videoHtml = renderToStaticMarkup(<MessageBubble message={videoMessage} />);
+  const fallbackHtml = renderToStaticMarkup(<MessageBubble message={{ ...imageMessage, mediaUrl: null }} />);
+  const reactedHtml = renderToStaticMarkup(<MessageBubble message={{ ...textMessage, reactionEmoji: "👍" }} />);
+  const viewOnceHtml = renderToStaticMarkup(<MessageBubble message={{ ...imageMessage, body: "Visualizacao unica\nLegenda" }} />);
+  assert.match(imageHtml, /<img/);
+  assert.match(imageHtml, /\/api\/chat\/media\/instance-a\/wamid.image.1/);
+  assert.match(videoHtml, /<video/);
+  assert.match(videoHtml, /controls=""/);
+  assert.match(fallbackHtml, /\[Imagem\]/);
+  assert.match(reactedHtml, /👍/);
+  assert.match(viewOnceHtml, /Visualizacao unica/);
+  assert.match(viewOnceHtml, /Legenda/);
+});
+
 test("known empty media/reply messages use readable fallback instead of generic empty text", () => {
   assert.equal(getKnownMessageFallback({ ...textMessage, body: null, messageType: "AUDIO", mediaUrl: null }), "Audio recebido");
   assert.equal(getKnownMessageFallback({ ...textMessage, body: null, messageType: "UNKNOWN", mediaMimeType: "audio/ogg" }), "Audio recebido");
@@ -154,6 +189,12 @@ test("message thread exposes a new messages jump button for open chats", () => {
   assert.match(source, /Novas mensagens/);
   assert.match(source, /scrollToBottom/);
   assert.match(source, /bottom-20/);
+});
+
+test("chat realtime client subscribes to message reaction events", () => {
+  const source = fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/useChat.ts"), "utf8");
+  assert.match(source, /message:reaction/);
+  assert.match(source, /onMessageReaction/);
 });
 
 test("app wrapper lets chat route escape the default max width", () => {

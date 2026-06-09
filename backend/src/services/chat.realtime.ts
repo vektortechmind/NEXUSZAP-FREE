@@ -13,6 +13,13 @@ export type ChatRealtimeConversationPayload = Omit<ChatConversationSummary, "cre
 
 export type ChatRealtimeStatusPayload = ChatRealtimeMessagePayload;
 
+export type ChatRealtimeReactionPayload = {
+  messageId: string;
+  reactionEmoji: string | null;
+  jid: string;
+  message: ChatRealtimeMessagePayload;
+};
+
 export type ChatRealtimePresencePayload = {
   jid: string;
   instanceId: string;
@@ -57,6 +64,15 @@ class ChatRealtimeHub {
 
   emitMessageStatus(input: { instanceId: string; message: ChatMessage }) {
     this.emitter?.emitToInstance(input.instanceId, "message:status", serializeMessage(input.message));
+  }
+
+  emitReaction(input: { instanceId: string; jid: string; message: ChatMessage }) {
+    this.emitter?.emitToInstance(input.instanceId, "message:reaction", {
+      messageId: input.message.id,
+      reactionEmoji: input.message.reactionEmoji,
+      jid: input.jid,
+      message: serializeMessage(input.message),
+    } satisfies ChatRealtimeReactionPayload);
   }
 
   emitConversationUpdate(input: { instanceId: string; conversation: ChatConversationSummary }) {

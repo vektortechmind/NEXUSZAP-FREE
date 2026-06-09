@@ -44,6 +44,13 @@ const sendBodySchema = z.object({
   body: z.string().trim().min(1).max(4000),
 });
 
+const reactBodySchema = z.object({
+  instanceId: z.string().trim().min(1).max(191),
+  jid: z.string().trim().min(1).max(191),
+  providerMessageId: z.string().trim().min(1).max(191),
+  emoji: z.string().max(32),
+});
+
 function serializeDate<T extends Record<string, unknown>>(row: T): T {
   return Object.fromEntries(
     Object.entries(row).map(([key, value]) => [key, value instanceof Date ? value.toISOString() : value])
@@ -139,6 +146,16 @@ export function createChatRoutes(deps: ChatRoutesDeps = {}) {
         const body = sendBodySchema.parse(request.body);
         const message = await service.sendTextMessage(body);
         return reply.status(201).send({ message: serializeMessage(message) });
+      } catch (err) {
+        return sendKnownError(reply, err);
+      }
+    });
+
+    fastify.post("/react", async (request, reply) => {
+      try {
+        const body = reactBodySchema.parse(request.body);
+        const message = await service.sendReaction(body);
+        return reply.status(200).send({ success: true, message: message ? serializeMessage(message) : null });
       } catch (err) {
         return sendKnownError(reply, err);
       }

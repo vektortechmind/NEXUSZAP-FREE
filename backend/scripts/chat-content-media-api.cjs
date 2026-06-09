@@ -29,6 +29,7 @@ function createBaileysMock() {
     async sendTextMessage() {
       return { providerMessageId: "wamid.sent.1", raw: null };
     },
+    async sendReaction() {},
     async getContactProfile() {
       return { name: null, profilePicUrl: null };
     },
@@ -52,6 +53,7 @@ function createBaileysMock() {
 
   assert.equal(resolveChatMessageType({ conversation: "Oi" }), "TEXT");
   assert.equal(resolveChatMessageType({ audioMessage: { mimetype: "audio/ogg" } }), "AUDIO");
+  assert.equal(resolveChatMessageType({ imageMessage: { mimetype: "image/jpeg" } }), "IMAGE");
   assert.equal(resolveChatMessageType({ videoMessage: { mimetype: "video/mp4" } }), "VIDEO");
   assert.equal(resolveChatMessageType({ documentMessage: { mimetype: "application/pdf" } }), "DOCUMENT");
   assert.equal(resolveChatMessageType({ protocolMessage: { editedMessage: { conversation: "Texto editado" } } }), "TEXT");
@@ -59,7 +61,14 @@ function createBaileysMock() {
   assert.equal(shouldPersistChatMessage({ body: null, messageType: "UNKNOWN", mediaMimeType: null }), false);
   assert.equal(shouldPersistChatMessage({ body: "Oi", messageType: "TEXT", mediaMimeType: null }), true);
   assert.equal(shouldPersistChatMessage({ body: null, messageType: "AUDIO", mediaMimeType: "audio/ogg" }), true);
+  assert.equal(shouldPersistChatMessage({ body: null, messageType: "IMAGE", mediaMimeType: "image/jpeg" }), true);
+  assert.equal(shouldPersistChatMessage({ body: null, messageType: "VIDEO", mediaMimeType: "video/mp4" }), true);
   assert.equal(shouldPersistChatMessage({ body: null, messageType: "UNKNOWN", mediaMimeType: "audio/ogg" }), true);
+
+  const handlerSource = fs.readFileSync(path.resolve(__dirname, "../src/whatsapp/messageHandler.ts"), "utf8");
+  assert.match(handlerSource, /reactionMessage/);
+  assert.match(handlerSource, /persistReaction/);
+  assert.match(handlerSource, /downloadMediaFromMessage/);
 
   const store = createInMemoryChatStore({ instances: [{ id: "instance-a" }] });
   const service = createChatService({ store, baileys: createBaileysMock() });
@@ -98,6 +107,54 @@ function createBaileysMock() {
   assert.equal(response.headers["content-type"], "audio/ogg; codecs=opus");
   assert.equal(response.headers["content-disposition"], "inline");
   assert.equal(response.rawPayload.toString(), "audio-bytes");
+
+  const image = await service.persistInboundMessage({
+    instanceId: "instance-a",
+    jid: "5511999990000@s.whatsapp.net",
+    body: null,
+    messageType: "IMAGE",
+    providerMessageId: "wamid.image.1",
+    mediaUrl: null,
+    mediaMimeType: "image/jpeg",
+    mediaDurationMs: null,
+    createdAt: new Date("2026-06-09T12:01:00.000Z"),
+  });
+  await writeChatMedia({ instanceId: "instance-a", providerMessageId: "wamid.image.1", buffer: Buffer.from("image-bytes") });
+  const imageWithMedia = await service.attachMessageMedia({
+    instanceId: "instance-a",
+    messageId: image.id,
+    mediaUrl: "/api/chat/media/instance-a/wamid.image.1",
+    mediaMimeType: "image/jpeg",
+  });
+  assert.equal(imageWithMedia.mediaUrl, "/api/chat/media/instance-a/wamid.image.1");
+  const imageResponse = await app.inject({ method: "GET", url: "/api/chat/media/instance-a/wamid.image.1" });
+  assert.equal(imageResponse.statusCode, 200, imageResponse.body);
+  assert.equal(imageResponse.headers["content-type"], "image/jpeg");
+  assert.equal(imageResponse.rawPayload.toString(), "image-bytes");
+
+  const video = await service.persistInboundMessage({
+    instanceId: "instance-a",
+    jid: "5511999990000@s.whatsapp.net",
+    body: null,
+    messageType: "VIDEO",
+    providerMessageId: "wamid.video.1",
+    mediaUrl: null,
+    mediaMimeType: "video/mp4",
+    mediaDurationMs: null,
+    createdAt: new Date("2026-06-09T12:02:00.000Z"),
+  });
+  await writeChatMedia({ instanceId: "instance-a", providerMessageId: "wamid.video.1", buffer: Buffer.from("video-bytes") });
+  const videoWithMedia = await service.attachMessageMedia({
+    instanceId: "instance-a",
+    messageId: video.id,
+    mediaUrl: "/api/chat/media/instance-a/wamid.video.1",
+    mediaMimeType: "video/mp4",
+  });
+  assert.equal(videoWithMedia.mediaUrl, "/api/chat/media/instance-a/wamid.video.1");
+  const videoResponse = await app.inject({ method: "GET", url: "/api/chat/media/instance-a/wamid.video.1" });
+  assert.equal(videoResponse.statusCode, 200, videoResponse.body);
+  assert.equal(videoResponse.headers["content-type"], "video/mp4");
+  assert.equal(videoResponse.rawPayload.toString(), "video-bytes");
 
   const missing = await app.inject({ method: "GET", url: "/api/chat/media/instance-a/missing" });
   assert.equal(missing.statusCode, 404);

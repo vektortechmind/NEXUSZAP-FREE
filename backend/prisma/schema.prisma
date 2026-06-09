@@ -23,6 +23,7 @@ enum ChatMessageType {
   AUDIO
   VIDEO
   DOCUMENT
+  REACTION
   BUTTONS_REPLY
   LIST_REPLY
   UNKNOWN
@@ -172,6 +173,7 @@ model Message {
   mediaUrl          String?
   mediaMimeType     String?
   mediaDurationMs   Int?
+  reactionEmoji     String?
   createdAt         DateTime          @default(now())
 
   @@index([conversationId, createdAt])

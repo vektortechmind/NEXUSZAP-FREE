@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { useAuth } from "../../contexts/AuthContext";
-import type { ChatConnectionState, ChatConversation, ChatMessage, ChatPresence } from "./types";
+import type { ChatConnectionState, ChatConversation, ChatMessage, ChatPresence, ChatReactionEvent } from "./types";
 
 const CHAT_NAMESPACE = "/chat";
 const CHAT_SOCKET_PATH = "/ws/chat";
@@ -10,6 +10,7 @@ type ChatSocketCallbacks = {
   onMessageNew?: (message: ChatMessage) => void;
   onMessageSent?: (message: ChatMessage) => void;
   onMessageStatus?: (message: ChatMessage) => void;
+  onMessageReaction?: (event: ChatReactionEvent) => void;
   onConversationUpdate?: (conversation: ChatConversation) => void;
   onPresenceUpdate?: (presence: ChatPresence) => void;
 };
@@ -66,6 +67,7 @@ export function useChat(callbacks: ChatSocketCallbacks) {
     socket.on("message:new", (message: ChatMessage) => callbacksRef.current.onMessageNew?.(message));
     socket.on("message:sent", (message: ChatMessage) => callbacksRef.current.onMessageSent?.(message));
     socket.on("message:status", (message: ChatMessage) => callbacksRef.current.onMessageStatus?.(message));
+    socket.on("message:reaction", (event: ChatReactionEvent) => callbacksRef.current.onMessageReaction?.(event));
     socket.on("conversation:update", (conversation: ChatConversation) => callbacksRef.current.onConversationUpdate?.(conversation));
     socket.on("presence:update", (presence: ChatPresence) => callbacksRef.current.onPresenceUpdate?.(presence));
 

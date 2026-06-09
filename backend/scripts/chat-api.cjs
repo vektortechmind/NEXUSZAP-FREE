@@ -21,14 +21,20 @@ const { ChatProviderSendError } = require("../src/services/chat.baileys.ts");
 
 function createBaileysMock(options = {}) {
   const sent = [];
+  const reactions = [];
   const profileRequests = [];
   return {
     sent,
+    reactions,
     profileRequests,
     async sendTextMessage(input) {
       sent.push(input);
       if (options.failSend) throw new ChatProviderSendError("provider unavailable");
       return { providerMessageId: options.providerMessageId || "wamid.sent.1", raw: null };
+    },
+    async sendReaction(input) {
+      reactions.push(input);
+      if (options.failReaction) throw new ChatProviderSendError("reaction unavailable");
     },
     async getContactProfile(input) {
       profileRequests.push(input);
@@ -155,6 +161,27 @@ function createApp({ store, baileys, events }) {
   assert.equal(baileys.sent.length, 1);
   assert.equal(events.length, 1);
   assert.equal(events[0].direction, "OUTBOUND");
+
+  const reactionResponse = await app.inject({
+    method: "POST",
+    url: "/api/chat/react",
+    payload: { instanceId: "instance-a", jid: "5511999990000@s.whatsapp.net", providerMessageId: "wamid.in.1", emoji: "👍" },
+  });
+  assert.equal(reactionResponse.statusCode, 200, reactionResponse.body);
+  const reactedMessage = JSON.parse(reactionResponse.body).message;
+  assert.equal(reactedMessage.id, firstInbound.id);
+  assert.equal(reactedMessage.reactionEmoji, "👍");
+  assert.equal(baileys.reactions.length, 1);
+  assert.equal(baileys.reactions[0].targetFromMe, false);
+
+  const removeReactionResponse = await app.inject({
+    method: "POST",
+    url: "/api/chat/react",
+    payload: { instanceId: "instance-a", jid: "5511999990000@s.whatsapp.net", providerMessageId: "wamid.in.1", emoji: "" },
+  });
+  assert.equal(removeReactionResponse.statusCode, 200, removeReactionResponse.body);
+  assert.equal(JSON.parse(removeReactionResponse.body).message.reactionEmoji, null);
+  assert.equal(baileys.reactions[1].emoji, "");
 
   await app.close();
 

@@ -19,6 +19,7 @@ export class ChatProviderSendError extends Error {
 
 export type ChatBaileysAdapter = {
   sendTextMessage(input: { instanceId: string; jid: string; body: string }): Promise<{ providerMessageId: string | null; raw: WAMessage | null }>;
+  sendReaction(input: { instanceId: string; jid: string; providerMessageId: string; emoji: string; targetFromMe: boolean }): Promise<void>;
   getContactProfile(input: { instanceId: string; jid: string }): Promise<{ name: string | null; profilePicUrl: string | null }>;
 };
 
@@ -37,6 +38,25 @@ export const baileysChatAdapter: ChatBaileysAdapter = {
         providerMessageId: sent?.key?.id ?? null,
         raw: sent ?? null,
       };
+    } catch (err) {
+      if (err instanceof ChatInstanceOfflineError) throw err;
+      throw new ChatProviderSendError(err instanceof Error ? err.message : undefined);
+    }
+  },
+
+  async sendReaction(input) {
+    const sock = getSocket(input.instanceId);
+    try {
+      await sock.sendMessage(input.jid, {
+        react: {
+          text: input.emoji,
+          key: {
+            id: input.providerMessageId,
+            remoteJid: input.jid,
+            fromMe: input.targetFromMe,
+          },
+        },
+      });
     } catch (err) {
       if (err instanceof ChatInstanceOfflineError) throw err;
       throw new ChatProviderSendError(err instanceof Error ? err.message : undefined);
