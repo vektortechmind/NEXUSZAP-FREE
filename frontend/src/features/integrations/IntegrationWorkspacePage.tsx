@@ -61,7 +61,7 @@ export function IntegrationWorkspacePage({
           </div>
           <Link
             to={documentationPath}
-            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:border-emerald-500 hover:bg-emerald-500 dark:border-emerald-500 dark:bg-emerald-500 dark:text-slate-950 dark:hover:border-emerald-400 dark:hover:bg-emerald-400"
+            className="inline-flex min-h-10 items-center justify-center rounded-xl border border-emerald-600 bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:border-emerald-500 hover:bg-emerald-500 dark:border-emerald-500 dark:bg-emerald-500 dark:text-emerald-950 dark:hover:border-emerald-400 dark:hover:bg-emerald-400"
           >
             <BookOpenText className="mr-2 h-4 w-4" aria-hidden="true" />
             Abrir documentação

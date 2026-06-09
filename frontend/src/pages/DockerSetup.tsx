@@ -50,7 +50,7 @@ export function DockerSetup() {
       <div className="fixed right-4 top-4 z-20"><ThemeToggle /></div>
       <main className="mx-auto grid min-h-screen max-w-6xl grid-cols-1 gap-10 px-4 py-16 sm:px-6 lg:grid-cols-[minmax(0,1fr)_minmax(24rem,28rem)] lg:px-8">
         <section className="flex flex-col justify-center">
-          <div className="mb-8 inline-flex h-14 w-14 items-center justify-center rounded-lg bg-emerald-600 text-white dark:bg-emerald-500 dark:text-slate-950">
+          <div className="mb-8 inline-flex h-14 w-14 items-center justify-center rounded-lg bg-emerald-600 text-white dark:bg-emerald-500 dark:text-emerald-950">
             <ServerCog size={28} aria-hidden="true" />
           </div>
           <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Configuração inicial</p>

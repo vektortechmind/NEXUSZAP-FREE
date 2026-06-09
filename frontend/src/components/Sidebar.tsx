@@ -93,7 +93,7 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
                   </span>
                   <span className="ml-3 truncate transition-all duration-200 xl:max-w-0 xl:overflow-hidden xl:opacity-0 xl:group-hover/sidebar:max-w-[160px] xl:group-hover/sidebar:opacity-100">{nav.name}</span>
                   {nav.path === "/chat" && chatUnreadTotal > 0 ? (
-                    <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-emerald-600 px-1.5 py-0.5 text-[11px] font-bold text-white transition-opacity dark:bg-emerald-500 dark:text-slate-950 xl:absolute xl:right-3 xl:opacity-0 xl:group-hover/sidebar:opacity-100">
+                    <span className="ml-auto inline-flex min-w-5 items-center justify-center rounded-full bg-emerald-600 px-1.5 py-0.5 text-[11px] font-bold text-white transition-opacity dark:bg-emerald-500 dark:text-emerald-950 xl:absolute xl:right-3 xl:opacity-0 xl:group-hover/sidebar:opacity-100">
                       {chatUnreadTotal > 99 ? "99+" : chatUnreadTotal}
                     </span>
                   ) : null}

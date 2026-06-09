@@ -95,7 +95,7 @@ export function ConversationList({
                 <span className="flex flex-col items-end gap-2">
                   <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{formatTime(conversation.lastMessageAt)}</span>
                   {conversation.unreadCount > 0 ? (
-                    <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-emerald-600 px-1.5 py-0.5 text-[11px] font-bold text-white dark:bg-emerald-500 dark:text-slate-950">
+                    <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-emerald-600 px-1.5 py-0.5 text-[11px] font-bold text-white dark:bg-emerald-500 dark:text-emerald-950">
                       {conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}
                     </span>
                   ) : null}

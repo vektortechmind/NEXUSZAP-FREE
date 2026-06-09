@@ -241,7 +241,7 @@ export function IntegrationCredentialsSection({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="inline-flex items-center rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white dark:bg-emerald-500 dark:text-slate-950">Instância {instance.instanceSlot}</span>
+                        <span className="inline-flex items-center rounded-full bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white dark:bg-emerald-500 dark:text-emerald-950">Instância {instance.instanceSlot}</span>
                         <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">{formatInstanceStatus(instance.instanceStatus)}</span>
                         {!hideCredentialStatus ? (
                           <StatusDot
@@ -366,4 +366,3 @@ export function IntegrationCredentialsSection({
     </>
   );
 }
-

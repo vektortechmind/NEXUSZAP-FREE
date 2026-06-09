@@ -127,7 +127,7 @@ export function MessageThread({
         <button
           type="button"
           onClick={() => scrollToBottom()}
-          className="absolute bottom-20 left-1/2 inline-flex -translate-x-1/2 items-center gap-2 rounded-full bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-slate-900/15 transition hover:bg-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:bg-emerald-500 dark:text-slate-950"
+          className="absolute bottom-20 left-1/2 inline-flex -translate-x-1/2 items-center gap-2 rounded-full bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-lg shadow-slate-900/15 transition hover:bg-emerald-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 dark:bg-emerald-500 dark:text-emerald-950"
         >
           <ArrowDown size={14} aria-hidden="true" />
           Novas mensagens
