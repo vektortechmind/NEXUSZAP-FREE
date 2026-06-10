@@ -121,6 +121,7 @@ export function createIntegrationDispatchRetryWorker(deps: IntegrationDispatchRe
 
       for (const dueRecord of dueRecords) {
         const dispatch = toDispatchLogRecord(dueRecord);
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Retry records are claimed one at a time to preserve idempotent locking and avoid duplicate external dispatch.
         const claim = await db.integrationDispatchLog.updateMany({
           where: {
             id: dispatch.id,

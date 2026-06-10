@@ -223,6 +223,7 @@ export async function waitForQr(instanceId: string) {
       finalQr = q;
       break;
     }
+    // react-doctor-disable-next-line react-doctor/async-await-in-loop -- QR polling must wait between reads until Baileys publishes the next runtime value or the deadline expires.
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
 

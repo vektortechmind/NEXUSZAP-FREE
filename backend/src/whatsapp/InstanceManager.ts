@@ -74,6 +74,7 @@ export class InstanceManager {
     sock.ev.on("messages.update", async (updates) => {
       for (const update of updates) {
         try {
+          // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Baileys update receipts are processed one by one to preserve provider status order per message.
           await integrationDispatchReceiptService.recordBaileysMessageUpdate(update);
         } catch (err) {
           console.error("[Baileys] Falha ao processar recibo de dispatch:", safeLogError(err));
@@ -158,6 +159,7 @@ export class InstanceManager {
 
       for (const msg of m.messages) {
         try {
+          // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Incoming WhatsApp messages are handled sequentially to preserve chat order and per-socket side effects.
           await handleIncomingMessage(sock, instanceId, msg);
         } catch (err) {
           console.error("[Baileys] Falha ao processar mensagem:", safeLogError(err));
@@ -183,6 +185,7 @@ export class InstanceManager {
     let skipped = 0;
 
     for (const instance of instances) {
+      // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Boot restores WhatsApp sessions sequentially to avoid concurrent socket startup and shared runtime mutation.
       const session = await prisma.session.findUnique({
         where: { instanceId_key: { instanceId: instance.id, key: "creds" } },
       });

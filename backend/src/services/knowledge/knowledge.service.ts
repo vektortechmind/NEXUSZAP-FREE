@@ -91,6 +91,7 @@ export async function ensureKnowledgeExtracted(
     if (!canExtract) continue;
 
     try {
+      // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Knowledge extraction is sequential to bound file IO/memory use and update each record before moving on.
       const buffer = await loadKnowledgeFileBuffer(file);
       const text = await extractTextFromBuffer(buffer, file.mimetype);
       if (text && text.trim()) {

@@ -62,6 +62,7 @@ export async function geminiChat(apiKey: string, messages: ChatMessage[]) {
 
   let lastErr = "";
   for (const model of GEMINI_MODELS) {
+    // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Gemini model fallback is ordered; later models should run only after the current model response fails validation.
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent`,
       {

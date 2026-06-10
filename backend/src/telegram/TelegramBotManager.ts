@@ -147,6 +147,7 @@ async function handleTelegramMessage(ctx: Context) {
 
   for (let i = 0; i < parts.length; i++) {
     if (instance.typing) {
+      // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Telegram response chunks must preserve typing delay and message order for a single chat.
       await ctx.telegram.sendChatAction(chatId, "typing");
       await sleep(randomInt(700, 1400));
     }

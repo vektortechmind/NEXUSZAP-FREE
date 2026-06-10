@@ -136,6 +136,7 @@ export async function askChat(instanceId: string, messages: unknown[]) {
 
     tried.push(providerName);
     try {
+      // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Provider fallback is intentionally sequential so only the next provider runs after the previous one fails or returns empty.
       const response = await provider.fn(provider.key, normalized);
       if (response) return sanitizeBotResponse(response);
     } catch (err) {

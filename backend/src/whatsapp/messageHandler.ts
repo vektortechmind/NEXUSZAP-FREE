@@ -81,6 +81,7 @@ async function sleepWithComposingRefresh(sock: WASocket, remoteJid: string, tota
   let elapsed = 0;
   while (elapsed < totalMs) {
     try {
+      // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Composing presence is refreshed sequentially with sleeps so WhatsApp keeps the typing state during long AI work.
       await sock.sendPresenceUpdate("composing", remoteJid);
     } catch {
       // ignore presence refresh failures
@@ -435,6 +436,7 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
 
       if (instance.typing) {
         try {
+          // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Outbound WhatsApp chunks must keep typing delay and send order for the same conversation.
           await sock.sendPresenceUpdate("composing", remoteJid);
         } catch {
           // ignore composing failures

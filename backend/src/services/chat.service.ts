@@ -725,6 +725,7 @@ export function createChatService(deps: {
       const groups = await baileys.syncGroups(input.instanceId);
       const synced: ChatConversationSummary[] = [];
       for (const group of groups) {
+        // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Group sync persists and emits each conversation in order so realtime consumers see stable incremental updates.
         const conversation = await store.upsertConversation({
           instanceId: input.instanceId,
           jid: group.jid,
