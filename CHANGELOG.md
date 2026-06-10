@@ -4,6 +4,20 @@ Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
 ## [1.0.11] - 2026-06-10
 
+### Upgrade notes
+
+Usuarios que ja estavam na `1.0.10` devem executar uma regularizacao unica no servidor antes de atualizar, porque as tags do repositorio foram sincronizadas novamente para remover arquivos locais de documentacao do historico Git.
+
+No servidor/VPS, entre na pasta onde esta o `docker-compose.yml` do NexusZAP Free e rode:
+
+```bash
+git fetch --force --prune --prune-tags origin '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags/*'
+git reset --hard origin/main
+docker compose -p nexuszap-free up -d --no-deps --build backend frontend
+```
+
+Use `sudo` antes dos comandos se o projeto estiver em uma pasta protegida, como `/root/NEXUSZAP-FREE`. O `--no-deps` evita recriar o Postgres e preserva os volumes do banco e das midias.
+
 ### Added
 
 - Nova implementação do chat no painel para conversas pessoais e grupos do WhatsApp, com suporte ampliado a mensagens e mídias recebidas, incluindo imagem, vídeo, áudio, documento, PDF, GIF em loop e sticker.
