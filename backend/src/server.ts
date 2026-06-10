@@ -64,6 +64,7 @@ export async function buildServer() {
   fastify.addHook("preValidation", createOriginGuard(allowedOrigins, env.NODE_ENV));
   fastify.addHook("preValidation", verifyCsrf);
 
+  // react-doctor-disable-next-line react-doctor/async-parallel -- Fastify plugin registration is intentionally ordered: cookie decorates requests before JWT reads token cookies, followed by multipart and rate limiting.
   await fastify.register(cookie);
 
   await fastify.register(jwt, {
@@ -99,6 +100,7 @@ export async function buildServer() {
     };
   });
 
+  // react-doctor-disable-next-line react-doctor/async-parallel -- Route plugins are registered sequentially to preserve Fastify hook/decorator visibility and public route ordering.
   await fastify.register(authRoutes, { prefix: "/api/auth" });
   await fastify.register(agentRoutes, { prefix: "/api/agent" });
   await fastify.register(filesRoutes, { prefix: "/api/files" });

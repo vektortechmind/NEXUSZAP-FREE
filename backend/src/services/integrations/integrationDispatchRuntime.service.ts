@@ -691,9 +691,11 @@ function stripInteractiveActionValues(body: string, buttons: NativeInteractiveBu
   for (const button of buttons) {
     const value = button.kind === "cta_url" ? button.url : button.copyCode;
     const escaped = value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    next = next
-      .replace(new RegExp(`\\n?[^\\n]*\\n${escaped}`, "g"), "")
-      .replace(new RegExp(escaped, "g"), "");
+    // react-doctor-disable-next-line react-doctor/js-hoist-regexp -- Pattern is dynamic per escaped button URL/copy payload; hoisting would reuse the wrong value.
+    const lineWithValuePattern = new RegExp(`\\n?[^\\n]*\\n${escaped}`, "g");
+    // react-doctor-disable-next-line react-doctor/js-hoist-regexp -- Pattern is dynamic per escaped button URL/copy payload; hoisting would reuse the wrong value.
+    const valuePattern = new RegExp(escaped, "g");
+    next = next.replace(lineWithValuePattern, "").replace(valuePattern, "");
   }
   return next.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim() || body.trim();
 }

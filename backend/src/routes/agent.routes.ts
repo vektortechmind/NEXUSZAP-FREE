@@ -28,6 +28,7 @@ enquanto a implementação efetiva foi decomposta em módulos coesos sob `routes
 export async function agentRoutes(fastify: FastifyInstance) {
   fastify.addHook("preValidation", verifyJwt);
 
+  // react-doctor-disable-next-line react-doctor/async-parallel -- Agent route modules share the parent auth hook and are registered in a stable sequence for predictable Fastify encapsulation.
   await fastify.register(agentInstanceRoutes);
   await fastify.register(agentWorkspaceRoutes);
   await fastify.register(agentConfigRoutes);
