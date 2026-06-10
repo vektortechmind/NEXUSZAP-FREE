@@ -71,7 +71,7 @@ export function Login() {
         <section className="flex w-full items-center justify-center" aria-labelledby="login-title">
           <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900 sm:p-8">
             <div className="mb-8 text-center">
-              <BrandLogo className="mx-auto mb-6 h-[4.5rem] w-auto max-w-[280px] object-contain sm:h-20 sm:max-w-[320px]" />
+              <BrandLogo className="mx-auto mb-7 h-20 w-auto max-w-[360px] object-contain sm:h-24 sm:max-w-[410px]" />
               <h2 id="login-title" className="text-2xl font-semibold tracking-normal text-slate-950 dark:text-slate-50">
                 Entrar no painel
               </h2>

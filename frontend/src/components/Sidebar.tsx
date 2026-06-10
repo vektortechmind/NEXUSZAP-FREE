@@ -55,9 +55,13 @@ export function Sidebar({ mobileOpen, onCloseMobile }: SidebarProps) {
       <aside
         className={`group/sidebar fixed inset-y-0 left-0 z-40 flex flex-col border-r border-slate-200/80 bg-white/94 shadow-[0_18px_80px_rgba(15,23,42,0.12)] backdrop-blur-xl transition-all duration-300 dark:border-slate-800/80 dark:bg-slate-950/94 dark:shadow-[0_18px_80px_rgba(2,6,23,0.5)] xl:translate-x-0 xl:w-24 xl:hover:w-72 ${mobileOpen ? "translate-x-0 w-72" : "-translate-x-full w-72"}`}
       >
-        <div className="relative flex items-center justify-center px-4 py-5 xl:min-h-[92px] xl:px-3">
-          <div className="flex w-full items-center justify-center overflow-hidden xl:justify-start">
-            <BrandLogo className="mx-auto h-14 w-auto max-w-[210px] object-contain transition-all duration-300 xl:mx-0 xl:h-16 xl:max-w-none xl:scale-90 xl:opacity-0 xl:group-hover/sidebar:scale-100 xl:group-hover/sidebar:opacity-100" />
+        <div className="relative flex items-center justify-center px-4 py-5 xl:min-h-[104px] xl:px-3">
+          <div className="relative flex min-h-16 w-full items-center justify-center overflow-hidden xl:min-h-20">
+            <BrandLogo
+              variant="compact"
+              className="hidden h-14 w-14 object-contain transition-all duration-300 xl:block xl:opacity-100 xl:group-hover/sidebar:scale-90 xl:group-hover/sidebar:opacity-0"
+            />
+            <BrandLogo className="mx-auto h-16 w-auto max-w-[240px] object-contain transition-all duration-300 xl:absolute xl:h-16 xl:max-w-[250px] xl:scale-95 xl:opacity-0 xl:group-hover/sidebar:scale-100 xl:group-hover/sidebar:opacity-100" />
           </div>
           <button
             type="button"

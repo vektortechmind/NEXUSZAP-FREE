@@ -248,8 +248,8 @@ export function Dashboard() {
             <h2 className="mt-3 text-2xl font-semibold tracking-tight text-slate-950 dark:text-slate-50 sm:text-3xl">Visão consolidada de canais, IA e base ativa</h2>
             <p className="mt-3 text-sm leading-7 text-slate-700 dark:text-slate-300">Acompanhe o volume do período, a atividade por canal e o uso operacional do runtime em um único painel.</p>
           </div>
-          <div className="flex justify-center rounded-3xl border border-white/70 bg-white/70 p-5 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-950/55">
-            <BrandLogo className="mx-auto h-24 w-auto max-w-[280px] object-contain sm:h-28 sm:max-w-[320px]" />
+          <div className="flex justify-center rounded-3xl border border-white/70 bg-white/70 p-6 shadow-sm backdrop-blur dark:border-slate-800 dark:bg-slate-950/55">
+            <BrandLogo className="mx-auto h-24 w-auto max-w-[390px] object-contain sm:h-28 sm:max-w-[460px]" />
           </div>
         </div>
       </Panel>
