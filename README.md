@@ -6,7 +6,7 @@
 ![GitHub stars](https://img.shields.io/github/stars/vektortechmind/NEXUSZAP-FREE?style=flat-square)
 ![GitHub forks](https://img.shields.io/github/forks/vektortechmind/NEXUSZAP-FREE?style=flat-square)
 ![GitHub issues](https://img.shields.io/github/issues/vektortechmind/NEXUSZAP-FREE?style=flat-square)
-![GitHub license](https://img.shields.io/github/license/vektortechmind/NEXUSZAP-FREE?style=flat-square)
+![License: Source-Available](https://img.shields.io/badge/license-source--available-orange?style=flat-square)
 
 <a href="https://livepix.gg/vektortechmind01" target="_blank">
   <img src="https://img.shields.io/badge/Apoie%20o%20projeto-LivePix-FFB000?style=for-the-badge" alt="Apoie o projeto via LivePix" />
