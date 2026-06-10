@@ -1,8 +1,9 @@
-import type { ChatMessageStatus, ChatMessageType, MessageDirection } from "@prisma/client";
+import { Prisma, type ChatMessageStatus, type ChatMessageType, type MessageDirection } from "@prisma/client";
 import { WAMessageStatus, type WAMessage, type WAMessageUpdate } from "@whiskeysockets/baileys";
 import { prisma } from "../database/prisma";
 import { safeLogError } from "../utils/redaction";
 import { recordMessageEvent } from "./analytics/messageEvent.service";
+import { transcodeAudioToOggOpus } from "./chat.audioTranscode";
 import { readChatMedia, validateChatMedia, writeChatMedia, type ChatMediaKind } from "./chat.mediaStorage";
 import {
   baileysChatAdapter,
@@ -16,6 +17,7 @@ export type ChatConversation = {
   id: string;
   instanceId: string;
   jid: string;
+  remoteJidAlt: string | null;
   name: string | null;
   profilePicUrl: string | null;
   lastMessageAt: Date;
@@ -63,6 +65,7 @@ type PersistMessageInput = {
   quotedMessageId?: string | null;
   createdAt?: Date;
   contactName?: string | null;
+  remoteJidAlt?: string | null;
   profilePicUrl?: string | null;
 };
 
@@ -71,13 +74,13 @@ export type ChatStore = {
   listConversations(input: { instanceId?: string }): Promise<ChatConversationSummary[]>;
   listMessages(input: { instanceId: string; jid: string; cursor?: Date; limit: number }): Promise<ChatMessage[]>;
   findMessageByProviderId(input: { instanceId: string; providerMessageId: string }): Promise<ChatMessage | null>;
+  getConversationSummary(input: { instanceId: string; jid: string }): Promise<ChatConversationSummary | null>;
   persistMessage(input: PersistMessageInput): Promise<{ conversation: ChatConversation; message: ChatMessage }>;
   updateMessageStatus(input: { messageId: string; status: ChatMessageStatus; providerMessageId?: string | null }): Promise<ChatMessage>;
   updateMessageMedia(input: { messageId: string; mediaUrl: string; mediaMimeType?: string | null; mediaDurationMs?: number | null }): Promise<ChatMessage>;
   updateMessageReaction(input: { messageId: string; reactionEmoji: string | null }): Promise<ChatMessage>;
   updateMessageText(input: { messageId: string; body: string; editedAt?: Date }): Promise<ChatMessage>;
   softDeleteMessage(input: { messageId: string }): Promise<ChatMessage>;
-  updateConversationProfile(input: { instanceId: string; jid: string; name?: string | null; profilePicUrl?: string | null }): Promise<ChatConversationSummary | null>;
   listMessagesForConversation(input: { instanceId: string; jid: string }): Promise<ChatMessage[]>;
   softDeleteConversationMessages(input: { instanceId: string; jid: string }): Promise<ChatMessage[]>;
   resetUnreadCount(input: { instanceId: string; jid: string }): Promise<ChatConversationSummary | null>;
@@ -109,7 +112,7 @@ export class ChatMediaNotFoundError extends Error {
   }
 }
 
-export type ChatDeleteMode = "for_me" | "for_everyone" | "for_everyone_and_erase";
+export type ChatDeleteMode = "for_everyone";
 const EDIT_WINDOW_MS = 15 * 60 * 1000;
 const DELETE_FOR_EVERYONE_WINDOW_MS = 48 * 60 * 60 * 1000;
 
@@ -119,6 +122,10 @@ function newId(prefix: string) {
 
 function buildConversationSummary(conversation: ChatConversation, message: ChatMessage): ChatConversationSummary {
   return { ...conversation, lastMessage: message };
+}
+
+function isUniqueConstraintError(err: unknown) {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
 }
 
 function chatStatusFromBaileysStatus(status: unknown): ChatMessageStatus | null {
@@ -173,6 +180,7 @@ export const prismaChatStore: ChatStore = {
       orderBy: { lastMessageAt: "desc" },
       include: {
         messages: {
+          where: { isDeleted: false },
           orderBy: { createdAt: "desc" },
           take: 1,
         },
@@ -209,21 +217,42 @@ export const prismaChatStore: ChatStore = {
     });
   },
 
+  async getConversationSummary(input) {
+    const jid = normalizeChatJid(input.jid);
+    const conversation = await prisma.conversation.findUnique({
+      where: { instanceId_jid: { instanceId: input.instanceId, jid } },
+      include: {
+        messages: {
+          where: { isDeleted: false },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+      },
+    });
+    if (!conversation) return null;
+    const { messages, ...row } = conversation;
+    return { ...row, lastMessage: messages[0] ?? null };
+  },
+
   async persistMessage(input) {
     const jid = normalizeChatJid(input.jid);
+    const remoteJidAlt = input.remoteJidAlt ? normalizeChatJid(input.remoteJidAlt) : null;
     const createdAt = input.createdAt ?? new Date();
-    return prisma.$transaction(async (tx) => {
+    try {
+      return await prisma.$transaction(async (tx) => {
       const conversation = await tx.conversation.upsert({
         where: { instanceId_jid: { instanceId: input.instanceId, jid } },
         create: {
           instanceId: input.instanceId,
           jid,
+          remoteJidAlt,
           name: input.contactName ?? null,
           profilePicUrl: input.profilePicUrl ?? null,
           lastMessageAt: createdAt,
           unreadCount: input.fromMe ? 0 : 1,
         },
         update: {
+          remoteJidAlt: remoteJidAlt ?? undefined,
           name: input.contactName ?? undefined,
           profilePicUrl: input.profilePicUrl ?? undefined,
           lastMessageAt: createdAt,
@@ -251,17 +280,44 @@ export const prismaChatStore: ChatStore = {
       });
 
       return { conversation, message };
-    });
+      });
+    } catch (err) {
+      if (input.providerMessageId && isUniqueConstraintError(err)) {
+        const existing = await prisma.message.findFirst({
+          where: { instanceId: input.instanceId, providerMessageId: input.providerMessageId },
+          include: { conversation: true },
+        });
+        if (existing) {
+          const { conversation, ...message } = existing;
+          return { conversation, message };
+        }
+      }
+      throw err;
+    }
   },
 
   async updateMessageStatus(input) {
-    return prisma.message.update({
-      where: { id: input.messageId },
-      data: {
-        status: input.status,
-        providerMessageId: input.providerMessageId ?? undefined,
-      },
-    });
+    try {
+      return await prisma.message.update({
+        where: { id: input.messageId },
+        data: {
+          status: input.status,
+          providerMessageId: input.providerMessageId ?? undefined,
+        },
+      });
+    } catch (err) {
+      if (input.providerMessageId && isUniqueConstraintError(err)) {
+        const current = await prisma.message.findUnique({
+          where: { id: input.messageId },
+          select: { instanceId: true },
+        });
+        const existing = await prisma.message.findFirst({
+          where: { instanceId: current?.instanceId, providerMessageId: input.providerMessageId },
+        });
+        if (existing) return existing;
+      }
+      throw err;
+    }
   },
 
   async updateMessageMedia(input) {
@@ -296,26 +352,6 @@ export const prismaChatStore: ChatStore = {
     });
   },
 
-  async updateConversationProfile(input) {
-    const jid = normalizeChatJid(input.jid);
-    const conversation = await prisma.conversation.update({
-      where: { instanceId_jid: { instanceId: input.instanceId, jid } },
-      data: {
-        name: input.name ?? undefined,
-        profilePicUrl: input.profilePicUrl ?? undefined,
-      },
-      include: {
-        messages: {
-          orderBy: { createdAt: "desc" },
-          take: 1,
-        },
-      },
-    }).catch(() => null);
-    if (!conversation) return null;
-    const { messages, ...row } = conversation;
-    return { ...row, lastMessage: messages[0] ?? null };
-  },
-
   async listMessagesForConversation(input) {
     const jid = normalizeChatJid(input.jid);
     return prisma.message.findMany({
@@ -345,6 +381,7 @@ export const prismaChatStore: ChatStore = {
       data: { unreadCount: 0 },
       include: {
         messages: {
+          where: { isDeleted: false },
           orderBy: { createdAt: "desc" },
           take: 1,
         },
@@ -372,6 +409,7 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
     let latest: ChatMessage | null = null;
     for (const message of messages.values()) {
       if (message.conversationId !== conversationId) continue;
+      if (message.isDeleted) continue;
       if (!latest || message.createdAt > latest.createdAt) latest = message;
     }
     return latest;
@@ -409,14 +447,29 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
         (message) => message.instanceId === input.instanceId && message.providerMessageId === input.providerMessageId
       ) ?? null;
     },
+    async getConversationSummary(input) {
+      const jid = normalizeChatJid(input.jid);
+      const conversation = conversations.get(conversationKey(input.instanceId, jid));
+      return conversation ? { ...conversation, lastMessage: latestMessageForConversation(conversation.id) } : null;
+    },
     async persistMessage(input) {
       const jid = normalizeChatJid(input.jid);
+      if (input.providerMessageId) {
+        const existing = await this.findMessageByProviderId({ instanceId: input.instanceId, providerMessageId: input.providerMessageId });
+        if (existing) {
+          const conversation = conversations.get(conversationKey(input.instanceId, existing.jid));
+          if (!conversation) throw new Error("Conversa nao encontrada para mensagem duplicada.");
+          return { conversation, message: existing };
+        }
+      }
+      const remoteJidAlt = input.remoteJidAlt ? normalizeChatJid(input.remoteJidAlt) : null;
       const now = input.createdAt ?? new Date();
       const key = conversationKey(input.instanceId, jid);
       const existing = conversations.get(key);
       const conversation: ChatConversation = existing
         ? {
             ...existing,
+            remoteJidAlt: remoteJidAlt ?? existing.remoteJidAlt,
             name: input.contactName ?? existing.name,
             profilePicUrl: input.profilePicUrl ?? existing.profilePicUrl,
             lastMessageAt: now,
@@ -427,6 +480,7 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
             id: newId("conversation"),
             instanceId: input.instanceId,
             jid,
+            remoteJidAlt,
             name: input.contactName ?? null,
             profilePicUrl: input.profilePicUrl ?? null,
             lastMessageAt: now,
@@ -460,6 +514,12 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
     async updateMessageStatus(input) {
       const existing = messages.get(input.messageId);
       if (!existing) throw new Error("Mensagem nao encontrada.");
+      if (input.providerMessageId) {
+        const duplicate = Array.from(messages.values()).find(
+          (message) => message.id !== input.messageId && message.instanceId === existing.instanceId && message.providerMessageId === input.providerMessageId
+        );
+        if (duplicate) return duplicate;
+      }
       const updated = {
         ...existing,
         status: input.status,
@@ -504,20 +564,6 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
       messages.set(updated.id, updated);
       return updated;
     },
-    async updateConversationProfile(input) {
-      const jid = normalizeChatJid(input.jid);
-      const key = conversationKey(input.instanceId, jid);
-      const existing = conversations.get(key);
-      if (!existing) return null;
-      const updated = {
-        ...existing,
-        name: input.name ?? existing.name,
-        profilePicUrl: input.profilePicUrl ?? existing.profilePicUrl,
-        updatedAt: new Date(),
-      };
-      conversations.set(key, updated);
-      return { ...updated, lastMessage: latestMessageForConversation(updated.id) };
-    },
     async listMessagesForConversation(input) {
       const jid = normalizeChatJid(input.jid);
       return Array.from(messages.values())
@@ -556,33 +602,14 @@ export function createChatService(deps: {
     if (!instance) throw new ChatInstanceNotFoundError(instanceId);
   }
 
-  async function getSafeContactProfile(input: { instanceId: string; jid: string }) {
-    return baileys.getContactProfile(input).catch((err) => {
-      console.warn("[Chat] Falha ao buscar perfil do contato:", safeLogError(err));
-      return { name: null, profilePicUrl: null };
-    });
-  }
-
-  async function enrichMissingConversationProfiles(conversations: ChatConversationSummary[]) {
-    return Promise.all(conversations.map(async (conversation) => {
-      if (conversation.profilePicUrl) return conversation;
-      const profile = await getSafeContactProfile({ instanceId: conversation.instanceId, jid: conversation.jid });
-      const nextName = conversation.name ?? profile.name;
-      const nextProfilePicUrl = profile.profilePicUrl ?? conversation.profilePicUrl;
-      if (!profile.profilePicUrl && !profile.name) return conversation;
-      return await store.updateConversationProfile({
-        instanceId: conversation.instanceId,
-        jid: conversation.jid,
-        name: nextName,
-        profilePicUrl: nextProfilePicUrl,
-      }) ?? { ...conversation, name: nextName, profilePicUrl: nextProfilePicUrl };
-    }));
+  function withoutProfilePictureUrls(conversations: ChatConversationSummary[]) {
+    return conversations.map((conversation) => ({ ...conversation, profilePicUrl: null }));
   }
 
   return {
     async listConversations(input: { instanceId?: string }) {
       if (input.instanceId) await ensureInstance(input.instanceId);
-      return enrichMissingConversationProfiles(await store.listConversations(input));
+      return withoutProfilePictureUrls(await store.listConversations(input));
     },
 
     async listMessages(input: { instanceId: string; jid: string; cursor?: Date; limit?: number }) {
@@ -602,14 +629,14 @@ export function createChatService(deps: {
         const existing = await store.findMessageByProviderId({ instanceId: input.instanceId, providerMessageId: input.providerMessageId });
         if (existing) return existing;
       }
-      const profile = input.profilePicUrl ? null : await getSafeContactProfile({ instanceId: input.instanceId, jid });
       const result = await store.persistMessage({
         ...input,
         jid,
         fromMe: false,
         status: "DELIVERED",
-        contactName: input.contactName ?? profile?.name ?? null,
-        profilePicUrl: input.profilePicUrl ?? profile?.profilePicUrl ?? null,
+        contactName: input.contactName ?? null,
+        remoteJidAlt: input.remoteJidAlt ?? null,
+        profilePicUrl: null,
       });
       chatRealtime.emitMessageNew({ instanceId: input.instanceId, message: result.message });
       chatRealtime.emitConversationUpdate({ instanceId: input.instanceId, conversation: buildConversationSummary(result.conversation, result.message) });
@@ -622,14 +649,16 @@ export function createChatService(deps: {
         const existing = await store.findMessageByProviderId({ instanceId: input.instanceId, providerMessageId: input.providerMessageId });
         if (existing) return existing;
       }
+      const jid = normalizeChatJid(input.jid);
       const result = await store.persistMessage({
         ...input,
-        jid: normalizeChatJid(input.jid),
+        jid,
         fromMe: true,
         status: input.status ?? "SENT",
       });
       chatRealtime.emitMessageSent({ instanceId: input.instanceId, message: result.message });
       chatRealtime.emitConversationUpdate({ instanceId: input.instanceId, conversation: buildConversationSummary(result.conversation, result.message) });
+
       return result.message;
     },
 
@@ -652,6 +681,7 @@ export function createChatService(deps: {
         messageType: "TEXT",
         status: "SENT",
         quotedMessageId: quotedProviderMessageId,
+        profilePicUrl: null,
       });
 
       try {
@@ -698,6 +728,12 @@ export function createChatService(deps: {
       if (input.buffer.length === 0) throw new ChatValidationError("Arquivo obrigatorio.");
       validateChatMedia({ messageType: input.messageType, mimeType: input.mimeType, sizeBytes: input.buffer.length });
 
+      const media = input.messageType === "AUDIO"
+        ? await transcodeAudioToOggOpus({ buffer: input.buffer, mimeType: input.mimeType })
+        : { buffer: input.buffer, mimeType: input.mimeType };
+      validateChatMedia({ messageType: input.messageType, mimeType: media.mimeType, sizeBytes: media.buffer.length });
+      const mediaBody = input.caption?.trim() || (input.messageType === "DOCUMENT" ? input.fileName?.trim() || null : null);
+
       const quotedProviderMessageId = input.quotedMessageId?.trim() || null;
       const quotedMessage = quotedProviderMessageId
         ? await store.findMessageByProviderId({ instanceId: input.instanceId, providerMessageId: quotedProviderMessageId })
@@ -708,10 +744,10 @@ export function createChatService(deps: {
         instanceId: input.instanceId,
         jid,
         fromMe: true,
-        body: input.caption?.trim() || null,
+        body: mediaBody,
         messageType: input.messageType,
         status: "PENDING",
-        mediaMimeType: input.mimeType,
+        mediaMimeType: media.mimeType,
         quotedMessageId: quotedProviderMessageId,
       });
       chatRealtime.emitMessageSent({ instanceId: input.instanceId, message: result.message });
@@ -721,8 +757,8 @@ export function createChatService(deps: {
           instanceId: input.instanceId,
           jid,
           messageType: input.messageType,
-          buffer: input.buffer,
-          mimeType: input.mimeType,
+          buffer: media.buffer,
+          mimeType: media.mimeType,
           caption: input.caption,
           fileName: input.fileName,
           quotedMessage: quotedMessage ? buildQuotedWAMessage(quotedMessage) : null,
@@ -731,9 +767,9 @@ export function createChatService(deps: {
         const stored = await writeChatMedia({
           instanceId: input.instanceId,
           providerMessageId,
-          buffer: input.buffer,
+          buffer: media.buffer,
           messageType: input.messageType,
-          mimeType: input.mimeType,
+          mimeType: media.mimeType,
         });
         const withProvider = await store.updateMessageStatus({
           messageId: result.message.id,
@@ -743,7 +779,7 @@ export function createChatService(deps: {
         const updated = await store.updateMessageMedia({
           messageId: withProvider.id,
           mediaUrl: stored.mediaUrl,
-          mediaMimeType: input.mimeType,
+          mediaMimeType: media.mimeType,
         });
         await eventRecorder({ instanceId: input.instanceId, channel: "WHATSAPP", direction: "OUTBOUND", usedAi: false }).catch((eventErr) => {
           console.error("[Chat] Falha ao registrar MessageEvent outbound media:", safeLogError(eventErr));
@@ -802,15 +838,14 @@ export function createChatService(deps: {
       const message = await store.findMessageByProviderId({ instanceId: input.instanceId, providerMessageId });
       if (!message) throw new ChatValidationError("Mensagem nao encontrada.");
       if (!message.fromMe) throw new ChatValidationError("So pode apagar mensagens proprias por esta acao.");
-      if (input.mode !== "for_me") {
-        if (Date.now() - message.createdAt.getTime() > DELETE_FOR_EVERYONE_WINDOW_MS) {
-          throw new ChatValidationError("So pode apagar para todos ate 48 horas apos o envio.", 422);
-        }
-        await baileys.deleteMessage({ instanceId: input.instanceId, jid, providerMessageId });
+      if (Date.now() - message.createdAt.getTime() > DELETE_FOR_EVERYONE_WINDOW_MS) {
+        throw new ChatValidationError("So pode apagar para todos ate 48 horas apos o envio.", 422);
       }
-      if (input.mode === "for_everyone") return message;
+      await baileys.deleteMessage({ instanceId: input.instanceId, jid, providerMessageId });
       const updated = await store.softDeleteMessage({ messageId: message.id });
       chatRealtime.emitMessageDeleted({ instanceId: input.instanceId, message: updated });
+      const conversation = await store.getConversationSummary({ instanceId: input.instanceId, jid });
+      if (conversation) chatRealtime.emitConversationUpdate({ instanceId: input.instanceId, conversation });
       return updated;
     },
 
@@ -822,6 +857,8 @@ export function createChatService(deps: {
       if (!message) return null;
       const updated = await store.softDeleteMessage({ messageId: message.id });
       chatRealtime.emitMessageDeleted({ instanceId: input.instanceId, message: updated });
+      const conversation = await store.getConversationSummary({ instanceId: input.instanceId, jid: updated.jid });
+      if (conversation) chatRealtime.emitConversationUpdate({ instanceId: input.instanceId, conversation });
       return updated;
     },
 

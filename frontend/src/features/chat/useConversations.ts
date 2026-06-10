@@ -7,7 +7,7 @@ import type { ChatConversation, ChatInstanceOption, ChatMessage } from "./types"
 type ConversationsResponse = { conversations: ChatConversation[] };
 type MessagesResponse = { messages: ChatMessage[]; nextCursor: string | null };
 type ReactionResponse = { success: boolean; message: ChatMessage | null };
-type DeleteMode = "for_me" | "for_everyone" | "for_everyone_and_erase";
+type DeleteMode = "for_everyone";
 type SendMediaType = "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT";
 
 export function getContactDisplayName(conversation: Pick<ChatConversation, "name" | "jid">) {

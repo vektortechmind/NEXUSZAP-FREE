@@ -146,6 +146,7 @@ model Conversation {
   instanceId     String
   instance       Instance  @relation(fields: [instanceId], references: [id], onDelete: Cascade)
   jid            String
+  remoteJidAlt   String?
   name           String?
   profilePicUrl  String?
   lastMessageAt  DateTime
@@ -181,7 +182,7 @@ model Message {
   createdAt         DateTime          @default(now())
 
   @@index([conversationId, createdAt])
-  @@index([providerMessageId])
+  @@index([instanceId, providerMessageId])
   @@index([instanceId, jid, createdAt])
 }
 

@@ -41,6 +41,7 @@ function serializeMessage(message: ChatMessage): ChatRealtimeMessagePayload {
 function serializeConversation(conversation: ChatConversationSummary): ChatRealtimeConversationPayload {
   return {
     ...conversation,
+    profilePicUrl: null,
     createdAt: conversation.createdAt.toISOString(),
     updatedAt: conversation.updatedAt.toISOString(),
     lastMessageAt: conversation.lastMessageAt.toISOString(),

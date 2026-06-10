@@ -23,6 +23,7 @@ services:
       - ./backend/.env
     volumes:
       - ./backend/.env:/app/.env
+      - chat_media:/app/storage/chat-media
       - ./:/workspace
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
@@ -37,6 +38,7 @@ services:
       UPDATE_SCRIPT_PATH: /workspace/update.sh
       UPDATE_STORAGE_DIR: /workspace/updates
       UPDATE_WORKSPACE_DIR: /workspace
+      CHAT_MEDIA_STORAGE_ROOT: /app/storage/chat-media
     ports:
       - "3001:3000"
     expose:
@@ -60,3 +62,4 @@ services:
 
 volumes:
   pgdata:
+  chat_media:

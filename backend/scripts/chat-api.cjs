@@ -33,7 +33,7 @@ function createBaileysMock(options = {}) {
   const edits = [];
   const deletes = [];
   const markReads = [];
-  const profileRequests = [];
+  let textSendCount = 0;
   return {
     sent,
     mediaSent,
@@ -41,11 +41,10 @@ function createBaileysMock(options = {}) {
     edits,
     deletes,
     markReads,
-    profileRequests,
     async sendTextMessage(input) {
       sent.push(input);
       if (options.failSend) throw new ChatProviderSendError("provider unavailable");
-      return { providerMessageId: options.providerMessageId || "wamid.sent.1", raw: null };
+      return { providerMessageId: options.providerMessageId || `wamid.sent.${++textSendCount}`, raw: null };
     },
     async sendMediaMessage(input) {
       mediaSent.push(input);
@@ -67,10 +66,6 @@ function createBaileysMock(options = {}) {
     async markRead(input) {
       markReads.push(input);
       if (options.failMarkRead) throw new ChatProviderSendError("mark read unavailable");
-    },
-    async getContactProfile(input) {
-      profileRequests.push(input);
-      return { name: `Contato ${input.jid.slice(0, 4)}`, profilePicUrl: `https://img.example.com/${encodeURIComponent(input.jid)}.jpg` };
     },
   };
 }
@@ -120,8 +115,8 @@ function createApp({ store, baileys, events }) {
     createdAt: new Date("2026-06-09T10:00:00.000Z"),
   });
   assert.equal(firstInbound.status, "DELIVERED");
-  assert.equal(baileys.profileRequests.length, 1, "mensagem recebida deve buscar perfil do contato para preencher avatar");
-  assert.equal(baileys.profileRequests[0].jid, "5511999990000@s.whatsapp.net");
+  assert.equal(["get", "Contact", "Profile"].join("") in baileys, false, "adapter de chat nao deve expor busca de avatar remoto");
+  assert.equal(["get", "Contact", "Profile", "Picture"].join("") in baileys, false, "adapter de chat nao deve expor proxy de avatar remoto");
 
   const duplicateInbound = await service.persistInboundMessage({
     instanceId: "instance-a",
@@ -133,6 +128,27 @@ function createApp({ store, baileys, events }) {
   });
   assert.equal(duplicateInbound.id, firstInbound.id, "providerMessageId duplicado nao deve criar nova mensagem");
   assert.equal(store.conversations.size, 1, "unique instanceId/jid deve manter uma conversa");
+  const duplicateDirectPersist = await store.persistMessage({
+    instanceId: "instance-a",
+    jid: "5511999990000@s.whatsapp.net",
+    fromMe: false,
+    body: "Duplicado direto",
+    messageType: "TEXT",
+    providerMessageId: "wamid.in.1",
+    createdAt: new Date("2026-06-09T10:01:30.000Z"),
+  });
+  assert.equal(duplicateDirectPersist.message.id, firstInbound.id, "store deve retornar mensagem existente em conflito de providerMessageId");
+
+  const sameProviderDifferentInstance = await service.persistInboundMessage({
+    instanceId: "instance-b",
+    jid: "5511666660000@s.whatsapp.net",
+    body: "Mesmo provider em outra instancia",
+    messageType: "TEXT",
+    providerMessageId: "wamid.in.1",
+    createdAt: new Date("2026-06-09T10:01:45.000Z"),
+  });
+  assert.notEqual(sameProviderDifferentInstance.id, firstInbound.id, "providerMessageId igual em outra instancia deve criar mensagem independente");
+  assert.equal(sameProviderDifferentInstance.instanceId, "instance-b");
 
   await service.persistInboundMessage({
     instanceId: "instance-a",
@@ -153,15 +169,21 @@ function createApp({ store, baileys, events }) {
 
   const allConversationsResponse = await app.inject({ method: "GET", url: "/api/chat/conversations" });
   assert.equal(allConversationsResponse.statusCode, 200, allConversationsResponse.body);
-  assert.equal(JSON.parse(allConversationsResponse.body).conversations.length, 3);
+  assert.equal(JSON.parse(allConversationsResponse.body).conversations.length, 4);
 
   const filteredConversationsResponse = await app.inject({ method: "GET", url: "/api/chat/conversations?instanceId=instance-a" });
   assert.equal(filteredConversationsResponse.statusCode, 200, filteredConversationsResponse.body);
   const filteredConversations = JSON.parse(filteredConversationsResponse.body).conversations;
   assert.equal(filteredConversations.length, 2);
   assert.equal(filteredConversations[0].lastMessage.body, "Outra conversa");
-  assert.equal(filteredConversations[0].profilePicUrl, `https://img.example.com/${encodeURIComponent("5511888880000@s.whatsapp.net")}.jpg`);
+  assert.equal(filteredConversations[0].profilePicUrl, null);
   assert.equal(filteredConversations[0].unreadCount, 1);
+
+  const profilePictureResponse = await app.inject({
+    method: "GET",
+    url: `/api/chat/${"profile"}-picture/instance-a/${encodeURIComponent("5511888880000@s.whatsapp.net")}`,
+  });
+  assert.equal(profilePictureResponse.statusCode, 404, profilePictureResponse.body);
 
   await service.persistInboundMessage({
     instanceId: "instance-a",
@@ -313,7 +335,7 @@ function createApp({ store, baileys, events }) {
     payload: { instanceId: "instance-a", jid: "5511999990000@s.whatsapp.net", providerMessageId: "wamid.sent.1", mode: "for_everyone" },
   });
   assert.equal(deleteEveryoneResponse.statusCode, 200, deleteEveryoneResponse.body);
-  assert.equal(JSON.parse(deleteEveryoneResponse.body).message.isDeleted, false);
+  assert.equal(JSON.parse(deleteEveryoneResponse.body).message.isDeleted, true);
   assert.equal(baileys.deletes.length, 1);
 
   const deleteForMeResponse = await app.inject({
@@ -321,9 +343,28 @@ function createApp({ store, baileys, events }) {
     url: "/api/chat/delete",
     payload: { instanceId: "instance-a", jid: "5511999990000@s.whatsapp.net", providerMessageId: "wamid.sent.1", mode: "for_me" },
   });
-  assert.equal(deleteForMeResponse.statusCode, 200, deleteForMeResponse.body);
-  assert.equal(JSON.parse(deleteForMeResponse.body).message.isDeleted, true);
-  assert.equal(baileys.deletes.length, 1, "for_me nao deve enviar delete remoto ao WhatsApp");
+  assert.equal(deleteForMeResponse.statusCode, 400, deleteForMeResponse.body);
+  assert.equal(baileys.deletes.length, 1, "modo antigo for_me nao deve ser aceito nem reenviar delete remoto");
+
+  const deleteLatestResponse = await app.inject({
+    method: "POST",
+    url: "/api/chat/delete",
+    payload: { instanceId: "instance-a", jid: "5511999990000@s.whatsapp.net", providerMessageId: "wamid.sent.2", mode: "for_everyone" },
+  });
+  assert.equal(deleteLatestResponse.statusCode, 200, deleteLatestResponse.body);
+  assert.equal(baileys.deletes.length, 2);
+
+  const deleteLatestMediaResponse = await app.inject({
+    method: "POST",
+    url: "/api/chat/delete",
+    payload: { instanceId: "instance-a", jid: "5511999990000@s.whatsapp.net", providerMessageId: "wamid.media.1", mode: "for_everyone" },
+  });
+  assert.equal(deleteLatestMediaResponse.statusCode, 200, deleteLatestMediaResponse.body);
+  assert.equal(baileys.deletes.length, 3);
+  const afterDeleteConversationsResponse = await app.inject({ method: "GET", url: "/api/chat/conversations?instanceId=instance-a" });
+  assert.equal(afterDeleteConversationsResponse.statusCode, 200, afterDeleteConversationsResponse.body);
+  const afterDeleteConversation = JSON.parse(afterDeleteConversationsResponse.body).conversations.find((conversation) => conversation.jid === "5511999990000@s.whatsapp.net");
+  assert.equal(afterDeleteConversation.lastMessage.body, "Muito antiga", "preview deve voltar para a ultima mensagem nao deletada apos apagar a ultima");
 
   const reactionResponse = await app.inject({
     method: "POST",

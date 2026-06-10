@@ -19,10 +19,18 @@ function messageBelongsToConversation(message: ChatMessage, conversation: ChatCo
   return Boolean(conversation && message.instanceId === conversation.instanceId && message.jid === conversation.jid);
 }
 
+function latestVisibleMessage(messages: ChatMessage[], deletedMessageId: string) {
+  return messages
+    .filter((message) => message.id !== deletedMessageId && !message.isDeleted)
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] ?? null;
+}
+
 function upsertConversation(list: ChatConversation[], next: ChatConversation) {
   const exists = list.some((conversation) => conversationKey(conversation) === conversationKey(next));
   const merged = exists
-    ? list.map((conversation) => conversationKey(conversation) === conversationKey(next) ? { ...conversation, ...next } : conversation)
+    ? list.map((conversation) => conversationKey(conversation) === conversationKey(next)
+      ? { ...conversation, ...next }
+      : conversation)
     : [next, ...list];
   return merged.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
 }
@@ -105,8 +113,12 @@ export function ChatPage() {
   }, [handleStatus]);
 
   const handleDeleted = useCallback((message: ChatMessage) => {
-    handleStatus(message);
-  }, [handleStatus]);
+    const fallbackLastMessage = latestVisibleMessage(messages, message.id);
+    setMessages((current) => current.filter((item) => item.id !== message.id));
+    setConversations((current) => current.map((conversation) => (
+      conversation.lastMessage?.id === message.id ? { ...conversation, lastMessage: fallbackLastMessage } : conversation
+    )));
+  }, [messages, setConversations]);
 
   const handlePresence = useCallback((presence: ChatPresence) => {
     const key = `${presence.instanceId}:${presence.jid}`;
@@ -289,11 +301,11 @@ export function ChatPage() {
       }
       return;
     }
-    const mode = action === "delete_for_me" ? "for_me" : action === "delete_for_everyone" ? "for_everyone" : "for_everyone_and_erase";
-    const confirmed = window.confirm(action === "delete_for_everyone" ? "Apagar para todos?" : action === "delete_forever" ? "Apagar para todos e remover do painel?" : "Apagar para mim?");
+    if (action !== "delete_for_everyone") return;
+    const confirmed = window.confirm("Apagar para todos?");
     if (!confirmed) return;
     try {
-      const updated = await deleteMessage({ instanceId: selectedConversation.instanceId, jid: selectedConversation.jid, providerMessageId: message.providerMessageId, mode });
+      const updated = await deleteMessage({ instanceId: selectedConversation.instanceId, jid: selectedConversation.jid, providerMessageId: message.providerMessageId, mode: "for_everyone" });
       if (updated) handleStatus(updated);
     } catch (err) {
       console.error(err);

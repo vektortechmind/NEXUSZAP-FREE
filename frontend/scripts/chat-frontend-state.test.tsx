@@ -69,6 +69,15 @@ const videoMessage: ChatMessage = {
   mediaMimeType: "video/mp4",
 };
 
+const documentMessage: ChatMessage = {
+  ...textMessage,
+  id: "message-document",
+  body: "contrato.pdf",
+  messageType: "DOCUMENT",
+  mediaUrl: "/api/chat/media/instance-a/wamid.document.1",
+  mediaMimeType: "application/pdf",
+};
+
 const conversations: ChatConversation[] = [
   {
     id: "conversation-a",
@@ -180,6 +189,10 @@ test("message bubbles render image, video, view-once marker and reactions inline
   assert.match(imageHtml, /p-0 overflow-hidden/);
   assert.match(videoHtml, /<video/);
   assert.match(videoHtml, /Abrir video/);
+  const documentHtml = renderToStaticMarkup(<MessageBubble message={documentMessage} />);
+  assert.match(documentHtml, /Abrir documento/);
+  assert.match(documentHtml, /contrato.pdf/);
+  assert.match(documentHtml, /Toque para abrir/);
   assert.match(fallbackHtml, /\[Imagem\]/);
   assert.match(reactedHtml, /👍/);
   assert.match(viewOnceHtml, /Visualizacao unica/);
@@ -202,8 +215,8 @@ test("message context menu exposes conditional actions", () => {
   const oldOwnText = { ...freshOwnText, createdAt: new Date(Date.now() - 16 * 60 * 1000).toISOString() };
   assert.equal(isWithinEditWindow(freshOwnText), true);
   assert.equal(isWithinEditWindow(oldOwnText), false);
-  assert.deepEqual(getMessageContextActions(freshOwnText).slice(0, 3), ["reply", "edit", "delete_for_me"]);
-  assert.deepEqual(getMessageContextActions(oldOwnText).slice(0, 2), ["reply", "delete_for_me"]);
+  assert.deepEqual(getMessageContextActions(freshOwnText), ["reply", "edit", "delete_for_everyone"]);
+  assert.deepEqual(getMessageContextActions(oldOwnText), ["reply", "delete_for_everyone"]);
   assert.deepEqual(getMessageContextActions({ ...textMessage, isDeleted: true }), []);
   const html = renderToStaticMarkup(
     <MessageContextMenu
@@ -215,7 +228,9 @@ test("message context menu exposes conditional actions", () => {
   );
   assert.match(html, /Responder/);
   assert.match(html, /Editar/);
-  assert.match(html, /Apagar para mim/);
+  assert.match(html, /Apagar para todos/);
+  assert.doesNotMatch(html, /Apagar para mim/);
+  assert.doesNotMatch(html, /Apagar para sempre/);
 });
 
 test("emoji picker uses emoji-mart and message bubble plus button", () => {
@@ -291,10 +306,8 @@ test("chat input renders reply mode and cancel button", () => {
   assert.match(html, /Respondendo/);
   assert.match(html, /Oi, preciso de ajuda/);
   assert.match(html, /Cancelar resposta/);
-  assert.match(html, /Anexar imagem/);
-  assert.match(html, /Anexar video/);
-  assert.match(html, /Anexar audio/);
-  assert.match(html, /Anexar documento/);
+  assert.match(html, /Anexar/);
+  assert.match(html, /Gravar audio/);
 });
 
 test("chat input does not use a form submit wrapper", () => {
@@ -302,6 +315,65 @@ test("chat input does not use a form submit wrapper", () => {
   assert.equal(source.includes("<form"), false);
   assert.equal(source.includes("onSubmit"), false);
   assert.match(source, /onClick=\{\(\) => void submit\(\)\}/);
+  assert.match(source, /Paperclip/);
+  assert.match(source, /Fotos e videos/);
+  assert.match(source, /Documento/);
+  assert.match(source, /MediaRecorder/);
+  assert.match(source, /getUserMedia/);
+  assert.match(source, /pendingMedia/);
+  assert.match(source, /URL\.createObjectURL/);
+  assert.match(source, /Remover anexo/);
+  assert.match(source, /h-12 w-12/);
+  assert.doesNotMatch(source, /Anexar audio/);
+});
+
+test("chat avatars render initials only", () => {
+  const listSource = fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/ConversationList.tsx"), "utf8");
+  const headerSource = fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/ChatHeader.tsx"), "utf8");
+  assert.match(listSource, /name\.slice\(0, 1\)\.toUpperCase\(\)/);
+  assert.match(headerSource, /name\.slice\(0, 1\)\.toUpperCase\(\)/);
+  assert.doesNotMatch(listSource, /<img/);
+  assert.doesNotMatch(headerSource, /<img/);
+  assert.doesNotMatch(listSource, /conversation\.profilePicUrl/);
+  assert.doesNotMatch(headerSource, /conversation\.profilePicUrl/);
+  assert.doesNotMatch(listSource, /referrerPolicy/);
+  assert.doesNotMatch(headerSource, /referrerPolicy/);
+});
+
+test("backend profile picture flow is removed from chat", () => {
+  const baileysSource = fs.readFileSync(path.resolve(import.meta.dirname, "../../backend/src/services/chat.baileys.ts"), "utf8");
+  const serviceSource = fs.readFileSync(path.resolve(import.meta.dirname, "../../backend/src/services/chat.service.ts"), "utf8");
+  const routesSource = fs.readFileSync(path.resolve(import.meta.dirname, "../../backend/src/routes/chat.routes.ts"), "utf8");
+  const handlerSource = fs.readFileSync(path.resolve(import.meta.dirname, "../../backend/src/whatsapp/messageHandler.ts"), "utf8");
+  const instanceManagerSource = fs.readFileSync(path.resolve(import.meta.dirname, "../../backend/src/whatsapp/InstanceManager.ts"), "utf8");
+  assert.doesNotMatch(baileysSource, /profilePictureCache/);
+  assert.doesNotMatch(baileysSource, /CONTACT_PROFILE_PICTURE_CACHE_TTL_MS/);
+  assert.doesNotMatch(baileysSource, /profilePictureUrl/);
+  assert.doesNotMatch(baileysSource, /getContactProfile/);
+  assert.doesNotMatch(serviceSource, /fetchStoredProfilePicture/);
+  assert.doesNotMatch(serviceSource, /getConversationProfile/);
+  assert.doesNotMatch(serviceSource, /getContactProfilePicture/);
+  assert.doesNotMatch(serviceSource, /syncContactProfileFromProvider/);
+  assert.doesNotMatch(routesSource, /profile-picture/);
+  assert.match(serviceSource, /remoteJidAlt/);
+  assert.match(serviceSource, /withoutProfilePictureUrls/);
+  assert.match(serviceSource, /profilePicUrl: null/);
+  assert.doesNotMatch(serviceSource, /withStableProfilePictureUrls/);
+  assert.match(handlerSource, /remoteJidAlt/);
+  assert.doesNotMatch(instanceManagerSource, /contacts\.upsert/);
+  assert.doesNotMatch(instanceManagerSource, /contacts\.update/);
+  assert.doesNotMatch(instanceManagerSource, /messaging-history\.set/);
+  assert.doesNotMatch(instanceManagerSource, /lid-mapping\.update/);
+  assert.doesNotMatch(instanceManagerSource, /syncContactProfileFromProvider/);
+});
+
+test("conversation realtime does not force avatar proxy URL", () => {
+  const pageSource = fs.readFileSync(path.resolve(import.meta.dirname, "../src/pages/ChatPage.tsx"), "utf8");
+  const realtimeSource = fs.readFileSync(path.resolve(import.meta.dirname, "../../backend/src/services/chat.realtime.ts"), "utf8");
+  assert.doesNotMatch(pageSource, /profilePicUrl: next\.profilePicUrl \|\| conversation\.profilePicUrl/);
+  assert.match(realtimeSource, /profilePicUrl: null/);
+  assert.doesNotMatch(realtimeSource, /buildContactProfilePictureUrl/);
+  assert.doesNotMatch(realtimeSource, /\/api\/chat\/profile-picture/);
 });
 
 test("known empty media/reply messages use readable fallback instead of generic empty text", () => {
@@ -370,6 +442,14 @@ test("chat page handles read rollback and clear batch", () => {
   assert.match(source, /conversation\.cleared/);
   assert.match(source, /setMessages\(\[\]\)/);
   assert.match(source, /sendMediaMessage/);
+});
+
+test("chat page keeps previous preview while backend confirms delete", () => {
+  const source = fs.readFileSync(path.resolve(import.meta.dirname, "../src/pages/ChatPage.tsx"), "utf8");
+  assert.match(source, /latestVisibleMessage/);
+  assert.match(source, /fallbackLastMessage/);
+  assert.match(source, /lastMessage: fallbackLastMessage/);
+  assert.doesNotMatch(source, /lastMessage: null/);
 });
 
 test("app wrapper lets chat route escape the default max width", () => {

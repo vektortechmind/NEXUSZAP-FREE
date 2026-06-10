@@ -14,10 +14,6 @@ type ChatHeaderProps = {
 
 function Avatar({ conversation }: { conversation: ChatConversation }) {
   const name = getContactDisplayName(conversation);
-  const [failed, setFailed] = useState(false);
-  if (conversation.profilePicUrl && !failed) {
-    return <img src={conversation.profilePicUrl} alt="" onError={() => setFailed(true)} className="h-10 w-10 rounded-full object-cover" />;
-  }
   return (
     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-sm font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
       {name.slice(0, 1).toUpperCase()}

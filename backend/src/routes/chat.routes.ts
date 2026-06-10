@@ -72,7 +72,7 @@ const deleteBodySchema = z.object({
   instanceId: z.string().trim().min(1).max(191),
   jid: z.string().trim().min(1).max(191),
   providerMessageId: z.string().trim().min(1).max(191),
-  mode: z.enum(["for_me", "for_everyone", "for_everyone_and_erase"]),
+  mode: z.enum(["for_everyone"]),
 });
 
 const clearConversationBodySchema = z.object({
@@ -85,7 +85,10 @@ function serializeDate<T extends Record<string, unknown>>(row: T): T {
   ) as T;
 }
 
-function serializeConversation(conversation: Awaited<ReturnType<typeof chatService.listConversations>>[number]) {
+type SerializableConversation = Awaited<ReturnType<typeof chatService.listConversations>>[number]
+  | NonNullable<Awaited<ReturnType<typeof chatService.markConversationRead>>>;
+
+function serializeConversation(conversation: SerializableConversation) {
   return {
     ...serializeDate(conversation),
     lastMessage: conversation.lastMessage ? serializeDate(conversation.lastMessage) : null,
@@ -125,6 +128,40 @@ function multipartFieldValue(value: unknown): string | undefined {
   if (!value || typeof value !== "object" || !("value" in value)) return undefined;
   const fieldValue = (value as { value?: unknown }).value;
   return typeof fieldValue === "string" ? fieldValue : undefined;
+}
+
+function normalizeUploadMimeType(filename: string, mimeType: string, messageType: "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT") {
+  const lowerMime = mimeType.toLowerCase();
+  if (lowerMime && lowerMime !== "application/octet-stream") return mimeType;
+  const lowerName = filename.toLowerCase();
+  if (messageType === "IMAGE") {
+    if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg")) return "image/jpeg";
+    if (lowerName.endsWith(".png")) return "image/png";
+    if (lowerName.endsWith(".webp")) return "image/webp";
+    if (lowerName.endsWith(".gif")) return "image/gif";
+    if (lowerName.endsWith(".heic")) return "image/heic";
+    if (lowerName.endsWith(".heif")) return "image/heif";
+  }
+  if (messageType === "VIDEO") {
+    if (lowerName.endsWith(".mp4") || lowerName.endsWith(".m4v")) return "video/mp4";
+    if (lowerName.endsWith(".mov")) return "video/quicktime";
+    if (lowerName.endsWith(".webm")) return "video/webm";
+    if (lowerName.endsWith(".3gp")) return "video/3gpp";
+  }
+  if (messageType === "AUDIO") {
+    if (lowerName.endsWith(".ogg") || lowerName.endsWith(".opus")) return "audio/ogg";
+    if (lowerName.endsWith(".webm")) return "audio/webm";
+    if (lowerName.endsWith(".wav")) return "audio/wav";
+    if (lowerName.endsWith(".mp3")) return "audio/mpeg";
+    if (lowerName.endsWith(".m4a")) return "audio/mp4";
+  }
+  if (messageType === "DOCUMENT") {
+    if (lowerName.endsWith(".pdf")) return "application/pdf";
+    if (lowerName.endsWith(".txt")) return "text/plain";
+    if (lowerName.endsWith(".doc")) return "application/msword";
+    if (lowerName.endsWith(".docx")) return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+  }
+  return mimeType;
 }
 
 export function createChatRoutes(deps: ChatRoutesDeps = {}) {
@@ -215,7 +252,7 @@ export function createChatRoutes(deps: ChatRoutesDeps = {}) {
         const message = await service.sendMediaMessage({
           ...fields,
           buffer: await uploaded.toBuffer(),
-          mimeType: uploaded.mimetype,
+          mimeType: normalizeUploadMimeType(uploaded.filename, uploaded.mimetype, fields.messageType),
           fileName: uploaded.filename,
         });
         return reply.status(201).send({ message: serializeMessage(message) });

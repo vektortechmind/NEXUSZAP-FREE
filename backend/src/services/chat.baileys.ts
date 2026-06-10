@@ -33,7 +33,6 @@ export type ChatBaileysAdapter = {
   editMessage(input: { instanceId: string; jid: string; providerMessageId: string; body: string }): Promise<void>;
   deleteMessage(input: { instanceId: string; jid: string; providerMessageId: string }): Promise<void>;
   markRead(input: { instanceId: string; jid: string }): Promise<void>;
-  getContactProfile(input: { instanceId: string; jid: string }): Promise<{ name: string | null; profilePicUrl: string | null }>;
 };
 
 function getSocket(instanceId: string): WASocket {
@@ -65,7 +64,7 @@ export const baileysChatAdapter: ChatBaileysAdapter = {
         : input.messageType === "VIDEO"
           ? { video: input.buffer, mimetype: input.mimeType, caption: input.caption ?? undefined }
           : input.messageType === "AUDIO"
-            ? { audio: input.buffer, mimetype: input.mimeType }
+            ? { audio: input.buffer, mimetype: input.mimeType, ptt: true }
             : {
                 document: input.buffer,
                 mimetype: input.mimeType,
@@ -135,21 +134,5 @@ export const baileysChatAdapter: ChatBaileysAdapter = {
       if (err instanceof ChatInstanceOfflineError) throw err;
       throw new ChatProviderSendError(err instanceof Error ? err.message : undefined);
     }
-  },
-
-  async getContactProfile(input) {
-    const sock = InstanceManager.get(input.instanceId);
-    if (!sock) return { name: null, profilePicUrl: null };
-
-    let profilePicUrl: string | null = null;
-    try {
-      profilePicUrl = typeof sock.profilePictureUrl === "function"
-        ? (await sock.profilePictureUrl(input.jid, "image")) ?? null
-        : null;
-    } catch {
-      profilePicUrl = null;
-    }
-
-    return { name: null, profilePicUrl };
   },
 };

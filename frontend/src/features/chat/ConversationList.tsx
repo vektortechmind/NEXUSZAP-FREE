@@ -1,5 +1,4 @@
 import { Search } from "lucide-react";
-import { useState } from "react";
 import { Badge } from "../../components/ui/Badge";
 import { Input } from "../../components/ui/Input";
 import type { ChatConversation, ChatInstanceOption } from "./types";
@@ -29,10 +28,6 @@ function formatTime(value: string) {
 
 function Avatar({ conversation }: { conversation: ChatConversation }) {
   const name = getContactDisplayName(conversation);
-  const [failed, setFailed] = useState(false);
-  if (conversation.profilePicUrl && !failed) {
-    return <img src={conversation.profilePicUrl} alt="" onError={() => setFailed(true)} className="h-11 w-11 rounded-full object-cover" />;
-  }
   return (
     <div className="flex h-11 w-11 items-center justify-center rounded-full bg-slate-200 text-sm font-bold text-slate-700 dark:bg-slate-800 dark:text-slate-200">
       {name.slice(0, 1).toUpperCase()}

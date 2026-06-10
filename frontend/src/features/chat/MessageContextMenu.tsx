@@ -1,4 +1,4 @@
-import { Edit3, MessageSquareReply, MoreVertical, Trash2, XCircle } from "lucide-react";
+import { Edit3, MessageSquareReply, MoreVertical, Trash2 } from "lucide-react";
 import type { MouseEvent } from "react";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ChatMessage } from "./types";
@@ -15,15 +15,12 @@ type MessageContextMenuProps = {
 const labels: Record<MessageContextMenuAction, string> = {
   reply: "Responder",
   edit: "Editar",
-  delete_for_me: "Apagar para mim",
   delete_for_everyone: "Apagar para todos",
-  delete_forever: "Apagar para sempre",
 };
 
 function actionIcon(action: MessageContextMenuAction) {
   if (action === "reply") return <MessageSquareReply size={15} aria-hidden="true" />;
   if (action === "edit") return <Edit3 size={15} aria-hidden="true" />;
-  if (action === "delete_forever") return <XCircle size={15} aria-hidden="true" />;
   return <Trash2 size={15} aria-hidden="true" />;
 }
 

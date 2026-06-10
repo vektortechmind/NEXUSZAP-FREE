@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, CheckCheck, Eye, Pencil, Plus, SmilePlus, X } from "lucide-react";
+import { AlertTriangle, Check, CheckCheck, Download, Eye, FileText, Pencil, Plus, SmilePlus, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { createPortal } from "react-dom";
@@ -139,8 +139,9 @@ export function MessageBubble({ message, quotedMessage, onReact, onOpenMenu, onO
   const showAudio = message.messageType === "AUDIO" && Boolean(message.mediaUrl);
   const showImage = message.messageType === "IMAGE" && Boolean(message.mediaUrl);
   const showVideo = message.messageType === "VIDEO" && Boolean(message.mediaUrl);
+  const showDocument = message.messageType === "DOCUMENT" && Boolean(message.mediaUrl);
   const missingVisualMedia = (message.messageType === "IMAGE" || message.messageType === "VIDEO") && !message.mediaUrl;
-  const showMedia = showAudio || showImage || showVideo;
+  const showMedia = showAudio || showImage || showVideo || showDocument;
   const hasVisualMedia = showImage || showVideo;
   const showInlineMeta = !showMedia;
   const isViewOnce = Boolean(showMedia && message.body?.startsWith("Visualizacao unica"));
@@ -215,7 +216,25 @@ export function MessageBubble({ message, quotedMessage, onReact, onOpenMenu, onO
             <video src={message.mediaUrl!} className="max-h-[24rem] max-w-full rounded-lg" />
           </button>
         ) : null}
-        {!message.isDeleted && displayBody ? (
+        {!message.isDeleted && showDocument ? (
+          <a
+            href={message.mediaUrl!}
+            target="_blank"
+            rel="noreferrer"
+            className={`flex min-w-64 max-w-80 items-center gap-3 rounded-md p-2 pr-8 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${fromMe ? "bg-white/15 hover:bg-white/20 dark:bg-slate-950/10 dark:hover:bg-slate-950/15" : "bg-white hover:bg-slate-50 dark:bg-slate-900/70 dark:hover:bg-slate-900"}`}
+            aria-label="Abrir documento"
+          >
+            <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-lg ${fromMe ? "bg-white/20 dark:bg-slate-950/20" : "bg-sky-100 text-sky-700 dark:bg-sky-950/50 dark:text-sky-300"}`}>
+              <FileText size={22} aria-hidden="true" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-sm font-semibold">{displayBody || "Documento"}</span>
+              <span className={`mt-0.5 block text-xs ${fromMe ? "text-white/75 dark:text-slate-950/65" : "text-slate-500 dark:text-slate-400"}`}>Toque para abrir</span>
+            </span>
+            <Download size={17} className="shrink-0 opacity-75" aria-hidden="true" />
+          </a>
+        ) : null}
+        {!message.isDeleted && displayBody && !showDocument ? (
           <p className="whitespace-pre-wrap break-words text-sm leading-5">
             {displayBody}
             {showInlineMeta ? <MessageMeta message={message} inline /> : null}

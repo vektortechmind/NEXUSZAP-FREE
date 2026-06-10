@@ -13,8 +13,8 @@ const MAX_BYTES_BY_KIND: Record<ChatMediaKind, number> = {
 };
 
 const ALLOWED_MIME_BY_KIND: Record<ChatMediaKind, RegExp[]> = {
-  IMAGE: [/^image\/(jpeg|png|webp|gif)$/i],
-  VIDEO: [/^video\/(mp4|mpeg|quicktime|webm)$/i],
+  IMAGE: [/^image\/(jpeg|png|webp|gif|heic|heif)$/i],
+  VIDEO: [/^video\/(mp4|mpeg|quicktime|webm|3gpp|x-m4v)$/i],
   AUDIO: [/^audio\/(mpeg|mp4|ogg|opus|webm|wav|aac)$/i, /^audio\/ogg;\s*codecs=opus$/i],
   DOCUMENT: [/^application\/pdf$/i, /^text\/plain$/i, /^application\/msword$/i, /^application\/vnd\.openxmlformats-officedocument\./i],
 };

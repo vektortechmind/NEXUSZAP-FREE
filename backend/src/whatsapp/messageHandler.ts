@@ -204,6 +204,7 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
     const remoteJid = key.remoteJid;
     if (!remoteJid || remoteJid.includes("@g.us")) return;
     if (isJidStatusBroadcast(remoteJid)) return;
+    const remoteJidAlt = (key as WAMessageKey).remoteJidAlt ?? null;
 
     recordLastMessageForChat(instanceId, remoteJid, m);
 
@@ -276,6 +277,7 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
     const messageInput = {
       instanceId,
       jid: remoteJid,
+      remoteJidAlt,
       body: chatBody,
       messageType: chatMessageType,
       providerMessageId: key.id ?? null,
@@ -415,6 +417,7 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
       await chatService.persistOutboundMessage({
         instanceId,
         jid: remoteJid,
+        remoteJidAlt,
         body: part,
         messageType: "TEXT",
         status: "SENT",
