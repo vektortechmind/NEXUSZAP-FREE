@@ -9,6 +9,7 @@ type MessagesResponse = { messages: ChatMessage[]; nextCursor: string | null };
 type ReactionResponse = { success: boolean; message: ChatMessage | null };
 type DeleteMode = "for_everyone";
 type SendMediaType = "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT";
+export type ChatFilter = "all" | "unread" | "groups";
 
 export function getContactDisplayName(conversation: Pick<ChatConversation, "name" | "jid">) {
   return conversation.name?.trim() || conversation.jid.split("@")[0] || "Contato";
@@ -23,11 +24,13 @@ export function getUnreadTotal(conversations: ChatConversation[]) {
   return conversations.reduce((total, conversation) => total + Math.max(conversation.unreadCount || 0, 0), 0);
 }
 
-export function filterConversations(conversations: ChatConversation[], selectedInstanceId: string, search: string) {
+export function filterConversations(conversations: ChatConversation[], selectedInstanceId: string, search: string, filter: ChatFilter = "all") {
   const query = search.trim().toLowerCase();
   return conversations
     .filter((conversation) => {
       if (selectedInstanceId !== "all" && conversation.instanceId !== selectedInstanceId) return false;
+      if (filter === "unread" && (conversation.unreadCount ?? 0) <= 0) return false;
+      if (filter === "groups" && !conversation.isGroup) return false;
       if (!query) return true;
       return [getContactDisplayName(conversation), getMessagePreview(conversation.lastMessage), conversation.jid]
         .some((value) => value.toLowerCase().includes(query));
@@ -35,7 +38,7 @@ export function filterConversations(conversations: ChatConversation[], selectedI
     .sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
 }
 
-export function useConversations(selectedInstanceId: string, search: string) {
+export function useConversations(selectedInstanceId: string, search: string, filter: ChatFilter = "all") {
   const [conversations, setConversations] = useState<ChatConversation[]>([]);
   const [instances, setInstances] = useState<ChatInstanceOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,9 +75,21 @@ export function useConversations(selectedInstanceId: string, search: string) {
   }, [loadConversations]);
 
   const visibleConversations = useMemo(
-    () => filterConversations(conversations, selectedInstanceId, search),
-    [conversations, search, selectedInstanceId],
+    () => filterConversations(conversations, selectedInstanceId, search, filter),
+    [conversations, filter, search, selectedInstanceId],
   );
+
+  const syncGroups = useCallback(async (instanceId: string) => {
+    const res = await api.get<{ synced: number; groups: ChatConversation[] }>("/chat/groups/sync", { params: { instanceId } });
+    setConversations((current) => {
+      const byKey = new Map(current.map((conversation) => [`${conversation.instanceId}:${conversation.jid}`, conversation]));
+      for (const group of res.data.groups) {
+        byKey.set(`${group.instanceId}:${group.jid}`, { ...byKey.get(`${group.instanceId}:${group.jid}`), ...group });
+      }
+      return Array.from(byKey.values()).sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
+    });
+    return res.data;
+  }, []);
 
   const loadMessages = useCallback(async (input: { instanceId: string; jid: string; cursor?: string | null; limit?: number }) => {
     const res = await api.get<MessagesResponse>(`/chat/conversations/${encodeURIComponent(input.jid)}/messages`, {
@@ -147,6 +162,7 @@ export function useConversations(selectedInstanceId: string, search: string) {
     loadMessages,
     sendTextMessage,
     sendMediaMessage,
+    syncGroups,
     sendReaction,
     editMessage,
     deleteMessage,

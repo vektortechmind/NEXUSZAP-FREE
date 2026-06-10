@@ -1,4 +1,4 @@
-import { ArrowLeft, MoreVertical, Trash2, Wifi, WifiOff } from "lucide-react";
+import { AlertTriangle, ArrowLeft, MoreVertical, Wifi, WifiOff } from "lucide-react";
 import { useState } from "react";
 import type { ChatConnectionState, ChatConversation, ChatInstanceOption } from "./types";
 import { getContactDisplayName } from "./useConversations";
@@ -32,6 +32,11 @@ export function ChatHeader({ conversation, instances, connectionState, isTyping,
   const instanceName = conversation ? instances.find((instance) => instance.id === conversation.instanceId)?.name ?? conversation.instanceId : null;
   const connected = connectionState === "connected";
   const [menuOpen, setMenuOpen] = useState(false);
+  const handleClear = () => {
+    setMenuOpen(false);
+    const confirmed = window.confirm("Limpar conversa somente no painel? As mensagens continuam no WhatsApp.");
+    if (confirmed) onClear?.();
+  };
 
   return (
     <header className="flex min-h-16 items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 py-3 dark:border-slate-800 dark:bg-slate-950">
@@ -76,9 +81,9 @@ export function ChatHeader({ conversation, instances, connectionState, isTyping,
         ) : null}
         {menuOpen ? (
           <div className="absolute right-0 top-11 z-40 min-w-56 rounded-md border border-slate-200 bg-white py-1 text-sm shadow-xl shadow-slate-900/15 dark:border-slate-700 dark:bg-slate-900">
-            <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800" onClick={() => { setMenuOpen(false); onClear?.(); }}>
-              <Trash2 size={15} aria-hidden="true" />
-              Limpar painel
+            <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left text-amber-800 hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/30" onClick={handleClear}>
+              <AlertTriangle size={15} aria-hidden="true" />
+              Limpar conversa!
             </button>
           </div>
         ) : null}

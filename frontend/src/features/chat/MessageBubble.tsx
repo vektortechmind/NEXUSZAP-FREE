@@ -119,6 +119,21 @@ function formatTime(value: string) {
   return MESSAGE_TIME_FORMATTER.format(date);
 }
 
+function formatSenderFallback(jid: string | null) {
+  if (!jid) return "Participante";
+  const digits = jid.split("@")[0]?.replace(/\D/g, "") ?? "";
+  if (digits.length >= 12 && digits.startsWith("55")) {
+    return `+${digits.slice(0, 2)} ${digits.slice(2, 4)} ${digits.slice(4, 9)}-${digits.slice(9)}`;
+  }
+  return digits ? `+${digits}` : jid;
+}
+
+function cleanDisplayBody(body: string | null | undefined) {
+  const value = body?.trim();
+  if (!value || value === "[GIF]" || value === "[Figurinha]") return null;
+  return value;
+}
+
 function MessageMeta({ message, inline = false }: { message: ChatMessage; inline?: boolean }) {
   const fromMe = message.fromMe;
   return (
@@ -127,6 +142,24 @@ function MessageMeta({ message, inline = false }: { message: ChatMessage; inline
       {message.editedAt ? <Pencil size={11} aria-label="Editado" /> : null}
       {fromMe ? <MessageStatus status={message.status} /> : null}
     </span>
+  );
+}
+
+function GifPreview({ src }: { src: string }) {
+  return (
+    <video
+      src={src}
+      className="pointer-events-none max-h-[24rem] max-w-full rounded-lg"
+      autoPlay
+      loop
+      muted
+      playsInline
+      preload="auto"
+      controls={false}
+      controlsList="nodownload nofullscreen noremoteplayback"
+      disablePictureInPicture
+      aria-label="GIF"
+    />
   );
 }
 
@@ -140,14 +173,19 @@ export function MessageBubble({ message, quotedMessage, onReact, onOpenMenu, onO
   const showImage = message.messageType === "IMAGE" && Boolean(message.mediaUrl);
   const showVideo = message.messageType === "VIDEO" && Boolean(message.mediaUrl);
   const showDocument = message.messageType === "DOCUMENT" && Boolean(message.mediaUrl);
+  const isGifVideo = showVideo && message.body?.trim() === "[GIF]";
+  const isSticker = showImage && (message.body?.trim() === "[Figurinha]" || message.mediaMimeType?.toLowerCase() === "image/webp");
+  const isPdfDocument = showDocument && message.mediaMimeType?.toLowerCase() === "application/pdf";
   const missingVisualMedia = (message.messageType === "IMAGE" || message.messageType === "VIDEO") && !message.mediaUrl;
   const showMedia = showAudio || showImage || showVideo || showDocument;
   const hasVisualMedia = showImage || showVideo;
   const showInlineMeta = !showMedia;
   const isViewOnce = Boolean(showMedia && message.body?.startsWith("Visualizacao unica"));
-  const displayBody = isViewOnce ? message.body?.replace(/^Visualizacao unica\n?/, "").trim() : message.body;
+  const displayBody = cleanDisplayBody(isViewOnce ? message.body?.replace(/^Visualizacao unica\n?/, "") : message.body);
+  const groupSenderName = !fromMe && message.senderJid ? message.senderName?.trim() || formatSenderFallback(message.senderJid) : null;
   const canReact = Boolean(onReact && message.providerMessageId && !message.isDeleted);
-  const bubblePadding = hasVisualMedia ? "p-0 overflow-hidden" : "px-2.5 py-1.5";
+  const hasReaction = Boolean(message.reactionEmoji);
+  const bubblePadding = hasVisualMedia ? "p-0 overflow-visible" : "px-2.5 py-1.5";
   const handleSelectEmoji = useCallback((emoji: string) => {
     setShowQuickReactions(false);
     setShowFullPicker(false);
@@ -174,7 +212,7 @@ export function MessageBubble({ message, quotedMessage, onReact, onOpenMenu, onO
 
   return (
     <div className={`flex ${fromMe ? "justify-end" : "justify-start"}`}>
-      <div className={`group/message-row flex max-w-[min(92%,44rem)] items-center gap-1 ${fromMe ? "flex-row-reverse" : "flex-row"}`}>
+      <div className={`group/message-row flex max-w-[min(92%,44rem)] items-center gap-1 ${hasReaction ? "mb-3" : ""} ${fromMe ? "flex-row-reverse" : "flex-row"}`}>
         <div
           className={`group relative w-fit max-w-full rounded-lg shadow-[0_1px_0_rgba(15,23,42,0.08)] ${bubblePadding} ${fromMe ? "bg-emerald-600 text-white dark:bg-emerald-500 dark:text-slate-950" : "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-slate-100"}`}
           onContextMenu={(event) => {
@@ -205,16 +243,25 @@ export function MessageBubble({ message, quotedMessage, onReact, onOpenMenu, onO
             <p className="truncate text-xs opacity-80">{getMessagePreviewText(quotedMessage)}</p>
           </div>
         ) : null}
+        {!message.isDeleted && groupSenderName ? (
+          <p className={`mb-0.5 pr-5 text-[11px] font-semibold ${fromMe ? "text-white/75 dark:text-slate-950/70" : "text-emerald-700 dark:text-emerald-300"}`}>
+            {groupSenderName}:
+          </p>
+        ) : null}
         {!message.isDeleted && showAudio ? <AudioPlayer src={message.mediaUrl!} durationMs={message.mediaDurationMs} fromMe={fromMe} /> : null}
         {!message.isDeleted && showImage ? (
           <button type="button" onClick={() => onOpenMedia?.(message)} className="block cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500" aria-label="Abrir imagem">
-            <img src={message.mediaUrl!} alt="" loading="lazy" className="max-h-[24rem] max-w-full rounded-lg object-contain" />
+            <img src={message.mediaUrl!} alt="" loading="lazy" className={`${isSticker ? "max-h-40 max-w-40" : "max-h-[24rem] max-w-full"} rounded-lg object-contain`} />
           </button>
         ) : null}
         {!message.isDeleted && showVideo ? (
-          <button type="button" onClick={() => onOpenMedia?.(message)} className="block cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500" aria-label="Abrir video">
-            <video src={message.mediaUrl!} className="max-h-[24rem] max-w-full rounded-lg" />
-          </button>
+          isGifVideo ? (
+            <GifPreview src={message.mediaUrl!} />
+          ) : (
+            <button type="button" onClick={() => onOpenMedia?.(message)} className="block cursor-pointer rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500" aria-label="Abrir video">
+              <video src={message.mediaUrl!} className="max-h-[24rem] max-w-full rounded-lg" controls />
+            </button>
+          )
         ) : null}
         {!message.isDeleted && showDocument ? (
           <a
@@ -228,8 +275,8 @@ export function MessageBubble({ message, quotedMessage, onReact, onOpenMenu, onO
               <FileText size={22} aria-hidden="true" />
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-semibold">{displayBody || "Documento"}</span>
-              <span className={`mt-0.5 block text-xs ${fromMe ? "text-white/75 dark:text-slate-950/65" : "text-slate-500 dark:text-slate-400"}`}>Toque para abrir</span>
+              <span className="block truncate text-sm font-semibold">{displayBody || (isPdfDocument ? "PDF" : "Documento")}</span>
+              <span className={`mt-0.5 block text-xs ${fromMe ? "text-white/75 dark:text-slate-950/65" : "text-slate-500 dark:text-slate-400"}`}>{isPdfDocument ? "Toque para abrir o PDF" : "Toque para abrir"}</span>
             </span>
             <Download size={17} className="shrink-0 opacity-75" aria-hidden="true" />
           </a>
@@ -251,7 +298,7 @@ export function MessageBubble({ message, quotedMessage, onReact, onOpenMenu, onO
         ) : null}
         {!showInlineMeta ? <MessageMeta message={message} /> : null}
         {message.reactionEmoji ? (
-          <span className={`absolute -bottom-3 ${fromMe ? "left-2" : "right-2"} rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-base leading-none shadow-sm dark:border-slate-700 dark:bg-slate-900`}>
+          <span className="absolute -bottom-3 left-2 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-base leading-none shadow-sm dark:border-slate-700 dark:bg-slate-900">
             {message.reactionEmoji}
           </span>
         ) : null}
@@ -270,7 +317,7 @@ export function MessageBubble({ message, quotedMessage, onReact, onOpenMenu, onO
       {showQuickReactions && quickPosition ? (
         <QuickReactionPopup
           position={quickPosition}
-          hasReaction={Boolean(message.reactionEmoji)}
+          hasReaction={hasReaction}
           onSelect={handleSelectEmoji}
           onMore={() => {
             setShowQuickReactions(false);

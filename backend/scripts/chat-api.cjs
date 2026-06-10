@@ -67,6 +67,14 @@ function createBaileysMock(options = {}) {
       markReads.push(input);
       if (options.failMarkRead) throw new ChatProviderSendError("mark read unavailable");
     },
+    async syncGroups() {
+      return options.groups || [
+        { jid: "120363000001@g.us", name: "Grupo Vendas", profilePicUrl: null, participants: 3 },
+      ];
+    },
+    async getGroupMetadata(input) {
+      return options.groupMetadata || { jid: input.jid, name: "Grupo Vendas", participants: 3 };
+    },
   };
 }
 
@@ -118,6 +126,29 @@ function createApp({ store, baileys, events }) {
   assert.equal(["get", "Contact", "Profile"].join("") in baileys, false, "adapter de chat nao deve expor busca de avatar remoto");
   assert.equal(["get", "Contact", "Profile", "Picture"].join("") in baileys, false, "adapter de chat nao deve expor proxy de avatar remoto");
 
+  const groupInbound = await service.persistInboundMessage({
+    instanceId: "instance-a",
+    jid: "120363000001@g.us",
+    body: "Mensagem no grupo",
+    messageType: "TEXT",
+    providerMessageId: "wamid.group.1",
+    senderJid: "5511777770000@s.whatsapp.net",
+    senderName: "Joao",
+    createdAt: new Date("2026-06-09T10:00:30.000Z"),
+  });
+  assert.equal(groupInbound.senderJid, "5511777770000@s.whatsapp.net");
+  assert.equal(groupInbound.senderName, "Joao");
+  const groupConversation = Array.from(store.conversations.values()).find((conversation) => conversation.jid === "120363000001@g.us");
+  assert.equal(groupConversation.isGroup, true);
+  assert.equal(groupConversation.name, "Grupo Vendas");
+
+  const syncGroupsResponse = await app.inject({ method: "GET", url: "/api/chat/groups/sync?instanceId=instance-a" });
+  assert.equal(syncGroupsResponse.statusCode, 200, syncGroupsResponse.body);
+  const syncGroupsBody = JSON.parse(syncGroupsResponse.body);
+  assert.equal(syncGroupsBody.synced, 1);
+  assert.equal(syncGroupsBody.groups[0].isGroup, true);
+  assert.equal(syncGroupsBody.groups[0].name, "Grupo Vendas");
+
   const duplicateInbound = await service.persistInboundMessage({
     instanceId: "instance-a",
     jid: "5511999990000@s.whatsapp.net",
@@ -127,7 +158,7 @@ function createApp({ store, baileys, events }) {
     createdAt: new Date("2026-06-09T10:01:00.000Z"),
   });
   assert.equal(duplicateInbound.id, firstInbound.id, "providerMessageId duplicado nao deve criar nova mensagem");
-  assert.equal(store.conversations.size, 1, "unique instanceId/jid deve manter uma conversa");
+  assert.equal(store.conversations.size, 2, "unique instanceId/jid deve manter uma conversa por chat");
   const duplicateDirectPersist = await store.persistMessage({
     instanceId: "instance-a",
     jid: "5511999990000@s.whatsapp.net",
@@ -169,12 +200,12 @@ function createApp({ store, baileys, events }) {
 
   const allConversationsResponse = await app.inject({ method: "GET", url: "/api/chat/conversations" });
   assert.equal(allConversationsResponse.statusCode, 200, allConversationsResponse.body);
-  assert.equal(JSON.parse(allConversationsResponse.body).conversations.length, 4);
+  assert.equal(JSON.parse(allConversationsResponse.body).conversations.length, 5);
 
   const filteredConversationsResponse = await app.inject({ method: "GET", url: "/api/chat/conversations?instanceId=instance-a" });
   assert.equal(filteredConversationsResponse.statusCode, 200, filteredConversationsResponse.body);
   const filteredConversations = JSON.parse(filteredConversationsResponse.body).conversations;
-  assert.equal(filteredConversations.length, 2);
+  assert.equal(filteredConversations.length, 3);
   assert.equal(filteredConversations[0].lastMessage.body, "Outra conversa");
   assert.equal(filteredConversations[0].profilePicUrl, null);
   assert.equal(filteredConversations[0].unreadCount, 1);
@@ -415,6 +446,9 @@ function createApp({ store, baileys, events }) {
     url: `/api/chat/conversations/${encodeURIComponent("5511888880000@s.whatsapp.net")}/messages?instanceId=instance-a`,
   });
   assert.equal(JSON.parse(clearedMessagesResponse.body).messages.length, 0);
+  const conversationsAfterClearResponse = await app.inject({ method: "GET", url: "/api/chat/conversations?instanceId=instance-a" });
+  assert.equal(conversationsAfterClearResponse.statusCode, 200, conversationsAfterClearResponse.body);
+  assert.equal(JSON.parse(conversationsAfterClearResponse.body).conversations.some((conversation) => conversation.jid === "5511888880000@s.whatsapp.net"), false);
 
   const realtimeEvents = [];
   chatRealtime.setEmitter({
@@ -442,6 +476,8 @@ function createApp({ store, baileys, events }) {
     url: `/api/chat/conversations/${encodeURIComponent("5511555550000@s.whatsapp.net")}/messages?instanceId=instance-a`,
   });
   assert.equal(JSON.parse(clearFailureMessages.body).messages.length, 0);
+  const conversationsAfterRealtimeClearResponse = await app.inject({ method: "GET", url: "/api/chat/conversations?instanceId=instance-a" });
+  assert.equal(JSON.parse(conversationsAfterRealtimeClearResponse.body).conversations.some((conversation) => conversation.jid === "5511555550000@s.whatsapp.net"), false);
   assert.equal(realtimeEvents.some((item) => item.event === "conversation:update" && item.payload.unreadCount === 0), true);
   assert.equal(realtimeEvents.filter((item) => item.event === "message:deleted").length, 0, "clearConversation deve emitir somente evento de lote");
   assert.equal(realtimeEvents.some((item) => item.event === "conversation:update" && item.payload.cleared === true), true);

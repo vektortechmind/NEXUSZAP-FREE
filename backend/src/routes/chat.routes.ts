@@ -24,6 +24,10 @@ const conversationsQuerySchema = z.object({
   instanceId: z.string().trim().min(1).max(191).optional(),
 });
 
+const syncGroupsQuerySchema = z.object({
+  instanceId: z.string().trim().min(1).max(191),
+});
+
 const messagesParamsSchema = z.object({
   jid: z.string().trim().min(1).max(191),
 });
@@ -179,6 +183,16 @@ export function createChatRoutes(deps: ChatRoutesDeps = {}) {
         const query = conversationsQuerySchema.parse(request.query);
         const conversations = await service.listConversations(query);
         return reply.send({ conversations: conversations.map(serializeConversation) });
+      } catch (err) {
+        return sendKnownError(reply, err);
+      }
+    });
+
+    fastify.get("/groups/sync", async (request, reply) => {
+      try {
+        const query = syncGroupsQuerySchema.parse(request.query);
+        const groups = await service.syncGroups(query);
+        return reply.status(200).send({ synced: groups.length, groups: groups.map(serializeConversation) });
       } catch (err) {
         return sendKnownError(reply, err);
       }

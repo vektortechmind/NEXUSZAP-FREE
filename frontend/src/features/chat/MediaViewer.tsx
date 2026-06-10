@@ -14,6 +14,8 @@ type MediaViewerProps = {
 export function MediaViewer({ message, onClose, onReact, onReply }: MediaViewerProps) {
   const [showPicker, setShowPicker] = useState(false);
   const isVideo = message.messageType === "VIDEO";
+  const isGifVideo = isVideo && message.body?.trim() === "[GIF]";
+  const isSticker = message.messageType === "IMAGE" && (message.body?.trim() === "[Figurinha]" || message.mediaMimeType?.toLowerCase() === "image/webp");
   const canReact = Boolean(onReact && message.providerMessageId && !message.isDeleted);
 
   useEffect(() => {
@@ -54,9 +56,21 @@ export function MediaViewer({ message, onClose, onReact, onReply }: MediaViewerP
       </div>
       <div className="flex min-h-0 flex-1 items-center justify-center px-4 pb-4" onClick={onClose}>
         {isVideo ? (
-          <video src={message.mediaUrl ?? undefined} controls autoPlay className="max-h-[82vh] max-w-[92vw] rounded-lg" onClick={(event) => event.stopPropagation()} />
+          <video
+            src={message.mediaUrl ?? undefined}
+            controls={!isGifVideo}
+            autoPlay
+            loop={isGifVideo}
+            muted={isGifVideo}
+            playsInline
+            preload={isGifVideo ? "auto" : "metadata"}
+            controlsList={isGifVideo ? "nodownload nofullscreen noremoteplayback" : undefined}
+            disablePictureInPicture={isGifVideo}
+            className={`${isGifVideo ? "pointer-events-none" : ""} max-h-[82vh] max-w-[92vw] rounded-lg`}
+            onClick={(event) => event.stopPropagation()}
+          />
         ) : (
-          <img src={message.mediaUrl ?? undefined} alt="" className="max-h-[82vh] max-w-[92vw] rounded-lg object-contain" onClick={(event) => event.stopPropagation()} />
+          <img src={message.mediaUrl ?? undefined} alt="" className={`${isSticker ? "max-h-52 max-w-52" : "max-h-[82vh] max-w-[92vw]"} rounded-lg object-contain`} onClick={(event) => event.stopPropagation()} />
         )}
       </div>
       <div className="relative flex min-h-16 flex-wrap items-center justify-center gap-2 border-t border-white/10 bg-slate-950/80 px-4 py-3" onClick={(event) => event.stopPropagation()}>

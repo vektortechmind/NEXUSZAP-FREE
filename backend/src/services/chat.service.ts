@@ -20,6 +20,7 @@ export type ChatConversation = {
   remoteJidAlt: string | null;
   name: string | null;
   profilePicUrl: string | null;
+  isGroup: boolean;
   lastMessageAt: Date;
   unreadCount: number;
   createdAt: Date;
@@ -36,6 +37,8 @@ export type ChatMessage = {
   messageType: ChatMessageType;
   status: ChatMessageStatus;
   providerMessageId: string | null;
+  senderJid: string | null;
+  senderName: string | null;
   mediaUrl: string | null;
   mediaMimeType: string | null;
   mediaDurationMs: number | null;
@@ -67,6 +70,18 @@ type PersistMessageInput = {
   contactName?: string | null;
   remoteJidAlt?: string | null;
   profilePicUrl?: string | null;
+  isGroup?: boolean;
+  senderJid?: string | null;
+  senderName?: string | null;
+};
+
+type UpsertConversationInput = {
+  instanceId: string;
+  jid: string;
+  name?: string | null;
+  profilePicUrl?: string | null;
+  isGroup?: boolean;
+  lastMessageAt?: Date;
 };
 
 export type ChatStore = {
@@ -75,6 +90,7 @@ export type ChatStore = {
   listMessages(input: { instanceId: string; jid: string; cursor?: Date; limit: number }): Promise<ChatMessage[]>;
   findMessageByProviderId(input: { instanceId: string; providerMessageId: string }): Promise<ChatMessage | null>;
   getConversationSummary(input: { instanceId: string; jid: string }): Promise<ChatConversationSummary | null>;
+  upsertConversation(input: UpsertConversationInput): Promise<ChatConversationSummary>;
   persistMessage(input: PersistMessageInput): Promise<{ conversation: ChatConversation; message: ChatMessage }>;
   updateMessageStatus(input: { messageId: string; status: ChatMessageStatus; providerMessageId?: string | null }): Promise<ChatMessage>;
   updateMessageMedia(input: { messageId: string; mediaUrl: string; mediaMimeType?: string | null; mediaDurationMs?: number | null }): Promise<ChatMessage>;
@@ -84,6 +100,7 @@ export type ChatStore = {
   listMessagesForConversation(input: { instanceId: string; jid: string }): Promise<ChatMessage[]>;
   softDeleteConversationMessages(input: { instanceId: string; jid: string }): Promise<ChatMessage[]>;
   resetUnreadCount(input: { instanceId: string; jid: string }): Promise<ChatConversationSummary | null>;
+  deleteConversation(input: { instanceId: string; jid: string }): Promise<void>;
 };
 
 export type ChatEventRecorder = (input: { instanceId: string; channel: "WHATSAPP"; direction: MessageDirection; usedAi: boolean }) => Promise<unknown>;
@@ -169,6 +186,10 @@ export function normalizeChatJid(value: string): string {
   return `${digits}@s.whatsapp.net`;
 }
 
+function isGroupJid(jid: string) {
+  return jid.toLowerCase().endsWith("@g.us");
+}
+
 export const prismaChatStore: ChatStore = {
   async findInstance(instanceId) {
     return prisma.instance.findUnique({ where: { id: instanceId }, select: { id: true } });
@@ -234,9 +255,42 @@ export const prismaChatStore: ChatStore = {
     return { ...row, lastMessage: messages[0] ?? null };
   },
 
+  async upsertConversation(input) {
+    const jid = normalizeChatJid(input.jid);
+    const now = input.lastMessageAt ?? new Date();
+    const conversation = await prisma.conversation.upsert({
+      where: { instanceId_jid: { instanceId: input.instanceId, jid } },
+      create: {
+        instanceId: input.instanceId,
+        jid,
+        name: input.name ?? null,
+        profilePicUrl: input.profilePicUrl ?? null,
+        isGroup: input.isGroup ?? isGroupJid(jid),
+        lastMessageAt: now,
+        unreadCount: 0,
+      },
+      update: {
+        name: input.name ?? undefined,
+        profilePicUrl: input.profilePicUrl ?? undefined,
+        isGroup: input.isGroup ?? (isGroupJid(jid) ? true : undefined),
+      },
+      include: {
+        messages: {
+          where: { isDeleted: false },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+      },
+    });
+    const { messages, ...row } = conversation;
+    return { ...row, lastMessage: messages[0] ?? null };
+  },
+
   async persistMessage(input) {
     const jid = normalizeChatJid(input.jid);
     const remoteJidAlt = input.remoteJidAlt ? normalizeChatJid(input.remoteJidAlt) : null;
+    const senderJid = input.senderJid ? normalizeChatJid(input.senderJid) : null;
+    const group = input.isGroup ?? isGroupJid(jid);
     const createdAt = input.createdAt ?? new Date();
     try {
       return await prisma.$transaction(async (tx) => {
@@ -248,6 +302,7 @@ export const prismaChatStore: ChatStore = {
           remoteJidAlt,
           name: input.contactName ?? null,
           profilePicUrl: input.profilePicUrl ?? null,
+          isGroup: group,
           lastMessageAt: createdAt,
           unreadCount: input.fromMe ? 0 : 1,
         },
@@ -255,6 +310,7 @@ export const prismaChatStore: ChatStore = {
           remoteJidAlt: remoteJidAlt ?? undefined,
           name: input.contactName ?? undefined,
           profilePicUrl: input.profilePicUrl ?? undefined,
+          isGroup: group ? true : undefined,
           lastMessageAt: createdAt,
           unreadCount: input.fromMe ? undefined : { increment: 1 },
         },
@@ -270,6 +326,8 @@ export const prismaChatStore: ChatStore = {
           messageType: input.messageType ?? "TEXT",
           status: input.status ?? "SENT",
           providerMessageId: input.providerMessageId ?? null,
+          senderJid,
+          senderName: input.senderName ?? null,
           mediaUrl: input.mediaUrl ?? null,
           mediaMimeType: input.mediaMimeType ?? null,
           mediaDurationMs: input.mediaDurationMs ?? null,
@@ -391,6 +449,11 @@ export const prismaChatStore: ChatStore = {
     const { messages, ...row } = conversation;
     return { ...row, lastMessage: messages[0] ?? null };
   },
+
+  async deleteConversation(input) {
+    const jid = normalizeChatJid(input.jid);
+    await prisma.conversation.deleteMany({ where: { instanceId: input.instanceId, jid } });
+  },
 };
 
 export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }> } = {}): ChatStore & {
@@ -452,6 +515,35 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
       const conversation = conversations.get(conversationKey(input.instanceId, jid));
       return conversation ? { ...conversation, lastMessage: latestMessageForConversation(conversation.id) } : null;
     },
+    async upsertConversation(input) {
+      const jid = normalizeChatJid(input.jid);
+      const now = input.lastMessageAt ?? new Date();
+      const key = conversationKey(input.instanceId, jid);
+      const existing = conversations.get(key);
+      const conversation: ChatConversation = existing
+        ? {
+            ...existing,
+            name: input.name ?? existing.name,
+            profilePicUrl: input.profilePicUrl ?? existing.profilePicUrl,
+            isGroup: input.isGroup ?? existing.isGroup,
+            updatedAt: now,
+          }
+        : {
+            id: newId("conversation"),
+            instanceId: input.instanceId,
+            jid,
+            remoteJidAlt: null,
+            name: input.name ?? null,
+            profilePicUrl: input.profilePicUrl ?? null,
+            isGroup: input.isGroup ?? isGroupJid(jid),
+            lastMessageAt: now,
+            unreadCount: 0,
+            createdAt: now,
+            updatedAt: now,
+          };
+      conversations.set(key, conversation);
+      return { ...conversation, lastMessage: latestMessageForConversation(conversation.id) };
+    },
     async persistMessage(input) {
       const jid = normalizeChatJid(input.jid);
       if (input.providerMessageId) {
@@ -463,6 +555,8 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
         }
       }
       const remoteJidAlt = input.remoteJidAlt ? normalizeChatJid(input.remoteJidAlt) : null;
+      const senderJid = input.senderJid ? normalizeChatJid(input.senderJid) : null;
+      const group = input.isGroup ?? isGroupJid(jid);
       const now = input.createdAt ?? new Date();
       const key = conversationKey(input.instanceId, jid);
       const existing = conversations.get(key);
@@ -472,6 +566,7 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
             remoteJidAlt: remoteJidAlt ?? existing.remoteJidAlt,
             name: input.contactName ?? existing.name,
             profilePicUrl: input.profilePicUrl ?? existing.profilePicUrl,
+            isGroup: group || existing.isGroup,
             lastMessageAt: now,
             unreadCount: input.fromMe ? existing.unreadCount : existing.unreadCount + 1,
             updatedAt: now,
@@ -483,6 +578,7 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
             remoteJidAlt,
             name: input.contactName ?? null,
             profilePicUrl: input.profilePicUrl ?? null,
+            isGroup: group,
             lastMessageAt: now,
             unreadCount: input.fromMe ? 0 : 1,
             createdAt: now,
@@ -499,6 +595,8 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
         messageType: input.messageType ?? "TEXT",
         status: input.status ?? "SENT",
         providerMessageId: input.providerMessageId ?? null,
+        senderJid,
+        senderName: input.senderName ?? null,
         mediaUrl: input.mediaUrl ?? null,
         mediaMimeType: input.mediaMimeType ?? null,
         mediaDurationMs: input.mediaDurationMs ?? null,
@@ -585,6 +683,16 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
       conversations.set(key, updated);
       return { ...updated, lastMessage: latestMessageForConversation(updated.id) };
     },
+    async deleteConversation(input) {
+      const jid = normalizeChatJid(input.jid);
+      const key = conversationKey(input.instanceId, jid);
+      const existing = conversations.get(key);
+      if (!existing) return;
+      conversations.delete(key);
+      for (const [messageId, message] of messages.entries()) {
+        if (message.conversationId === existing.id) messages.delete(messageId);
+      }
+    },
   };
 }
 
@@ -612,6 +720,24 @@ export function createChatService(deps: {
       return withoutProfilePictureUrls(await store.listConversations(input));
     },
 
+    async syncGroups(input: { instanceId: string }) {
+      await ensureInstance(input.instanceId);
+      const groups = await baileys.syncGroups(input.instanceId);
+      const synced: ChatConversationSummary[] = [];
+      for (const group of groups) {
+        const conversation = await store.upsertConversation({
+          instanceId: input.instanceId,
+          jid: group.jid,
+          name: group.name,
+          profilePicUrl: group.profilePicUrl,
+          isGroup: true,
+        });
+        synced.push(conversation);
+        chatRealtime.emitConversationUpdate({ instanceId: input.instanceId, conversation });
+      }
+      return withoutProfilePictureUrls(synced);
+    },
+
     async listMessages(input: { instanceId: string; jid: string; cursor?: Date; limit?: number }) {
       await ensureInstance(input.instanceId);
       return store.listMessages({
@@ -625,18 +751,29 @@ export function createChatService(deps: {
     async persistInboundMessage(input: Omit<PersistMessageInput, "fromMe" | "status">) {
       await ensureInstance(input.instanceId);
       const jid = normalizeChatJid(input.jid);
+      const group = isGroupJid(jid);
       if (input.providerMessageId) {
         const existing = await store.findMessageByProviderId({ instanceId: input.instanceId, providerMessageId: input.providerMessageId });
         if (existing) return existing;
+      }
+      let groupName = input.contactName ?? null;
+      if (group) {
+        try {
+          const metadata = await baileys.getGroupMetadata({ instanceId: input.instanceId, jid });
+          groupName = metadata.name ?? groupName;
+        } catch (err) {
+          console.warn("[Chat] Falha ao buscar metadados do grupo:", safeLogError(err));
+        }
       }
       const result = await store.persistMessage({
         ...input,
         jid,
         fromMe: false,
         status: "DELIVERED",
-        contactName: input.contactName ?? null,
+        contactName: groupName,
         remoteJidAlt: input.remoteJidAlt ?? null,
         profilePicUrl: null,
+        isGroup: group,
       });
       chatRealtime.emitMessageNew({ instanceId: input.instanceId, message: result.message });
       chatRealtime.emitConversationUpdate({ instanceId: input.instanceId, conversation: buildConversationSummary(result.conversation, result.message) });
@@ -870,6 +1007,7 @@ export function createChatService(deps: {
         store.resetUnreadCount({ instanceId: input.instanceId, jid }),
       ]);
       if (conversation) chatRealtime.emitConversationCleared({ instanceId: input.instanceId, conversation });
+      await store.deleteConversation({ instanceId: input.instanceId, jid });
       return { deletedCount: deleted.length };
     },
 

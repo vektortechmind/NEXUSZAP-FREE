@@ -149,6 +149,7 @@ model Conversation {
   remoteJidAlt   String?
   name           String?
   profilePicUrl  String?
+  isGroup        Boolean   @default(false)
   lastMessageAt  DateTime
   unreadCount    Int       @default(0)
   createdAt      DateTime  @default(now())
@@ -172,6 +173,8 @@ model Message {
   messageType       ChatMessageType   @default(TEXT)
   status            ChatMessageStatus @default(SENT)
   providerMessageId String?
+  senderJid         String?
+  senderName        String?
   mediaUrl          String?
   mediaMimeType     String?
   mediaDurationMs   Int?

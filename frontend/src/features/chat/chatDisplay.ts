@@ -11,7 +11,9 @@ export function getMessageStatusLabel(status: ChatMessageStatus) {
 
 export function getKnownMessageFallback(message: Pick<ChatMessage, "messageType" | "mediaUrl" | "mediaMimeType">) {
   const isAudio = message.messageType === "AUDIO" || Boolean(message.mediaMimeType?.toLowerCase().startsWith("audio/"));
+  const isSticker = message.messageType === "IMAGE" && message.mediaMimeType?.toLowerCase() === "image/webp";
   if (isAudio) return "Audio recebido";
+  if (isSticker) return "Figurinha recebida";
   if (message.messageType === "IMAGE") return "Imagem recebida";
   if (message.messageType === "VIDEO") return "Video recebido";
   if (message.messageType === "DOCUMENT") return "Documento recebido";
@@ -23,6 +25,9 @@ export function getKnownMessageFallback(message: Pick<ChatMessage, "messageType"
 
 export function getMessagePreviewText(message: Pick<ChatMessage, "body" | "messageType" | "mediaMimeType" | "isDeleted">) {
   if (message.isDeleted) return "Mensagem apagada";
-  if (message.body?.trim()) return message.body.trim();
+  const body = message.body?.trim();
+  if (body === "[GIF]") return "GIF recebido";
+  if (body === "[Figurinha]") return "Figurinha recebida";
+  if (body) return body;
   return getKnownMessageFallback({ messageType: message.messageType, mediaUrl: null, mediaMimeType: message.mediaMimeType });
 }

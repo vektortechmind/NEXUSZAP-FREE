@@ -154,6 +154,7 @@ export function resolveChatMessageType(content: WAMessageContent) {
   const protocolMessage = (resolved as { protocolMessage?: { editedMessage?: WAMessageContent } }).protocolMessage;
   if (protocolMessage?.editedMessage) return resolveChatMessageType(protocolMessage.editedMessage);
   if (resolved.imageMessage) return "IMAGE" as const;
+  if (resolved.stickerMessage) return "IMAGE" as const;
   if (resolved.audioMessage) return "AUDIO" as const;
   if (resolved.videoMessage) return "VIDEO" as const;
   if (resolved.documentMessage) return "DOCUMENT" as const;
@@ -176,13 +177,35 @@ export function resolveChatBody(content: WAMessageContent): string | null {
   const templateButtonReply = (resolved as { templateButtonReplyMessage?: { selectedDisplayText?: string; selectedId?: string } }).templateButtonReplyMessage;
   const interactiveResponse = (resolved as { interactiveResponseMessage?: { body?: { text?: string }; nativeFlowResponseMessage?: { name?: string } } }).interactiveResponseMessage;
   const protocolMessage = (resolved as { protocolMessage?: { editedMessage?: WAMessageContent } }).protocolMessage;
+  const contactMessage = (resolved as { contactMessage?: { displayName?: string } }).contactMessage;
+  const contactsArrayMessage = (resolved as { contactsArrayMessage?: { contacts?: Array<{ displayName?: string }> } }).contactsArrayMessage;
+  const locationMessage = (resolved as { locationMessage?: { name?: string; address?: string } }).locationMessage;
+  const liveLocationMessage = (resolved as { liveLocationMessage?: { caption?: string; name?: string } }).liveLocationMessage;
+  const pollCreationMessage = (resolved as { pollCreationMessage?: { name?: string } }).pollCreationMessage;
+  const groupInviteMessage = (resolved as { groupInviteMessage?: { groupName?: string; caption?: string } }).groupInviteMessage;
+  const eventMessage = (resolved as { eventMessage?: { name?: string; description?: string } }).eventMessage;
+  const orderMessage = (resolved as { orderMessage?: { itemCount?: number; status?: string } }).orderMessage;
   if (protocolMessage?.editedMessage) return resolveChatBody(protocolMessage.editedMessage);
   return resolved.conversation ||
     resolved.extendedTextMessage?.text ||
     resolved.imageMessage?.caption ||
     resolved.videoMessage?.caption ||
+    (resolved.videoMessage && (resolved.videoMessage as { gifPlayback?: boolean | null }).gifPlayback ? "[GIF]" : null) ||
+    (resolved.stickerMessage ? "[Figurinha]" : null) ||
     resolved.documentMessage?.caption ||
     resolved.documentMessage?.fileName ||
+    contactMessage?.displayName ||
+    contactsArrayMessage?.contacts?.map((contact) => contact.displayName).filter(Boolean).join(", ") ||
+    locationMessage?.name ||
+    locationMessage?.address ||
+    liveLocationMessage?.caption ||
+    liveLocationMessage?.name ||
+    pollCreationMessage?.name ||
+    groupInviteMessage?.groupName ||
+    groupInviteMessage?.caption ||
+    eventMessage?.name ||
+    eventMessage?.description ||
+    (typeof orderMessage?.itemCount === "number" ? `Pedido com ${orderMessage.itemCount} item(ns)` : null) ||
     listResponse?.title ||
     listResponse?.description ||
     buttonsResponse?.selectedDisplayText ||
@@ -202,8 +225,10 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
     const fromMe = Boolean(key.fromMe);
 
     const remoteJid = key.remoteJid;
-    if (!remoteJid || remoteJid.includes("@g.us")) return;
+    if (!remoteJid) return;
     if (isJidStatusBroadcast(remoteJid)) return;
+    const isGroup = remoteJid.toLowerCase().endsWith("@g.us");
+    const participantJid = isGroup ? (key.participant ?? (m as { participant?: string | null }).participant ?? null) : null;
     const remoteJidAlt = (key as WAMessageKey).remoteJidAlt ?? null;
 
     recordLastMessageForChat(instanceId, remoteJid, m);
@@ -211,7 +236,7 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
     const instance = (await prisma.instance.findUnique({ where: { id: instanceId } })) as Instance | null;
     if (!instance) return;
 
-    if (!fromMe && instance.aiWhatsappEnabled) {
+    if (!fromMe && !isGroup && instance.aiWhatsappEnabled) {
       try {
         await sock.readMessages([key]);
         await sock.sendPresenceUpdate("available", remoteJid);
@@ -260,7 +285,9 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
 
     const resolvedChatBody = resolveChatBody(content);
     const chatMessageType = resolveChatMessageType(content);
-    const mediaMessage = content.imageMessage || content.videoMessage || content.audioMessage || null;
+    const stickerMessage = content.stickerMessage;
+    const documentMessage = content.documentMessage;
+    const mediaMessage = content.imageMessage || content.videoMessage || content.audioMessage || documentMessage || stickerMessage || null;
     const chatBody = isViewOnce && mediaMessage
       ? ["Visualizacao unica", resolvedChatBody].filter(Boolean).join("\n")
       : resolvedChatBody;
@@ -272,6 +299,7 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
     const audioMessage = content.audioMessage;
     const imageMessage = content.imageMessage;
     const videoMessage = content.videoMessage;
+    const mediaMimeType = audioMessage?.mimetype || imageMessage?.mimetype || videoMessage?.mimetype || documentMessage?.mimetype || stickerMessage?.mimetype || null;
     let audioBuffer: Buffer | null = null;
     let mediaBuffer: Buffer | null = null;
     const messageInput = {
@@ -281,8 +309,10 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
       body: chatBody,
       messageType: chatMessageType,
       providerMessageId: key.id ?? null,
+      senderJid: participantJid,
+      senderName: isGroup && !fromMe ? m.pushName ?? null : null,
       mediaUrl: null,
-      mediaMimeType: audioMessage?.mimetype || imageMessage?.mimetype || videoMessage?.mimetype || content.documentMessage?.mimetype || null,
+      mediaMimeType,
       mediaDurationMs: audioMessage?.seconds ? Number(audioMessage.seconds) * 1000 : null,
       createdAt: messageDateFromBaileysTimestamp(m.messageTimestamp),
     };
@@ -301,13 +331,13 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
             providerMessageId: key.id,
             buffer: mediaBuffer,
             messageType: chatMessageType === "IMAGE" || chatMessageType === "VIDEO" || chatMessageType === "AUDIO" || chatMessageType === "DOCUMENT" ? chatMessageType : undefined,
-            mimeType: audioMessage?.mimetype || imageMessage?.mimetype || videoMessage?.mimetype || content.documentMessage?.mimetype || null,
+            mimeType: mediaMimeType,
           });
           await chatService.attachMessageMedia({
             instanceId,
             messageId: persistedMessage.id,
             mediaUrl: stored.mediaUrl,
-            mediaMimeType: audioMessage?.mimetype || imageMessage?.mimetype || videoMessage?.mimetype || null,
+            mediaMimeType,
             mediaDurationMs: audioMessage?.seconds ? Number(audioMessage.seconds) * 1000 : null,
           });
         } catch (err) {
@@ -318,7 +348,7 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
 
     if (audioMessage) audioBuffer = mediaBuffer;
 
-    if (fromMe) return;
+    if (fromMe || isGroup) return;
 
     const hasSupportedInboundContent = Boolean(textMsg.trim() || audioMessage);
     if (!hasSupportedInboundContent) return;

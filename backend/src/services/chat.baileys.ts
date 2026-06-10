@@ -33,6 +33,8 @@ export type ChatBaileysAdapter = {
   editMessage(input: { instanceId: string; jid: string; providerMessageId: string; body: string }): Promise<void>;
   deleteMessage(input: { instanceId: string; jid: string; providerMessageId: string }): Promise<void>;
   markRead(input: { instanceId: string; jid: string }): Promise<void>;
+  syncGroups(instanceId: string): Promise<Array<{ jid: string; name: string | null; profilePicUrl: string | null; participants: number }>>;
+  getGroupMetadata(input: { instanceId: string; jid: string }): Promise<{ jid: string; name: string | null; participants: number }>;
 };
 
 function getSocket(instanceId: string): WASocket {
@@ -111,6 +113,37 @@ export const baileysChatAdapter: ChatBaileysAdapter = {
     const sock = getSocket(input.instanceId);
     try {
       await sock.chatModify({ markRead: true, lastMessages: [] }, input.jid);
+    } catch (err) {
+      if (err instanceof ChatInstanceOfflineError) throw err;
+      throw new ChatProviderSendError(err instanceof Error ? err.message : undefined);
+    }
+  },
+
+  async syncGroups(instanceId) {
+    const sock = getSocket(instanceId);
+    try {
+      const groups = await sock.groupFetchAllParticipating();
+      return Object.entries(groups).map(([jid, metadata]) => ({
+        jid,
+        name: typeof metadata.subject === "string" && metadata.subject.trim() ? metadata.subject.trim() : null,
+        profilePicUrl: null,
+        participants: Array.isArray(metadata.participants) ? metadata.participants.length : 0,
+      }));
+    } catch (err) {
+      if (err instanceof ChatInstanceOfflineError) throw err;
+      throw new ChatProviderSendError(err instanceof Error ? err.message : undefined);
+    }
+  },
+
+  async getGroupMetadata(input) {
+    const sock = getSocket(input.instanceId);
+    try {
+      const metadata = await sock.groupMetadata(input.jid);
+      return {
+        jid: metadata.id || input.jid,
+        name: typeof metadata.subject === "string" && metadata.subject.trim() ? metadata.subject.trim() : null,
+        participants: Array.isArray(metadata.participants) ? metadata.participants.length : 0,
+      };
     } catch (err) {
       if (err instanceof ChatInstanceOfflineError) throw err;
       throw new ChatProviderSendError(err instanceof Error ? err.message : undefined);

@@ -11,6 +11,8 @@ export type ChatMessage = {
   messageType: ChatMessageType;
   status: ChatMessageStatus;
   providerMessageId: string | null;
+  senderJid: string | null;
+  senderName: string | null;
   mediaUrl: string | null;
   mediaMimeType: string | null;
   mediaDurationMs: number | null;
@@ -34,6 +36,7 @@ export type ChatConversation = {
   jid: string;
   name: string | null;
   profilePicUrl: string | null;
+  isGroup: boolean;
   lastMessageAt: string;
   unreadCount: number;
   createdAt: string;

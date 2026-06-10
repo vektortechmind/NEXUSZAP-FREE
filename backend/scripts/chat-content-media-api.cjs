@@ -41,7 +41,12 @@ function createBaileysMock() {
   assert.equal(resolveChatBody({ extendedTextMessage: { text: "Texto estendido" } }), "Texto estendido");
   assert.equal(resolveChatBody({ imageMessage: { caption: "Legenda imagem" } }), "Legenda imagem");
   assert.equal(resolveChatBody({ videoMessage: { caption: "Legenda video" } }), "Legenda video");
+  assert.equal(resolveChatBody({ videoMessage: { mimetype: "video/mp4", gifPlayback: true } }), "[GIF]");
+  assert.equal(resolveChatBody({ stickerMessage: { mimetype: "image/webp" } }), "[Figurinha]");
   assert.equal(resolveChatBody({ documentMessage: { fileName: "contrato.pdf" } }), "contrato.pdf");
+  assert.equal(resolveChatBody({ contactMessage: { displayName: "Maria Cliente" } }), "Maria Cliente");
+  assert.equal(resolveChatBody({ locationMessage: { name: "Loja Centro" } }), "Loja Centro");
+  assert.equal(resolveChatBody({ pollCreationMessage: { name: "Escolha uma opcao" } }), "Escolha uma opcao");
   assert.equal(resolveChatBody({ buttonsResponseMessage: { selectedDisplayText: "Quero atendimento" } }), "Quero atendimento");
   assert.equal(resolveChatBody({ listResponseMessage: { title: "Plano Pro", description: "Detalhes" } }), "Plano Pro");
   assert.equal(resolveChatBody({ templateButtonReplyMessage: { selectedDisplayText: "Confirmar" } }), "Confirmar");
@@ -54,6 +59,7 @@ function createBaileysMock() {
   assert.equal(resolveChatMessageType({ conversation: "Oi" }), "TEXT");
   assert.equal(resolveChatMessageType({ audioMessage: { mimetype: "audio/ogg" } }), "AUDIO");
   assert.equal(resolveChatMessageType({ imageMessage: { mimetype: "image/jpeg" } }), "IMAGE");
+  assert.equal(resolveChatMessageType({ stickerMessage: { mimetype: "image/webp" } }), "IMAGE");
   assert.equal(resolveChatMessageType({ videoMessage: { mimetype: "video/mp4" } }), "VIDEO");
   assert.equal(resolveChatMessageType({ documentMessage: { mimetype: "application/pdf" } }), "DOCUMENT");
   assert.equal(resolveChatMessageType({ protocolMessage: { editedMessage: { conversation: "Texto editado" } } }), "TEXT");
@@ -170,6 +176,49 @@ function createBaileysMock() {
   assert.equal(videoResponse.statusCode, 200, videoResponse.body);
   assert.equal(videoResponse.headers["content-type"], "video/mp4");
   assert.equal(videoResponse.rawPayload.toString(), "video-bytes");
+
+  const document = await service.persistInboundMessage({
+    instanceId: "instance-a",
+    jid: "5511999990000@s.whatsapp.net",
+    body: "contrato.pdf",
+    messageType: "DOCUMENT",
+    providerMessageId: "wamid.document.1",
+    mediaUrl: null,
+    mediaMimeType: "application/pdf",
+    mediaDurationMs: null,
+    createdAt: new Date("2026-06-09T12:03:00.000Z"),
+  });
+  await writeChatMedia({ instanceId: "instance-a", providerMessageId: "wamid.document.1", buffer: Buffer.from("pdf-bytes"), messageType: "DOCUMENT", mimeType: "application/pdf" });
+  const documentWithMedia = await service.attachMessageMedia({
+    instanceId: "instance-a",
+    messageId: document.id,
+    mediaUrl: "/api/chat/media/instance-a/wamid.document.1",
+    mediaMimeType: "application/pdf",
+  });
+  assert.equal(documentWithMedia.mediaUrl, "/api/chat/media/instance-a/wamid.document.1");
+  const documentResponse = await app.inject({ method: "GET", url: "/api/chat/media/instance-a/wamid.document.1" });
+  assert.equal(documentResponse.statusCode, 200, documentResponse.body);
+  assert.equal(documentResponse.headers["content-type"], "application/pdf");
+  assert.equal(documentResponse.rawPayload.toString(), "pdf-bytes");
+
+  const sticker = await service.persistInboundMessage({
+    instanceId: "instance-a",
+    jid: "5511999990000@s.whatsapp.net",
+    body: "[Figurinha]",
+    messageType: "IMAGE",
+    providerMessageId: "wamid.sticker.1",
+    mediaUrl: null,
+    mediaMimeType: "image/webp",
+    createdAt: new Date("2026-06-09T12:04:00.000Z"),
+  });
+  await writeChatMedia({ instanceId: "instance-a", providerMessageId: "wamid.sticker.1", buffer: Buffer.from("sticker-bytes"), messageType: "IMAGE", mimeType: "image/webp" });
+  const stickerWithMedia = await service.attachMessageMedia({
+    instanceId: "instance-a",
+    messageId: sticker.id,
+    mediaUrl: "/api/chat/media/instance-a/wamid.sticker.1",
+    mediaMimeType: "image/webp",
+  });
+  assert.equal(stickerWithMedia.mediaUrl, "/api/chat/media/instance-a/wamid.sticker.1");
 
   const missing = await app.inject({ method: "GET", url: "/api/chat/media/instance-a/missing" });
   assert.equal(missing.statusCode, 404);

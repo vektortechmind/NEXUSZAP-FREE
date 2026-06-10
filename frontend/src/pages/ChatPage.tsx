@@ -7,7 +7,7 @@ import { MessageThread } from "../features/chat/MessageThread";
 import { upsertMessage } from "../features/chat/chatState";
 import { useChat } from "../features/chat/useChat";
 import { CHAT_UNREAD_TOTAL_EVENT, type ChatConversation, type ChatMessage, type ChatPresence, type ChatReactionEvent } from "../features/chat/types";
-import { getUnreadTotal, useConversations } from "../features/chat/useConversations";
+import { getUnreadTotal, type ChatFilter, useConversations } from "../features/chat/useConversations";
 import { MessageContextMenu } from "../features/chat/MessageContextMenu";
 import type { MessageContextMenuAction } from "../features/chat/messageContextActions";
 
@@ -38,6 +38,7 @@ function upsertConversation(list: ChatConversation[], next: ChatConversation) {
 export function ChatPage() {
   const { addToast } = useToast();
   const [selectedInstanceId, setSelectedInstanceId] = useState("all");
+  const [conversationFilter, setConversationFilter] = useState<ChatFilter>("all");
   const [search, setSearch] = useState("");
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -50,6 +51,7 @@ export function ChatPage() {
   const [replyingTo, setReplyingTo] = useState<ChatMessage | null>(null);
   const [mediaViewerMessage, setMediaViewerMessage] = useState<ChatMessage | null>(null);
   const [contextMenu, setContextMenu] = useState<{ message: ChatMessage; position: { x: number; y: number } } | null>(null);
+  const [syncingGroups, setSyncingGroups] = useState(false);
 
   const {
     conversations,
@@ -62,13 +64,14 @@ export function ChatPage() {
     loadMessages,
     sendTextMessage,
     sendMediaMessage,
+    syncGroups,
     sendReaction,
     editMessage,
     deleteMessage,
     clearConversation,
     markConversationRead,
     unreadTotal,
-  } = useConversations(selectedInstanceId, search);
+  } = useConversations(selectedInstanceId, search, conversationFilter);
 
   const selectedConversation = useMemo(
     () => conversations.find((conversation) => conversationKey(conversation) === selectedKey) ?? null,
@@ -84,16 +87,29 @@ export function ChatPage() {
   }, [conversations, publishUnreadTotal]);
 
   const handleConversationUpdate = useCallback((conversation: ChatConversation) => {
-    if (conversation.cleared && selectedConversation && conversationKey(conversation) === conversationKey(selectedConversation)) {
-      setMessages([]);
-      setReplyingTo(null);
+    if (conversation.cleared) {
+      const key = conversationKey(conversation);
+      if (selectedKey === key) {
+        setMessages([]);
+        setReplyingTo(null);
+        setMediaViewerMessage(null);
+        setContextMenu(null);
+        setSelectedKey(null);
+        setMobileThreadOpen(false);
+      }
+      setConversations((current) => {
+        const next = current.filter((item) => conversationKey(item) !== key);
+        publishUnreadTotal(next);
+        return next;
+      });
+      return;
     }
     setConversations((current) => {
       const next = upsertConversation(current, conversation);
       publishUnreadTotal(next);
       return next;
     });
-  }, [publishUnreadTotal, selectedConversation, setConversations]);
+  }, [publishUnreadTotal, selectedKey, setConversations]);
 
   const handleMessage = useCallback((message: ChatMessage) => {
     if (messageBelongsToConversation(message, selectedConversation)) {
@@ -127,6 +143,27 @@ export function ChatPage() {
       window.setTimeout(() => setTyping((current) => ({ ...current, [key]: false })), 5000);
     }
   }, []);
+
+  const handleSyncGroups = useCallback(async () => {
+    const targetInstanceIds = selectedInstanceId === "all"
+      ? instances.map((instance) => instance.id)
+      : [selectedInstanceId];
+    if (targetInstanceIds.length === 0) {
+      addToast("Nenhuma instancia disponivel para sincronizar grupos.", "error");
+      return;
+    }
+    setSyncingGroups(true);
+    try {
+      const results = await Promise.all(targetInstanceIds.map((instanceId) => syncGroups(instanceId)));
+      const total = results.reduce((sum, result) => sum + result.synced, 0);
+      addToast(total > 0 ? `${total} grupo(s) sincronizado(s).` : "Nenhum grupo encontrado.", "success");
+    } catch (err) {
+      console.error(err);
+      addToast("Nao foi possivel sincronizar grupos.", "error");
+    } finally {
+      setSyncingGroups(false);
+    }
+  }, [addToast, instances, selectedInstanceId, syncGroups]);
 
   const chatCallbacks = useMemo(() => ({
     onMessageNew: handleMessage,
@@ -212,6 +249,8 @@ export function ChatPage() {
       messageType: "TEXT",
       status: "PENDING",
       providerMessageId: null,
+      senderJid: null,
+      senderName: null,
       mediaUrl: null,
       mediaMimeType: null,
       mediaDurationMs: null,
@@ -313,21 +352,36 @@ export function ChatPage() {
     }
   }, [addToast, deleteMessage, editMessage, handleStatus, selectedConversation]);
 
-  const clearSelectedConversation = useCallback(async () => {
-    if (!selectedConversation) return;
-    const confirmed = window.confirm("Limpar mensagens apenas do painel?");
-    if (!confirmed) return;
+  const executeClearConversation = useCallback(async (conversation: ChatConversation) => {
+    const key = conversationKey(conversation);
     try {
-      await clearConversation({ instanceId: selectedConversation.instanceId, jid: selectedConversation.jid });
-      setMessages([]);
-      setReplyingTo(null);
-      setConversations((current) => current.map((item) => conversationKey(item) === conversationKey(selectedConversation) ? { ...item, unreadCount: 0 } : item));
+      await clearConversation({ instanceId: conversation.instanceId, jid: conversation.jid });
+      if (selectedKey === key) {
+        setMessages([]);
+        setReplyingTo(null);
+        setMediaViewerMessage(null);
+        setContextMenu(null);
+        setSelectedKey(null);
+        setMobileThreadOpen(false);
+      }
+      setConversations((current) => current.filter((item) => conversationKey(item) !== key));
       addToast("Conversa limpa.", "success");
     } catch (err) {
       console.error(err);
       addToast("Nao foi possivel limpar a conversa.", "error");
     }
-  }, [addToast, clearConversation, selectedConversation, setConversations]);
+  }, [addToast, clearConversation, selectedKey, setConversations]);
+
+  const clearSelectedConversation = useCallback(async () => {
+    if (!selectedConversation) return;
+    await executeClearConversation(selectedConversation);
+  }, [executeClearConversation, selectedConversation]);
+
+  const clearConversationFromList = useCallback(async (conversation: ChatConversation) => {
+    const confirmed = window.confirm("Limpar conversa somente no painel? As mensagens continuam no WhatsApp.");
+    if (!confirmed) return;
+    await executeClearConversation(conversation);
+  }, [executeClearConversation]);
 
   const selectedTyping = selectedConversation ? Boolean(typing[conversationKey(selectedConversation)]) : false;
 
@@ -343,9 +397,14 @@ export function ChatPage() {
             search={search}
             loading={loading}
             error={error}
+            activeFilter={conversationFilter}
+            syncingGroups={syncingGroups}
             onSelect={(conversation) => void selectConversation(conversation)}
             onInstanceChange={setSelectedInstanceId}
             onSearchChange={setSearch}
+            onFilterChange={setConversationFilter}
+            onSyncGroups={() => void handleSyncGroups()}
+            onClearConversation={(conversation) => void clearConversationFromList(conversation)}
           />
         </div>
         <div className={`${mobileThreadOpen ? "flex" : "hidden"} min-h-0 flex-col md:flex`}>

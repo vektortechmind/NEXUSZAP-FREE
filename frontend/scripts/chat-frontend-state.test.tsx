@@ -14,7 +14,7 @@ import { QUICK_REACTIONS } from "../src/features/chat/chatReactions.ts";
 import { getViewportAwareMenuPosition } from "../src/features/chat/messageMenuPosition.ts";
 import { getViewportAwarePopupPosition } from "../src/features/chat/emojiPickerPosition.ts";
 import { getMessageContextActions, isWithinEditWindow } from "../src/features/chat/messageContextActions.ts";
-import { getKnownMessageFallback, getMessageStatusLabel } from "../src/features/chat/chatDisplay.ts";
+import { getKnownMessageFallback, getMessagePreviewText, getMessageStatusLabel } from "../src/features/chat/chatDisplay.ts";
 import { upsertMessage } from "../src/features/chat/chatState.ts";
 import { filterConversations, getUnreadTotal } from "../src/features/chat/useConversations.ts";
 import type { ChatConversation, ChatMessage } from "../src/features/chat/types.ts";
@@ -31,6 +31,8 @@ const textMessage: ChatMessage = {
   messageType: "TEXT",
   status: "DELIVERED",
   providerMessageId: "wamid.in.1",
+  senderJid: null,
+  senderName: null,
   mediaUrl: null,
   mediaMimeType: null,
   mediaDurationMs: null,
@@ -85,6 +87,7 @@ const conversations: ChatConversation[] = [
     jid: "5511999990000@s.whatsapp.net",
     name: "Cliente Alpha",
     profilePicUrl: "https://img.example.com/a.jpg",
+    isGroup: false,
     lastMessageAt: "2026-06-09T12:00:00.000Z",
     unreadCount: 3,
     createdAt: "2026-06-09T11:00:00.000Z",
@@ -97,11 +100,34 @@ const conversations: ChatConversation[] = [
     jid: "5511888880000@s.whatsapp.net",
     name: "Beta Suporte",
     profilePicUrl: null,
+    isGroup: false,
     lastMessageAt: "2026-06-09T10:00:00.000Z",
     unreadCount: 1,
     createdAt: "2026-06-09T09:00:00.000Z",
     updatedAt: "2026-06-09T10:00:00.000Z",
     lastMessage: audioMessage,
+  },
+  {
+    id: "conversation-group",
+    instanceId: "instance-a",
+    jid: "120363000001@g.us",
+    name: "Grupo Vendas",
+    profilePicUrl: null,
+    isGroup: true,
+    lastMessageAt: "2026-06-09T13:00:00.000Z",
+    unreadCount: 0,
+    createdAt: "2026-06-09T12:30:00.000Z",
+    updatedAt: "2026-06-09T13:00:00.000Z",
+    lastMessage: {
+      ...textMessage,
+      id: "message-group",
+      conversationId: "conversation-group",
+      jid: "120363000001@g.us",
+      body: "Mensagem no grupo",
+      senderJid: "5511777770000@s.whatsapp.net",
+      senderName: "Joao",
+      createdAt: "2026-06-09T13:00:00.000Z",
+    },
   },
 ];
 
@@ -116,6 +142,15 @@ test("conversation helpers filter by instance, name and preview while summing un
   assert.deepEqual(filterConversations(conversations, "instance-b", "").map((item) => item.id), ["conversation-b"]);
   assert.deepEqual(filterConversations(conversations, "all", "alpha").map((item) => item.id), ["conversation-a"]);
   assert.deepEqual(filterConversations(conversations, "all", "audio").map((item) => item.id), ["conversation-b"]);
+  assert.deepEqual(filterConversations(conversations, "all", "", "groups").map((item) => item.id), ["conversation-group"]);
+  assert.deepEqual(filterConversations(conversations, "all", "", "unread").map((item) => item.id), ["conversation-a", "conversation-b"]);
+  assert.deepEqual(filterConversations(conversations, "all", "vendas", "groups").map((item) => item.id), ["conversation-group"]);
+});
+
+test("message previews use friendly labels for whatsapp gif and sticker markers", () => {
+  assert.equal(getMessagePreviewText({ ...videoMessage, body: "[GIF]" }), "GIF recebido");
+  assert.equal(getMessagePreviewText({ ...imageMessage, body: "[Figurinha]", mediaMimeType: "image/webp" }), "Figurinha recebida");
+  assert.equal(getKnownMessageFallback({ messageType: "IMAGE", mediaUrl: null, mediaMimeType: "image/webp" }), "Figurinha recebida");
 });
 
 test("conversation list renders avatar, preview, unread badge and instance badge when filter is all", () => {
@@ -128,9 +163,12 @@ test("conversation list renders avatar, preview, unread badge and instance badge
       search=""
       loading={false}
       error={null}
+      activeFilter="all"
       onSelect={() => undefined}
       onInstanceChange={() => undefined}
       onSearchChange={() => undefined}
+      onFilterChange={() => undefined}
+      onClearConversation={() => undefined}
     />,
   );
   assert.doesNotMatch(html, /<h1[^>]*>Conversas<\/h1>/);
@@ -139,6 +177,13 @@ test("conversation list renders avatar, preview, unread badge and instance badge
   assert.match(html, /Vendas/);
   assert.match(html, />3</);
   assert.match(html, /Buscar nome ou mensagem/);
+  assert.match(html, /Todos/);
+  assert.match(html, /Nao lidos/);
+  assert.match(html, /Grupos/);
+  assert.match(html, /Grupo Vendas/);
+  assert.match(html, /aria-label="Grupo"/);
+  assert.match(html, /Apagar conversa Cliente Alpha/);
+  assert.match(html, /Apagar conversa do painel/);
 });
 
 test("conversation list does not render unread badge for zero", () => {
@@ -151,9 +196,11 @@ test("conversation list does not render unread badge for zero", () => {
       search=""
       loading={false}
       error={null}
+      activeFilter="all"
       onSelect={() => undefined}
       onInstanceChange={() => undefined}
       onSearchChange={() => undefined}
+      onFilterChange={() => undefined}
     />,
   );
   assert.doesNotMatch(html, />0</);
@@ -177,24 +224,70 @@ test("message bubbles render direction, status and inline audio controls", () =>
   assert.match(audioHtml, /https:\/\/media.example.com\/audio.ogg/);
 });
 
+test("message bubbles render group sender for inbound group messages", () => {
+  const html = renderToStaticMarkup(
+    <MessageBubble
+      message={{
+        ...textMessage,
+        jid: "120363000001@g.us",
+        senderJid: "5511777770000@s.whatsapp.net",
+        senderName: "Joao",
+      }}
+    />,
+  );
+  assert.match(html, /Joao:/);
+
+  const ownHtml = renderToStaticMarkup(
+    <MessageBubble
+      message={{
+        ...textMessage,
+        fromMe: true,
+        jid: "120363000001@g.us",
+        senderJid: "5511777770000@s.whatsapp.net",
+        senderName: "Joao",
+      }}
+    />,
+  );
+  assert.doesNotMatch(ownHtml, /Joao:/);
+});
+
 test("message bubbles render image, video, view-once marker and reactions inline", () => {
   const imageHtml = renderToStaticMarkup(<MessageBubble message={imageMessage} />);
   const videoHtml = renderToStaticMarkup(<MessageBubble message={videoMessage} />);
+  const gifHtml = renderToStaticMarkup(<MessageBubble message={{ ...videoMessage, id: "message-gif", body: "[GIF]" }} />);
+  const stickerHtml = renderToStaticMarkup(<MessageBubble message={{ ...imageMessage, id: "message-sticker", body: "[Figurinha]", mediaMimeType: "image/webp" }} />);
+  const reactedImageHtml = renderToStaticMarkup(<MessageBubble message={{ ...imageMessage, reactionEmoji: "👍" }} />);
   const fallbackHtml = renderToStaticMarkup(<MessageBubble message={{ ...imageMessage, mediaUrl: null }} />);
   const reactedHtml = renderToStaticMarkup(<MessageBubble message={{ ...textMessage, reactionEmoji: "👍" }} />);
   const viewOnceHtml = renderToStaticMarkup(<MessageBubble message={{ ...imageMessage, body: "Visualizacao unica\nLegenda" }} />);
   assert.match(imageHtml, /<img/);
   assert.match(imageHtml, /\/api\/chat\/media\/instance-a\/wamid.image.1/);
   assert.match(imageHtml, /Abrir imagem/);
-  assert.match(imageHtml, /p-0 overflow-hidden/);
+  assert.match(imageHtml, /p-0 overflow-visible/);
   assert.match(videoHtml, /<video/);
   assert.match(videoHtml, /Abrir video/);
+  assert.match(gifHtml, /autoPlay=""/);
+  assert.match(gifHtml, /loop=""/);
+  assert.match(gifHtml, /muted=""/);
+  assert.match(gifHtml, /pointer-events-none/);
+  assert.match(gifHtml, /disablePictureInPicture=""/);
+  assert.doesNotMatch(gifHtml, /Abrir GIF/);
+  assert.doesNotMatch(gifHtml, /controls=""/);
+  assert.doesNotMatch(gifHtml, /\[GIF\]/);
+  assert.match(stickerHtml, /max-h-40 max-w-40/);
+  assert.doesNotMatch(stickerHtml, /\[Figurinha\]/);
   const documentHtml = renderToStaticMarkup(<MessageBubble message={documentMessage} />);
+  const pdfHtml = renderToStaticMarkup(<MessageBubble message={{ ...documentMessage, mediaMimeType: "application/pdf" }} />);
   assert.match(documentHtml, /Abrir documento/);
   assert.match(documentHtml, /contrato.pdf/);
   assert.match(documentHtml, /Toque para abrir/);
+  assert.match(pdfHtml, /Toque para abrir o PDF/);
   assert.match(fallbackHtml, /\[Imagem\]/);
   assert.match(reactedHtml, /👍/);
+  assert.match(reactedImageHtml, /mb-3/);
+  assert.match(reactedImageHtml, /-bottom-3 left-2/);
+  assert.doesNotMatch(reactedImageHtml, /overflow-hidden/);
+  assert.doesNotMatch(reactedImageHtml, /-bottom-6/);
   assert.match(viewOnceHtml, /Visualizacao unica/);
   assert.match(viewOnceHtml, /Legenda/);
 });
@@ -271,11 +364,14 @@ test("emoji popup position opens inside viewport", () => {
   assert.equal(bottomPosition.left + 292 <= 792, true);
 });
 
-test("clear conversation menu exposes only panel cleanup", () => {
+test("clear conversation menu warns that cleanup is panel-only", () => {
   const source = fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/ChatHeader.tsx"), "utf8");
-  assert.match(source, /Limpar painel/);
-  assert.equal(source.includes("onClear?.();"), true);
-  assert.equal((source.match(/Limpar painel/g) ?? []).length, 1);
+  assert.match(source, /Limpar conversa!/);
+  assert.match(source, /window\.confirm/);
+  assert.match(source, /somente no painel/);
+  assert.equal(source.includes("if (confirmed) onClear?.();"), true);
+  assert.equal((source.match(/Limpar conversa!/g) ?? []).length, 1);
+  assert.doesNotMatch(source, /Limpar painel/);
 });
 
 test("message context menu position stays inside viewport", () => {
@@ -293,12 +389,19 @@ test("message context menu position stays inside viewport", () => {
 test("media viewer renders image and video actions", () => {
   const imageHtml = renderToStaticMarkup(<MediaViewer message={imageMessage} onClose={() => undefined} onReact={() => undefined} onReply={() => undefined} />);
   const videoHtml = renderToStaticMarkup(<MediaViewer message={videoMessage} onClose={() => undefined} onReact={() => undefined} onReply={() => undefined} />);
+  const gifHtml = renderToStaticMarkup(<MediaViewer message={{ ...videoMessage, body: "[GIF]" }} onClose={() => undefined} onReact={() => undefined} onReply={() => undefined} />);
+  const stickerHtml = renderToStaticMarkup(<MediaViewer message={{ ...imageMessage, body: "[Figurinha]", mediaMimeType: "image/webp" }} onClose={() => undefined} onReact={() => undefined} onReply={() => undefined} />);
   assert.match(imageHtml, /Visualizador de midia/);
   assert.match(imageHtml, /Baixar midia/);
   assert.match(imageHtml, /Responder/);
   assert.match(imageHtml, /Mais emojis/);
   assert.match(videoHtml, /<video/);
   assert.match(videoHtml, /controls=""/);
+  assert.doesNotMatch(gifHtml, /controls=""/);
+  assert.match(gifHtml, /pointer-events-none/);
+  assert.match(gifHtml, /disablePictureInPicture=""/);
+  assert.match(gifHtml, /loop=""/);
+  assert.match(stickerHtml, /max-h-52 max-w-52/);
 });
 
 test("chat input renders reply mode and cancel button", () => {
@@ -327,14 +430,14 @@ test("chat input does not use a form submit wrapper", () => {
   assert.doesNotMatch(source, /Anexar audio/);
 });
 
-test("chat avatars render initials only", () => {
+test("chat avatars render initials and group icon without remote avatar proxy", () => {
   const listSource = fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/ConversationList.tsx"), "utf8");
   const headerSource = fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/ChatHeader.tsx"), "utf8");
   assert.match(listSource, /name\.slice\(0, 1\)\.toUpperCase\(\)/);
   assert.match(headerSource, /name\.slice\(0, 1\)\.toUpperCase\(\)/);
-  assert.doesNotMatch(listSource, /<img/);
+  assert.match(listSource, /conversation\.isGroup/);
+  assert.match(listSource, /<Users/);
   assert.doesNotMatch(headerSource, /<img/);
-  assert.doesNotMatch(listSource, /conversation\.profilePicUrl/);
   assert.doesNotMatch(headerSource, /conversation\.profilePicUrl/);
   assert.doesNotMatch(listSource, /referrerPolicy/);
   assert.doesNotMatch(headerSource, /referrerPolicy/);
@@ -403,7 +506,8 @@ test("chat page keeps desktop split and mobile list-or-thread contract", () => {
   assert.match(source, /loadConversations\(\)/);
   assert.match(source, /markConversationRead/);
   assert.match(source, /MediaViewer/);
-  assert.match(source, /Limpar mensagens apenas do painel/);
+  assert.match(source, /clearSelectedConversation/);
+  assert.doesNotMatch(source, /Limpar mensagens apenas do painel/);
 });
 
 test("message thread exposes a new messages jump button for open chats", () => {
@@ -441,6 +545,11 @@ test("chat page handles read rollback and clear batch", () => {
   assert.match(source, /Nao foi possivel marcar a conversa como lida/);
   assert.match(source, /conversation\.cleared/);
   assert.match(source, /setMessages\(\[\]\)/);
+  assert.match(source, /current\.filter\(\(item\) => conversationKey\(item\) !== key\)/);
+  assert.match(source, /setSelectedKey\(null\)/);
+  assert.match(source, /clearConversationFromList/);
+  assert.match(source, /onClearConversation/);
+  assert.doesNotMatch(source, /Limpar mensagens apenas do painel/);
   assert.match(source, /sendMediaMessage/);
 });
 
