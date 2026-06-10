@@ -546,7 +546,9 @@ else
   git remote add origin "$REPO_URL"
 fi
 
-git fetch origin --tags
+git fetch --force --prune --prune-tags origin \
+  '+refs/heads/*:refs/remotes/origin/*' \
+  '+refs/tags/*:refs/tags/*'
 current_branch="$(git branch --show-current)"
 if [[ -z "$current_branch" ]]; then
   current_branch="main"
