@@ -195,7 +195,7 @@ export function resolveChatBody(content: WAMessageContent): string | null {
     resolved.documentMessage?.caption ||
     resolved.documentMessage?.fileName ||
     contactMessage?.displayName ||
-    contactsArrayMessage?.contacts?.map((contact) => contact.displayName).filter(Boolean).join(", ") ||
+    contactsArrayMessage?.contacts?.flatMap((contact) => contact.displayName ? [contact.displayName] : []).join(", ") ||
     locationMessage?.name ||
     locationMessage?.address ||
     liveLocationMessage?.caption ||
