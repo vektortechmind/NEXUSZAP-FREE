@@ -147,7 +147,7 @@ export function ConversationList({
                     <button
                       type="button"
                       onClick={() => onClearConversation(conversation)}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-400 transition hover:bg-red-50 hover:text-red-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 dark:text-slate-500 dark:hover:bg-red-950/30 dark:hover:text-red-300"
+                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-red-600 transition hover:bg-red-50 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 dark:text-red-300 dark:hover:bg-red-950/30 dark:hover:text-red-200"
                       aria-label={`Apagar conversa ${getContactDisplayName(conversation)}`}
                       title="Apagar conversa do painel"
                     >

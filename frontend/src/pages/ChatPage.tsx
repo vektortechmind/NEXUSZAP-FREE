@@ -20,9 +20,19 @@ function messageBelongsToConversation(message: ChatMessage, conversation: ChatCo
 }
 
 function latestVisibleMessage(messages: ChatMessage[], deletedMessageId: string) {
-  return messages
-    .filter((message) => message.id !== deletedMessageId && !message.isDeleted)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] ?? null;
+  let latest: ChatMessage | null = null;
+  let latestTimestamp = -Infinity;
+
+  for (const message of messages) {
+    if (message.id === deletedMessageId || message.isDeleted) continue;
+    const timestamp = new Date(message.createdAt).getTime();
+    if (timestamp > latestTimestamp) {
+      latest = message;
+      latestTimestamp = timestamp;
+    }
+  }
+
+  return latest;
 }
 
 function upsertConversation(list: ChatConversation[], next: ChatConversation) {
