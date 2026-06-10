@@ -97,8 +97,8 @@ export function ChatPage() {
   }, [conversations, publishUnreadTotal]);
 
   const handleConversationUpdate = useCallback((conversation: ChatConversation) => {
+    const key = conversationKey(conversation);
     if (conversation.cleared) {
-      const key = conversationKey(conversation);
       if (selectedKey === key) {
         setMessages([]);
         setReplyingTo(null);
@@ -114,12 +114,20 @@ export function ChatPage() {
       });
       return;
     }
+    const nextConversation = selectedKey === key && conversation.unreadCount > 0
+      ? { ...conversation, unreadCount: 0 }
+      : conversation;
     setConversations((current) => {
-      const next = upsertConversation(current, conversation);
+      const next = upsertConversation(current, nextConversation);
       publishUnreadTotal(next);
       return next;
     });
-  }, [publishUnreadTotal, selectedKey, setConversations]);
+    if (selectedKey === key && conversation.unreadCount > 0) {
+      void markConversationRead({ instanceId: conversation.instanceId, jid: conversation.jid }).catch((err) => {
+        console.error(err);
+      });
+    }
+  }, [markConversationRead, publishUnreadTotal, selectedKey, setConversations]);
 
   const handleMessage = useCallback((message: ChatMessage) => {
     if (messageBelongsToConversation(message, selectedConversation)) {
@@ -398,7 +406,7 @@ export function ChatPage() {
   return (
     <section className="h-[calc(100svh-3.5rem)] min-h-[38rem] overflow-hidden border-y border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
       <div className="grid h-full min-h-0 md:grid-cols-[320px_minmax(0,1fr)]">
-        <div className={`${mobileThreadOpen ? "hidden" : "block"} min-h-0 md:block`}>
+        <div className={`${mobileThreadOpen ? "hidden" : "block"} h-full min-h-0 overflow-hidden md:block`}>
           <ConversationList
             conversations={visibleConversations}
             instances={instances}
@@ -417,7 +425,7 @@ export function ChatPage() {
             onClearConversation={(conversation) => void clearConversationFromList(conversation)}
           />
         </div>
-        <div className={`${mobileThreadOpen ? "flex" : "hidden"} min-h-0 flex-col md:flex`}>
+        <div className={`${mobileThreadOpen ? "flex" : "hidden"} h-full min-h-0 flex-col overflow-hidden md:flex`}>
           <ChatHeader
             conversation={selectedConversation}
             instances={instances}

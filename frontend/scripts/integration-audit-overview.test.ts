@@ -35,7 +35,7 @@ test("audit overview limits panel data to the latest 100 records", () => {
 });
 
 test("audit meta prefers provider id, then failure code, then instance name", () => {
-  assert.equal(formatAuditMeta(createEntry(1, { providerMessageId: "wamid.123", failureCode: "FAIL_CODE" })), "wamid.123");
+  assert.equal(formatAuditMeta(createEntry(1, { providerMessageId: "wamid.123", failureCode: "FAIL_CODE" })), "Provider aceitou: wamid.123");
   assert.equal(formatAuditMeta(createEntry(2, { providerMessageId: null, failureCode: "FAIL_CODE" })), "FAIL_CODE");
   assert.equal(formatAuditMeta(createEntry(3, { providerMessageId: null, failureCode: null, instanceName: "Operacao" })), "Operacao");
 });

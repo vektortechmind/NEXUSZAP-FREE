@@ -184,6 +184,10 @@ test("conversation list renders avatar, preview, unread badge and instance badge
   assert.match(html, /aria-label="Grupo"/);
   assert.match(html, /Apagar conversa Cliente Alpha/);
   assert.match(html, /Apagar conversa do painel/);
+  assert.match(html, /h-full min-h-0 flex-col overflow-hidden/);
+  assert.match(html, /min-h-0 flex-1 overflow-y-auto overscroll-contain/);
+  assert.match(html, /grid h-20 w-full/);
+  assert.match(html, /flex h-14 flex-col items-end justify-between/);
 });
 
 test("conversation list does not render unread badge for zero", () => {

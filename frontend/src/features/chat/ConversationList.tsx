@@ -75,8 +75,8 @@ export function ConversationList({
   onClearConversation,
 }: ConversationListProps) {
   return (
-    <aside className="flex min-h-0 flex-col border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
-      <div className="space-y-3 border-b border-slate-200 p-3 dark:border-slate-800">
+    <aside className="flex h-full min-h-0 flex-col overflow-hidden border-r border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-950">
+      <div className="shrink-0 space-y-3 border-b border-slate-200 p-3 dark:border-slate-800">
         <FilterDropdown instances={instances} value={selectedInstanceId} onChange={onInstanceChange} />
         <Input
           value={search}
@@ -105,7 +105,7 @@ export function ConversationList({
           ) : null}
         </div>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {loading ? (
           <div className="space-y-3 p-3">
             {Array.from({ length: 5 }).map((_, index) => (
@@ -123,7 +123,7 @@ export function ConversationList({
             return (
               <div
                 key={`${conversation.instanceId}:${conversation.jid}`}
-                className={`grid w-full grid-cols-[2.75rem_minmax(0,1fr)_auto] gap-3 border-b border-slate-100 px-3 py-3 text-left transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-emerald-500 dark:border-slate-900 dark:hover:bg-slate-900/70 ${active ? "bg-emerald-50/70 dark:bg-emerald-950/25" : ""}`}
+                className={`grid h-20 w-full grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-3 border-b border-slate-100 px-3 text-left transition hover:bg-slate-50 focus-within:ring-2 focus-within:ring-emerald-500 dark:border-slate-900 dark:hover:bg-slate-900/70 ${active ? "bg-emerald-50/70 dark:bg-emerald-950/25" : ""}`}
               >
                 <button type="button" onClick={() => onSelect(conversation)} className="contents text-left focus-visible:outline-none" aria-label={`Abrir conversa ${getContactDisplayName(conversation)}`}>
                   <Avatar conversation={conversation} />
@@ -136,24 +136,26 @@ export function ConversationList({
                     <span className="mt-1 block truncate text-xs text-slate-500 dark:text-slate-400">{getMessagePreview(conversation.lastMessage)}</span>
                   </span>
                 </button>
-                <span className="flex flex-col items-end gap-2">
+                <span className="flex h-14 flex-col items-end justify-between gap-1">
                   <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400">{formatTime(conversation.lastMessageAt)}</span>
-                  {conversation.unreadCount > 0 ? (
-                    <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-emerald-600 px-1.5 py-0.5 text-[11px] font-bold text-white dark:bg-emerald-500 dark:text-emerald-950">
-                      {conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}
-                    </span>
-                  ) : null}
-                  {onClearConversation ? (
-                    <button
-                      type="button"
-                      onClick={() => onClearConversation(conversation)}
-                      className="inline-flex h-7 w-7 items-center justify-center rounded-md text-red-600 transition hover:bg-red-50 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 dark:text-red-300 dark:hover:bg-red-950/30 dark:hover:text-red-200"
-                      aria-label={`Apagar conversa ${getContactDisplayName(conversation)}`}
-                      title="Apagar conversa do painel"
-                    >
-                      <Trash2 size={14} aria-hidden="true" />
-                    </button>
-                  ) : null}
+                  <span className="flex items-center justify-end gap-1">
+                    {conversation.unreadCount > 0 ? (
+                      <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-emerald-600 px-1.5 text-[11px] font-bold leading-none text-white dark:bg-emerald-500 dark:text-emerald-950">
+                        {conversation.unreadCount > 99 ? "99+" : conversation.unreadCount}
+                      </span>
+                    ) : null}
+                    {onClearConversation ? (
+                      <button
+                        type="button"
+                        onClick={() => onClearConversation(conversation)}
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-md text-red-600 transition hover:bg-red-50 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 dark:text-red-300 dark:hover:bg-red-950/30 dark:hover:text-red-200"
+                        aria-label={`Apagar conversa ${getContactDisplayName(conversation)}`}
+                        title="Apagar conversa do painel"
+                      >
+                        <Trash2 size={14} aria-hidden="true" />
+                      </button>
+                    ) : null}
+                  </span>
                 </span>
               </div>
             );

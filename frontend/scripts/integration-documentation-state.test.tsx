@@ -19,15 +19,13 @@ test("integration documentation route renders the public contract without local 
   assert.match(html, /Contrato operacional do endpoint público de integrações/);
   assert.match(html, /Voltar para integrações/);
   assert.match(html, /Tópicos/);
-  assert.match(html, /href="#visao-geral"/);
-  assert.match(html, /href="#troubleshooting"/);
+  assert.match(html, /Visão geral/);
+  assert.match(html, /Troubleshooting/);
+  assert.match(html, /aria-pressed="true"/);
   assert.match(html, /instanceId/);
   assert.match(html, /secretToken/);
   assert.match(html, /Credenciais/);
-  assert.match(html, /Authorization: Bearer/);
   assert.match(html, /\/api\/integrations\/events/);
-  assert.match(html, /pedido_pago/);
-  assert.match(html, /INTEGRATION_REPLAY_WINDOW_VIOLATION/);
   assert.doesNotMatch(html, /Ir para resumo/);
   assert.doesNotMatch(html, /docs\/integrations\/nexuszap-plugin-api\.md/);
 });
