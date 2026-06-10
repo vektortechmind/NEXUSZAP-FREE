@@ -6,19 +6,15 @@ Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
 ### Added
 
-- Chat passa a suportar melhor mensagens e mídias vindas do WhatsApp em conversas pessoais e grupos, incluindo anexos de imagem, vídeo, áudio, documento, GIF, sticker e PDF no painel.
+- Nova implementação do chat no painel para conversas pessoais e grupos do WhatsApp, com suporte ampliado a mensagens e mídias recebidas, incluindo imagem, vídeo, áudio, documento, PDF, GIF em loop e sticker.
+- Nova experiência visual de mídias no chat do painel, aproximando GIFs, stickers, documentos, reações e horário das mensagens do comportamento esperado no WhatsApp Web.
+- Nova ação local para apagar conversa no painel, limpando as mensagens e removendo o contato da lista local sem executar limpeza remota no WhatsApp.
 - Painel usa logo compacta no menu lateral recolhido, preservando a marca mesmo quando a navegação está compactada.
-
-### Fixed
-
-- Mensagens de mídia no chat foram ajustadas para comportamento mais próximo do WhatsApp Web: GIF em loop sem barra de progresso, stickers menores e documentos/PDFs exibidos com suporte real ao arquivo.
-- Reações em mensagens foram reposicionadas para não cortar a figura e não cobrir o horário da bolha.
-- Limpeza de conversa foi ajustada para deixar claro que limpa somente o painel, com opção de apagar a conversa e remover o contato da lista local.
-- Badge de licença no README foi trocado para `source-available`, evitando indicação inválida/desconhecida para a licença customizada do projeto.
 
 ### Changed
 
 - Logo do painel e da tela de login foi aumentada usando assets recortadas para remover margem transparente dos PNGs originais.
+- Badge de licença no README foi trocado para `source-available`, alinhado à licença customizada do projeto.
 - Backend foi marcado como `private` nos metadados npm para reduzir risco de publicação acidental.
 - Versão do frontend, backend, `backend/VERSION`, `README` e changelog atualizada para `1.0.11`.
 
