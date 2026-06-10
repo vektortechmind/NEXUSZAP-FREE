@@ -524,12 +524,28 @@ test("message thread exposes a new messages jump button for open chats", () => {
 
 test("chat realtime client subscribes to message reaction events", () => {
   const source = fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/useChat.ts"), "utf8");
+  assert.match(source, /const CHAT_NAMESPACE = "\/chat"/);
+  assert.match(source, /const CHAT_SOCKET_PATH = "\/ws\/chat"/);
   assert.match(source, /\/auth\/ws-token/);
   assert.match(source, /auth: token \? \{ token \} : undefined/);
+  assert.equal(source.indexOf("/auth/ws-token") < source.indexOf("io(`${socketOriginFromApiBase()}${CHAT_NAMESPACE}`"), true);
   assert.match(source, /message:reaction/);
   assert.match(source, /message:edited/);
   assert.match(source, /message:deleted/);
   assert.match(source, /onMessageReaction/);
+});
+
+test("vite dev proxy covers chat websocket path without changing nginx backend target", () => {
+  const viteSource = fs.readFileSync(path.resolve(import.meta.dirname, "../vite.config.ts"), "utf8");
+  const envExample = fs.readFileSync(path.resolve(import.meta.dirname, "../.env.example"), "utf8");
+  const nginxSource = fs.readFileSync(path.resolve(import.meta.dirname, "../nginx.conf"), "utf8");
+  assert.match(viteSource, /loadEnv\(mode, process\.cwd\(\), ""\)/);
+  assert.match(viteSource, /VITE_DEV_API_TARGET \|\| "http:\/\/127\.0\.0\.1:3000"/);
+  assert.match(viteSource, /"\/api": \{\s*target: apiTarget,\s*changeOrigin: true\s*\}/s);
+  assert.match(viteSource, /"\/ws\/chat": \{\s*target: apiTarget,\s*changeOrigin: true,\s*ws: true\s*\}/s);
+  assert.match(envExample, /VITE_DEV_API_TARGET=http:\/\/127\.0\.0\.1:3000/);
+  assert.match(envExample, /backend Docker publicado/);
+  assert.match(nginxSource, /location \/ws\/chat \{[\s\S]*proxy_pass http:\/\/backend:3000;/);
 });
 
 test("chat media upload uses multipart endpoint", () => {
@@ -555,6 +571,9 @@ test("chat page handles read rollback and clear batch", () => {
   assert.match(source, /onClearConversation/);
   assert.doesNotMatch(source, /Limpar mensagens apenas do painel/);
   assert.match(source, /sendMediaMessage/);
+  assert.match(source, /selectedKey === key && conversation\.unreadCount > 0/);
+  assert.match(source, /\? \{ \.\.\.conversation, unreadCount: 0 \}/);
+  assert.match(source, /void markConversationRead\(\{ instanceId: conversation\.instanceId, jid: conversation\.jid \}\)\.catch/);
 });
 
 test("chat page keeps previous preview while backend confirms delete", () => {
