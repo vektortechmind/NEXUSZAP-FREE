@@ -1,0 +1,10 @@
+{
+  "ignore": {
+    "rules": [
+      "deslop/unused-file",
+      "deslop/unused-export",
+      "deslop/circular-dependency"
+    ]
+  },
+  "respectInlineDisables": true
+}
