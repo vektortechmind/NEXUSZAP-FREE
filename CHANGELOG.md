@@ -2,6 +2,41 @@
 
 Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
+## [1.0.12] - 2026-06-11
+
+### Upgrade notes
+
+Usuarios que ainda estiverem em uma instalacao derivada da `1.0.10` antes da limpeza de historico devem manter a regularizacao unica documentada na `1.0.11` antes de atualizar. Em servidores ja regularizados na linha `1.0.11`, o fluxo normal pelo Update Center ou `./update.sh` pode ser usado.
+
+Se a VPS ainda acusar tags divergentes ou `would clobber existing tag`, rode uma vez na pasta do projeto:
+
+```bash
+git fetch --force --prune --prune-tags origin '+refs/heads/*:refs/remotes/origin/*' '+refs/tags/*:refs/tags/*'
+git reset --hard origin/main
+docker compose -p nexuszap-free up -d --no-deps --build backend frontend
+```
+
+Use `sudo` se o projeto estiver em pasta protegida, como `/root/NEXUSZAP-FREE`. O `--no-deps` preserva o Postgres e os volumes de midia.
+
+### Added
+
+- Nova area interna em `Configuracoes` para alterar a senha do administrador logado, sem criar fluxo publico de recuperacao de senha.
+- Novo endpoint autenticado `POST /api/auth/change-password`, exigindo sessao, CSRF, senha atual, nova senha forte e confirmacao.
+- Cobertura backend para troca de senha com `NEXUS_ENV_FILE` temporario, validando sessao, CSRF, senha atual, senha fraca, confirmacao, persistencia, limpeza de cookies e login antigo/novo.
+- Cobertura frontend estrutural para proteger o formulario interno de senha e o contrato do `AuthContext`.
+
+### Changed
+
+- React Doctor foi estabilizado com allowlists/supressoes rastreaveis para awaits sequenciais e registros mecanicos de backend, mantendo score `100/100` nas validacoes recentes.
+- Vite dev proxy passou a cobrir `/api` e `/ws/chat` com alvo configuravel por `VITE_DEV_API_TARGET`, preservando uso local contra backend `3000` ou Docker publicado em `3001`.
+- Lista de conversas do chat manteve altura/scroll estaveis e leitura da conversa ativa ao receber `conversation:update` realtime.
+- Versao do frontend, backend, `backend/VERSION`, README e changelog atualizada para `1.0.12`.
+
+### Fixed
+
+- Corrigida regressao de desenvolvimento local em que o chat realtime podia exibir erro quando o proxy WebSocket do Vite nao encaminhava `/ws/chat`.
+- Protegida a troca interna de senha contra chamadas sem sessao, sem CSRF, com senha atual incorreta, senha fraca, confirmacao divergente ou senha nova igual a atual.
+
 ## [1.0.11] - 2026-06-10
 
 ### Upgrade notes
