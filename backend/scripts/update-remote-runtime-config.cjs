@@ -29,6 +29,8 @@ assert.ok(serviceSource.includes("UPDATE_WORKSPACE_DIR"), "update.service deve s
 assert.ok(serviceSource.includes("UPDATE_STORAGE_DIR"), "update.service deve suportar storage configuravel");
 assert.ok(serviceSource.includes("reconcileRecoveredJob"), "update.service deve reconciliar jobs apos reinicio");
 assert.ok(serviceSource.includes("dockerStackRecovered"), "update.service deve validar saude Docker antes de recuperar job como sucesso");
+assert.ok(serviceSource.includes("dockerComposeServiceContainerId"), "update.service deve localizar containers pelo servico Docker Compose");
+assert.ok(serviceSource.includes('"ps",') && serviceSource.includes('"-q",'), "update.service deve consultar ids via docker compose ps -q");
 assert.ok(serviceSource.includes("Consulta de release indisponível durante atualização"), "status deve degradar para job local durante update ativo");
 
 assert.ok(compose.includes("pg_isready -U nexus -d nexus_chatbot_db"), "Postgres deve validar o banco correto no healthcheck");

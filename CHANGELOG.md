@@ -2,6 +2,13 @@
 
 Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
+## [1.0.13] - 2026-06-11
+
+### Fixed
+
+- Corrigida a reconciliacao pos-restart do Update Center para validar containers pelo servico Docker Compose (`docker compose ps -q`) em vez de depender apenas de nomes fixos como `nexus-postgres`.
+- Evitado falso erro/travamento de job quando uma VPS preserva um container Postgres legado, como `58f05aea1121_nexus-postgres`, durante update seletivo de backend/frontend.
+
 ## [1.0.12] - 2026-06-11
 
 ### Upgrade notes

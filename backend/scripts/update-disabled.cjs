@@ -119,6 +119,8 @@ function assertStaticGuards(backendRoot, frontendRoot) {
   assert.ok(serviceSource.includes("detached: true"), "worker deve ser destacado do request");
   assert.ok(serviceSource.includes("child.unref()"), "worker destacado deve usar unref");
   assert.ok(serviceSource.includes("dockerStackRecovered"), "service deve validar saude Docker antes de recuperar sucesso apos restart");
+  assert.ok(serviceSource.includes("dockerComposeServiceContainerId"), "service deve validar saude por servico Docker Compose apos restart");
+  assert.ok(serviceSource.includes('"ps",') && serviceSource.includes('"-q",'), "service deve consultar container id via docker compose ps -q");
   assert.ok(serviceSource.includes("Consulta de release indisponível durante atualização"), "status deve acompanhar job local se consulta externa/banco falhar durante update");
 
   assert.ok(runnerSource.includes('path.basename(scriptPath) !== "update.sh"'), "runner deve restringir execucao ao update.sh");

@@ -102,6 +102,43 @@ function dockerInspectHealth(containerName: string): "healthy" | "running" | "un
   }
 }
 
+function dockerComposeServiceContainerId(service: "postgres" | "backend" | "frontend"): string | null {
+  try {
+    const projectName = process.env.COMPOSE_PROJECT_NAME || "nexuszap-free";
+    const output = execFileSync("docker", [
+      "compose",
+      "-p",
+      projectName,
+      "ps",
+      "-a",
+      "-q",
+      service,
+    ], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 3000 }).trim();
+
+    return output.split(/\r?\n/).find(Boolean) || null;
+  } catch {
+    return null;
+  }
+}
+
+function dockerServiceHealth(
+  service: "postgres" | "backend" | "frontend",
+  fallbackNames: string[]
+): "healthy" | "running" | "unhealthy" | "missing" | "unknown" {
+  const composeContainerId = dockerComposeServiceContainerId(service);
+  if (composeContainerId) {
+    const health = dockerInspectHealth(composeContainerId);
+    if (health !== "missing") return health;
+  }
+
+  for (const name of fallbackNames) {
+    const health = dockerInspectHealth(name);
+    if (health !== "missing") return health;
+  }
+
+  return "missing";
+}
+
 function canVerifyDockerHealth() {
   try {
     execFileSync("docker", ["version", "--format", "{{.Client.Version}}"], { stdio: "ignore", timeout: 3000 });
@@ -114,9 +151,9 @@ function canVerifyDockerHealth() {
 function dockerStackRecovered() {
   if (!canVerifyDockerHealth()) return null;
 
-  const postgres = dockerInspectHealth("nexus-postgres");
-  const backend = dockerInspectHealth("nexus-backend");
-  const frontend = dockerInspectHealth("nexus-frontend");
+  const postgres = dockerServiceHealth("postgres", ["nexus-postgres"]);
+  const backend = dockerServiceHealth("backend", ["nexus-backend"]);
+  const frontend = dockerServiceHealth("frontend", ["nexus-frontend"]);
 
   return (postgres === "healthy" || postgres === "running")
     && (backend === "healthy" || backend === "running")
