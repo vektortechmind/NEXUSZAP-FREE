@@ -15,7 +15,9 @@ const path = require("path");
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "nexus-setup-"));
 const envPath = path.join(tempDir, ".env");
+const frontendEnvPath = path.join(tempDir, "frontend", ".env.production");
 process.env.NEXUS_ENV_FILE = envPath;
+process.env.NEXUS_FRONTEND_ENV_FILE = frontendEnvPath;
 
 fs.writeFileSync(envPath, [
   'NODE_ENV="test"',
@@ -50,6 +52,8 @@ const { buildServer } = require("../src/server");
   assert.ok(envContent.includes('APP_URL="https://api.example.com"'));
   assert.ok(envContent.includes('OPENROUTER_REFERER="https://app.example.com"'));
   assert.ok(envContent.includes('CORS_ORIGINS="http://localhost,https://app.example.com"'));
+  const frontendEnvContent = fs.readFileSync(frontendEnvPath, "utf8");
+  assert.ok(frontendEnvContent.includes('VITE_API_URL="https://api.example.com/api"'));
   assert.equal(JSON.parse(docker.body).nextUrl, "https://app.example.com/criar-admin?token=test-setup-token-with-enough-length");
 
   const tempLogin = await app.inject({

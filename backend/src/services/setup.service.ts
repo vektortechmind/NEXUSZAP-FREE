@@ -15,6 +15,20 @@ function resolveEnvPath(): string {
   return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0];
 }
 
+function resolveFrontendProductionEnvPath(): string {
+  if (process.env.NEXUS_FRONTEND_ENV_FILE) {
+    return process.env.NEXUS_FRONTEND_ENV_FILE;
+  }
+
+  const candidates = [
+    process.env.UPDATE_WORKSPACE_DIR ? path.join(process.env.UPDATE_WORKSPACE_DIR, "frontend", ".env.production") : null,
+    path.resolve(process.cwd(), "..", "frontend", ".env.production"),
+    path.resolve(process.cwd(), "frontend", ".env.production")
+  ].filter(Boolean) as string[];
+
+  return candidates.find((candidate) => fs.existsSync(path.dirname(candidate))) ?? candidates[0];
+}
+
 function quoteEnvValue(value: string): string {
   return `"${value.replace(/\\/g, "\\\\").replace(/\"/g, '\\"').replace(/\$/g, "\\$").replace(/`/g, "\\`")}"`;
 }
@@ -72,6 +86,43 @@ export function updateEnvFile(updates: EnvUpdates): void {
   fs.writeFileSync(envPath, `${next.filter((line, index) => line.length > 0 || index < next.length - 1).join("\n")}\n`, {
     mode: 0o600
   });
+}
+
+function updateKeyValueEnvFile(filePath: string, updates: EnvUpdates, removeKeys: string[] = []): void {
+  const dir = path.dirname(filePath);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+  const lines = fs.existsSync(filePath) ? fs.readFileSync(filePath, "utf8").split(/\r?\n/) : [];
+  const seen = new Set<string>();
+  const remove = new Set(removeKeys);
+  const next = lines.flatMap((line) => {
+    const parsed = parseEnvLine(line);
+    if (!parsed) return [line];
+    if (remove.has(parsed.key)) return [];
+    if (!(parsed.key in updates)) return [line];
+    seen.add(parsed.key);
+    return [`${parsed.key}=${quoteEnvValue(updates[parsed.key])}`];
+  });
+
+  for (const [key, value] of Object.entries(updates)) {
+    if (!seen.has(key)) next.push(`${key}=${quoteEnvValue(value)}`);
+  }
+
+  fs.writeFileSync(filePath, `${next.filter((line, index) => line.length > 0 || index < next.length - 1).join("\n")}\n`, {
+    mode: 0o600
+  });
+}
+
+export function updateFrontendProductionApiUrl(appUrl: string, panelUrl: string | null): void {
+  const envPath = resolveFrontendProductionEnvPath();
+  if (panelUrl && panelUrl !== appUrl) {
+    updateKeyValueEnvFile(envPath, { VITE_API_URL: `${appUrl}/api` });
+    return;
+  }
+
+  if (fs.existsSync(envPath)) {
+    updateKeyValueEnvFile(envPath, {}, ["VITE_API_URL"]);
+  }
 }
 
 export function getSetupToken(): string | undefined {

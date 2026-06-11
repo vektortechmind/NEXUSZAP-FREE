@@ -7,7 +7,8 @@ import {
   mergeCorsOrigins,
   normalizePublicUrl,
   readEnvValue,
-  updateEnvFile
+  updateEnvFile,
+  updateFrontendProductionApiUrl
 } from "../services/setup.service";
 
 const tokenSchema = z.string().min(16).max(256).optional();
@@ -75,6 +76,7 @@ export async function setupRoutes(fastify: FastifyInstance) {
         OPENROUTER_REFERER: panelUrl ?? appUrl
       };
       updateEnvFile(envUpdates);
+      updateFrontendProductionApiUrl(appUrl, panelUrl);
 
       const nextBaseUrl = panelUrl ?? appUrl;
       return reply.send({ success: true, appUrl, panelUrl, nextUrl: `${nextBaseUrl}/criar-admin?token=${body.token}` });
