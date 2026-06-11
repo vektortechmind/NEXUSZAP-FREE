@@ -10,8 +10,16 @@ process.env.PORT = process.env.PORT || "0";
 require("ts-node/register");
 
 const assert = require("assert");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
 const { buildServer } = require("../src/server");
 const { buildAllowedOrigins, createOriginGuard } = require("../src/security/middlewares");
+
+const originalAdminPassword = process.env.ADMIN_PASSWORD;
+const tempEnvDir = fs.mkdtempSync(path.join(os.tmpdir(), "nexuszap-security-"));
+process.env.NEXUS_ENV_FILE = path.join(tempEnvDir, ".env");
+fs.writeFileSync(process.env.NEXUS_ENV_FILE, `ADMIN_EMAIL="${process.env.ADMIN_EMAIL}"\nADMIN_PASSWORD="${process.env.ADMIN_PASSWORD}"\nADMIN_SETUP_REQUIRED="false"\n`, { mode: 0o600 });
 
 function cookieHeader(setCookie) {
   const values = Array.isArray(setCookie) ? setCookie : [setCookie];
@@ -65,6 +73,109 @@ async function login(app, email = process.env.ADMIN_EMAIL, password = process.en
     });
     assert.equal(validLogout.statusCode, 200, validLogout.body);
 
+    const unchangedPassword = process.env.ADMIN_PASSWORD;
+    const noSessionChange = await app.inject({
+      method: "POST",
+      url: "/api/auth/change-password",
+      payload: {
+        currentPassword: unchangedPassword,
+        newPassword: "ChangedPassword1!",
+        confirmPassword: "ChangedPassword1!"
+      }
+    });
+    assert.equal(noSessionChange.statusCode, 401, noSessionChange.body);
+    assert.equal(process.env.ADMIN_PASSWORD, unchangedPassword, "rota sem sessao nao deve alterar senha");
+
+    const passwordLogin = await login(app);
+    assert.equal(passwordLogin.statusCode, 200, passwordLogin.body);
+    const passwordCookies = cookieHeader(passwordLogin.headers["set-cookie"]);
+    const passwordCsrfToken = getCookieValue(passwordLogin.headers["set-cookie"], "csrfToken");
+    assert.ok(passwordCsrfToken, "login para troca de senha deve retornar CSRF");
+
+    const missingCsrfChange = await app.inject({
+      method: "POST",
+      url: "/api/auth/change-password",
+      headers: { cookie: passwordCookies },
+      payload: {
+        currentPassword: unchangedPassword,
+        newPassword: "ChangedPassword1!",
+        confirmPassword: "ChangedPassword1!"
+      }
+    });
+    assert.equal(missingCsrfChange.statusCode, 403, missingCsrfChange.body);
+    assert.equal(process.env.ADMIN_PASSWORD, unchangedPassword, "rota sem CSRF nao deve alterar senha");
+
+    const wrongCurrentChange = await app.inject({
+      method: "POST",
+      url: "/api/auth/change-password",
+      headers: { cookie: passwordCookies, "x-csrf-token": passwordCsrfToken },
+      payload: {
+        currentPassword: "wrong-current-password",
+        newPassword: "ChangedPassword1!",
+        confirmPassword: "ChangedPassword1!"
+      }
+    });
+    assert.equal(wrongCurrentChange.statusCode, 401, wrongCurrentChange.body);
+
+    const weakChange = await app.inject({
+      method: "POST",
+      url: "/api/auth/change-password",
+      headers: { cookie: passwordCookies, "x-csrf-token": passwordCsrfToken },
+      payload: {
+        currentPassword: unchangedPassword,
+        newPassword: "weak-password",
+        confirmPassword: "weak-password"
+      }
+    });
+    assert.equal(weakChange.statusCode, 400, weakChange.body);
+
+    const mismatchChange = await app.inject({
+      method: "POST",
+      url: "/api/auth/change-password",
+      headers: { cookie: passwordCookies, "x-csrf-token": passwordCsrfToken },
+      payload: {
+        currentPassword: unchangedPassword,
+        newPassword: "ChangedPassword1!",
+        confirmPassword: "ChangedPassword2!"
+      }
+    });
+    assert.equal(mismatchChange.statusCode, 400, mismatchChange.body);
+
+    const samePasswordChange = await app.inject({
+      method: "POST",
+      url: "/api/auth/change-password",
+      headers: { cookie: passwordCookies, "x-csrf-token": passwordCsrfToken },
+      payload: {
+        currentPassword: unchangedPassword,
+        newPassword: unchangedPassword,
+        confirmPassword: unchangedPassword
+      }
+    });
+    assert.equal(samePasswordChange.statusCode, 400, samePasswordChange.body);
+
+    const changedPassword = "ChangedPassword1!";
+    const validChange = await app.inject({
+      method: "POST",
+      url: "/api/auth/change-password",
+      headers: { cookie: passwordCookies, "x-csrf-token": passwordCsrfToken },
+      payload: {
+        currentPassword: unchangedPassword,
+        newPassword: changedPassword,
+        confirmPassword: changedPassword
+      }
+    });
+    assert.equal(validChange.statusCode, 200, validChange.body);
+    assert.equal(process.env.ADMIN_PASSWORD, changedPassword, "troca valida deve atualizar ADMIN_PASSWORD em runtime");
+    assert.match(fs.readFileSync(process.env.NEXUS_ENV_FILE, "utf8"), /ADMIN_PASSWORD="ChangedPassword1!"/, "troca valida deve persistir no env temporario");
+    const clearedCookies = validChange.headers["set-cookie"];
+    assert.ok(String(clearedCookies).includes("token="), "troca valida deve limpar cookie de sessao");
+    assert.ok(String(clearedCookies).includes("csrfToken="), "troca valida deve limpar cookie CSRF");
+
+    const oldPasswordLogin = await login(app, process.env.ADMIN_EMAIL, unchangedPassword);
+    assert.equal(oldPasswordLogin.statusCode, 401, oldPasswordLogin.body);
+    const newPasswordLogin = await login(app, process.env.ADMIN_EMAIL, changedPassword);
+    assert.equal(newPasswordLogin.statusCode, 200, newPasswordLogin.body);
+
     const attempts = [];
     for (let i = 0; i < 11; i++) {
       attempts.push(await login(app, "admin@example.com", `wrong-${i}`));
@@ -111,6 +222,8 @@ async function login(app, email = process.env.ADMIN_EMAIL, password = process.en
     console.log("security-api: OK");
   } finally {
     await app.close();
+    process.env.ADMIN_PASSWORD = originalAdminPassword;
+    fs.rmSync(tempEnvDir, { recursive: true, force: true });
   }
 })().catch((err) => {
   console.error("security-api:", err);

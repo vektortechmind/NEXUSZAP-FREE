@@ -1,13 +1,35 @@
 import { FastifyInstance, FastifyRequest } from "fastify";
 import { env } from "../config/env";
 import { z } from "zod";
-import { csrfCookieName, generateCsrfToken, verifyCsrf, verifyJwt } from "../security/middlewares";
+import { csrfCookieName, generateCsrfToken, verifyCsrf, verifyCsrfStrict, verifyJwt } from "../security/middlewares";
 import { timingSafeEqual } from "crypto";
-import { getAdminCredentials, isAdminSetupRequired } from "../services/setup.service";
+import { getAdminCredentials, isAdminSetupRequired, updateEnvFile } from "../services/setup.service";
 
 const loginSchema = z.object({
   email: z.string().trim().email().max(254),
   password: z.string().min(1).max(256)
+});
+
+const passwordStrengthMessage = "Use uma senha com no mínimo 12 caracteres, maiúscula, minúscula, número e símbolo.";
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1).max(256),
+  newPassword: z.string().min(12, passwordStrengthMessage).max(256),
+  confirmPassword: z.string().min(1).max(256)
+}).superRefine((value, ctx) => {
+  if (value.newPassword !== value.confirmPassword) {
+    ctx.addIssue({ code: "custom", path: ["confirmPassword"], message: "As senhas não conferem." });
+  }
+  if (!/[a-z]/.test(value.newPassword) || !/[A-Z]/.test(value.newPassword) || !/\d/.test(value.newPassword) || !/[^A-Za-z0-9]/.test(value.newPassword)) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["newPassword"],
+      message: passwordStrengthMessage
+    });
+  }
+  if (value.currentPassword === value.newPassword) {
+    ctx.addIssue({ code: "custom", path: ["newPassword"], message: "A nova senha deve ser diferente da senha atual." });
+  }
 });
 
 function safeEqual(a: string, b: string): boolean {
@@ -82,6 +104,35 @@ export async function authRoutes(fastify: FastifyInstance) {
     reply.clearCookie("token", { path: "/" });
     reply.clearCookie(csrfCookieName, { path: "/" });
     return reply.send({ success: true });
+  });
+
+  fastify.post("/change-password", {
+    preValidation: [verifyJwt, verifyCsrfStrict],
+    config: {
+      rateLimit: {
+        max: 20,
+        timeWindow: "1 minute"
+      }
+    }
+  }, async (request, reply) => {
+    try {
+      const { currentPassword, newPassword } = changePasswordSchema.parse(request.body);
+      const admin = getAdminCredentials();
+
+      if (!safeEqual(currentPassword, admin.password)) {
+        return reply.status(401).send({ error: "Senha atual inválida." });
+      }
+
+      updateEnvFile({ ADMIN_PASSWORD: newPassword });
+      reply.clearCookie("token", { path: "/" });
+      reply.clearCookie(csrfCookieName, { path: "/" });
+      return reply.send({ success: true, message: "Senha alterada. Entre novamente." });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return reply.status(400).send({ error: error.issues[0]?.message ?? "Dados inválidos." });
+      }
+      return reply.status(400).send({ error: "Não foi possível alterar a senha." });
+    }
   });
 
   fastify.get("/me", { preValidation: [verifyJwt] }, async (request, reply) => {

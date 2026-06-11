@@ -13,6 +13,7 @@ interface AuthContextType {
   error: string | null;
   login: (emailParam: string, passwordParam: string) => Promise<void>;
   logout: () => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string, confirmPassword: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -70,7 +71,13 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setUser(null);
   }, []);
 
-  const value = useMemo(() => ({ user, loading, login, logout, error }), [user, loading, login, logout, error]);
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string, confirmPassword: string) => {
+    ++authRequestSeq.current;
+    await api.post("/auth/change-password", { currentPassword, newPassword, confirmPassword });
+    setUser(null);
+  }, []);
+
+  const value = useMemo(() => ({ user, loading, login, logout, changePassword, error }), [user, loading, login, logout, changePassword, error]);
 
   return (
     <AuthContext.Provider value={value}>

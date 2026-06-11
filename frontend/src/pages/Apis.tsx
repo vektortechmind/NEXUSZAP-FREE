@@ -1,8 +1,9 @@
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
+import { useNavigate } from "react-router-dom";
 import { api, apiLong } from "../lib/axios";
-import { AlertCircle, BookOpen, Check, Layers, RefreshCw, Save, Search, Shield, Wifi } from "lucide-react";
+import { AlertCircle, BookOpen, Check, KeyRound, Layers, Lock, RefreshCw, Save, Search, Shield, Wifi } from "lucide-react";
 import { UpdateSection } from "../components/UpdateSection";
 import { Button } from "../components/ui/Button";
 import { DataTable, DataTableCell, DataTableHeadCell, DataTableHeader } from "../components/ui/DataTable";
@@ -14,6 +15,7 @@ import { Skeleton } from "../components/ui/Skeleton";
 import { StatusDot } from "../components/ui/StatusDot";
 import { Tabs } from "../components/ui/Tabs";
 import { Toolbar } from "../components/ui/Toolbar";
+import { useAuth } from "../contexts/AuthContext";
 import { useToast } from "../contexts/ToastContext";
 import {
   buildConfigSavePayload,
@@ -38,6 +40,14 @@ function ApiSkeleton() {
   );
 }
 
+function passwordChangeErrorMessage(err: unknown): string {
+  if (!axios.isAxiosError(err)) return "Erro inesperado ao alterar senha.";
+  const data = err.response?.data as { error?: string; message?: string } | undefined;
+  if (err.response?.status === 401) return data?.error ?? "Senha atual inválida.";
+  if (err.response?.status === 403) return "Sessão expirada ou CSRF inválido. Entre novamente.";
+  return data?.error ?? data?.message ?? "Não foi possível alterar a senha.";
+}
+
 export function Apis() {
   const [cfg, setCfg] = useState<AgentConfig | null>(null);
   const [health, setHealth] = useState<ProviderHealth | null>(null);
@@ -47,6 +57,13 @@ export function Apis() {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [selectedProvider, setSelectedProvider] = useState<ProviderId>("gemini");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const navigate = useNavigate();
+  const { changePassword } = useAuth();
   const { addToast } = useToast();
 
   const load = useCallback(async () => {
@@ -134,6 +151,30 @@ export function Apis() {
     }
   };
 
+  const handleChangePassword = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setPasswordError(null);
+
+    if (newPassword !== confirmPassword) {
+      setPasswordError("As senhas não conferem.");
+      return;
+    }
+
+    setPasswordSaving(true);
+    try {
+      await changePassword(currentPassword, newPassword, confirmPassword);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      addToast("Senha alterada. Entre novamente.", "success");
+      navigate("/login", { replace: true });
+    } catch (err) {
+      setPasswordError(passwordChangeErrorMessage(err));
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
   if (loading) return <ApiSkeleton />;
 
   if (error || !cfg) {
@@ -148,7 +189,8 @@ export function Apis() {
   }
 
   return (
-    <form onSubmit={save} className="space-y-6">
+    <div className="space-y-6">
+    <form id="provider-settings-form" onSubmit={save} className="space-y-6">
       <Toolbar aria-label="Ações de configuração">
         <div className="flex w-full flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex flex-wrap items-center gap-3 text-sm text-slate-600 dark:text-slate-400">
@@ -353,8 +395,64 @@ export function Apis() {
         </Panel>
       </Section> : null}
 
-      <UpdateSection />
     </form>
+
+      <Section title="Senha do administrador" description="Altere a senha do usuário logado e entre novamente com a nova credencial.">
+        <Panel className="p-4">
+          <form onSubmit={handleChangePassword} className="space-y-4">
+            {passwordError ? <InlineAlert tone="danger" icon={<AlertCircle size={16} aria-hidden="true" />}>{passwordError}</InlineAlert> : null}
+            <div className="grid gap-4 lg:grid-cols-3">
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                <span className="mb-1.5 flex items-center gap-2"><Lock className="h-4 w-4" aria-hidden="true" />Senha atual</span>
+                <input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                  autoComplete="current-password"
+                  disabled={passwordSaving}
+                  required
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                />
+              </label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                <span className="mb-1.5 flex items-center gap-2"><KeyRound className="h-4 w-4" aria-hidden="true" />Nova senha</span>
+                <input
+                  type="password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  autoComplete="new-password"
+                  disabled={passwordSaving}
+                  minLength={12}
+                  required
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                />
+              </label>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                <span className="mb-1.5 flex items-center gap-2"><KeyRound className="h-4 w-4" aria-hidden="true" />Confirmar nova senha</span>
+                <input
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  autoComplete="new-password"
+                  disabled={passwordSaving}
+                  minLength={12}
+                  required
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100"
+                />
+              </label>
+            </div>
+            <div className="flex flex-col gap-3 border-t border-slate-200 pt-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between">
+              <p className="text-sm text-slate-600 dark:text-slate-400">Use no mínimo 12 caracteres com maiúscula, minúscula, número e símbolo.</p>
+              <Button type="submit" loading={passwordSaving} disabled={!currentPassword || !newPassword || !confirmPassword} className="w-full sm:w-auto">
+                <KeyRound className="mr-2 h-4 w-4" aria-hidden="true" />
+                Alterar senha
+              </Button>
+            </div>
+          </form>
+        </Panel>
+      </Section>
+
+      <UpdateSection />
+    </div>
   );
 }
-

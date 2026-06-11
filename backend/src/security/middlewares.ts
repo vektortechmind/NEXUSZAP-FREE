@@ -4,7 +4,7 @@ import { FastifyReply, FastifyRequest } from "fastify";
 const CSRF_COOKIE_NAME = "csrfToken";
 const CSRF_HEADER_NAME = "x-csrf-token";
 const MUTATING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-const CSRF_EXEMPT_PATHS = new Set(["/api/auth/login", "/api/setup/docker", "/api/setup/admin", "/api/integrations/events"]);
+const CSRF_EXEMPT_PATHS = new Set(["/api/auth/login", "/api/auth/change-password", "/api/setup/docker", "/api/setup/admin", "/api/integrations/events"]);
 const ORIGIN_GUARD_EXEMPT_PATHS = new Set(["/api/integrations/events"]);
 
 export const csrfCookieName = CSRF_COOKIE_NAME;
@@ -130,6 +130,12 @@ export function isCorsOriginAllowedForRequest(
 
 export async function verifyCsrf(request: FastifyRequest, reply: FastifyReply) {
   if (!isMutatingRequest(request) || isCsrfExempt(request)) return;
+
+  return verifyCsrfStrict(request, reply);
+}
+
+export async function verifyCsrfStrict(request: FastifyRequest, reply: FastifyReply) {
+  if (!isMutatingRequest(request)) return;
 
   const csrfCookie = request.cookies?.[CSRF_COOKIE_NAME];
   const csrfHeader = getHeaderValue(request.headers[CSRF_HEADER_NAME]);
