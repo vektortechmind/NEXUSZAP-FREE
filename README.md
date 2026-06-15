@@ -16,6 +16,10 @@
 
 NexusZAP e uma plataforma gratuita para automacao de atendimento no WhatsApp e Telegram com IA, base de conhecimento, painel administrativo e endpoint publico para integracoes externas.
 
+<div align="center">
+  <img src="assets/interface.png" alt="Interface do painel NexusZAP" width="900" />
+</div>
+
 ## O que o NexusZAP entrega
 
 - Conexao e gestao de instancias WhatsApp via Baileys e Telegram.
