@@ -17,6 +17,21 @@ function assertNo(rel, patterns) {
   }
 }
 
+function functionBody(source, name) {
+  const marker = `${name}() {`;
+  const start = source.indexOf(marker);
+  assert.ok(start >= 0, `${name} deve existir`);
+  let depth = 0;
+  for (let index = start; index < source.length; index += 1) {
+    if (source[index] === "{") depth += 1;
+    if (source[index] === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(start, index + 1);
+    }
+  }
+  assert.fail(`${name} deve ter corpo delimitado`);
+}
+
 const activeFiles = [
   "README.md",
   "install.sh",
@@ -98,6 +113,34 @@ assert.ok(
   "install.sh deve usar a API publica em :3001 como bootstrap de APP_URL"
 );
 assert.ok(
+  read("install.sh").includes('FRONTEND_HTTP_PORT="8081"'),
+  "install.sh deve criar backend/.env com FRONTEND_HTTP_PORT=8081 por padrao"
+);
+assert.ok(
+  functionBody(read("install.sh"), "ensure_frontend_port").includes('local preferred="${FRONTEND_HTTP_PORT:-8081}"'),
+  "install.sh deve preferir FRONTEND_HTTP_PORT=8081 quando a variavel nao existe"
+);
+assert.ok(
+  functionBody(read("install.sh"), "ensure_frontend_port").includes('compose_env_set FRONTEND_HTTP_PORT "$preferred"'),
+  "install.sh deve atualizar .env da raiz por helper compose_env_set"
+);
+assert.ok(
+  functionBody(read("install.sh"), "ensure_frontend_port").includes('env_set FRONTEND_HTTP_PORT "$preferred"'),
+  "install.sh deve registrar FRONTEND_HTTP_PORT em backend/.env preservando variaveis existentes"
+);
+assert.ok(
+  read("install.sh").includes("curl -i http://127.0.0.1:${FRONTEND_PORT}/") && read("install.sh").includes("sudo ss -tulpn | grep -E ':80|:443|:${FRONTEND_PORT}|:3001'"),
+  "install.sh deve exibir validacoes de frontend, backend e portas"
+);
+assert.ok(
+  read("install.sh").includes("Nginx/Certbot apontando para 127.0.0.1:${FRONTEND_PORT}"),
+  "install.sh deve orientar Nginx/Certbot no host para HTTPS"
+);
+assert.ok(
+  read("docker-compose.yml").includes('${FRONTEND_HTTP_PORT:-8081}:80'),
+  "docker-compose.yml deve publicar frontend em 8081 quando FRONTEND_HTTP_PORT nao existir"
+);
+assert.ok(
   read("update.sh").includes("run_backend_migrations_docker"),
   "update.sh deve verificar e aplicar migrations Prisma no fluxo Docker"
 );
@@ -116,6 +159,24 @@ assert.ok(
 assert.ok(
   read("update.sh").includes("http://${ip}:3001"),
   "update.sh deve usar a API publica em :3001 como bootstrap de APP_URL"
+);
+assert.ok(
+  functionBody(read("update.sh"), "ensure_frontend_port").includes('local preferred="${FRONTEND_HTTP_PORT:-8081}"'),
+  "update.sh deve usar 8081 como fallback quando FRONTEND_HTTP_PORT nao existe"
+);
+assert.ok(
+  functionBody(read("update.sh"), "ensure_frontend_port").includes('port_owned_by_compose_frontend "$preferred"'),
+  "update.sh deve preservar porta explicitamente publicada pelo proprio frontend Compose"
+);
+assertNo("install.sh", [/printf\s+['"]FRONTEND_HTTP_PORT=.*>\s*backend\/\.env/, /cat\s*>\s*backend\/\.env\s*<<[^\n]*FRONTEND_HTTP_PORT/]);
+assertNo("update.sh", [/printf\s+['"]FRONTEND_HTTP_PORT=.*>\s*backend\/\.env/, /cat\s*>\s*backend\/\.env\s*<<[^\n]*FRONTEND_HTTP_PORT/]);
+assert.ok(
+  read("README.md").includes("proxy_pass http://127.0.0.1:8081") && read("README.md").includes("proxy_set_header Upgrade $http_upgrade"),
+  "README.md deve documentar Nginx para 127.0.0.1:8081 com suporte a WebSocket"
+);
+assert.ok(
+  read("README.md").includes("Use `VITE_API_URL` somente quando o painel e a API estiverem em origens diferentes"),
+  "README.md deve limitar VITE_API_URL ao caso de origem separada"
 );
 assert.ok(
   /^v\d+\.\d+\.\d+/.test(read("backend/VERSION").trim()),
@@ -148,4 +209,3 @@ assert.deepStrictEqual(
 );
 
 console.log("ops-postgresql-cleanup: OK");
-

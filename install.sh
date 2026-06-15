@@ -338,7 +338,7 @@ port_in_use() {
 }
 
 ensure_frontend_port() {
-  local preferred="${FRONTEND_HTTP_PORT:-80}"
+  local preferred="${FRONTEND_HTTP_PORT:-8081}"
   if ! port_in_use "$preferred"; then
     env_set FRONTEND_HTTP_PORT "$preferred"
     compose_env_set FRONTEND_HTTP_PORT "$preferred"
@@ -346,7 +346,7 @@ ensure_frontend_port() {
   fi
 
   local candidate
-  for candidate in 8080 8081 8082 8090; do
+  for candidate in 8080 8082 8090; do
     if ! port_in_use "$candidate"; then
       echo "Porta ${preferred} ocupada. Usando porta ${candidate} para o painel."
       env_set FRONTEND_HTTP_PORT "$candidate"
@@ -355,18 +355,14 @@ ensure_frontend_port() {
     fi
   done
 
-  echo "ERRO: nao encontrei porta HTTP livre entre ${preferred}, 8080, 8081, 8082 e 8090." >&2
+  echo "ERRO: nao encontrei porta HTTP livre entre ${preferred}, 8080, 8082 e 8090." >&2
   exit 1
 }
 
 public_base_url() {
   local ip="$1"
-  local port="${FRONTEND_HTTP_PORT:-80}"
-  if [[ "$port" == "80" ]]; then
-    echo "http://${ip}"
-  else
-    echo "http://${ip}:${port}"
-  fi
+  local port="${FRONTEND_HTTP_PORT:-8081}"
+  echo "http://${ip}:${port}"
 }
 
 ensure_bootstrap_app_url() {
@@ -409,7 +405,7 @@ CORS_ORIGINS="http://localhost,http://localhost:5173,http://localhost:4173"
 APP_URL=""
 SETUP_TOKEN="$setup_token"
 SETUP_COMPLETED="false"
-FRONTEND_HTTP_PORT="80"
+FRONTEND_HTTP_PORT="8081"
 GITHUB_REPO="vektortechmind/NEXUSZAP-FREE"
 EOF
 
@@ -479,16 +475,31 @@ if docker_compose_available; then
   ensure_bootstrap_app_url
   docker_compose up -d --build
   run_backend_migrations_docker
-  PUBLIC_BASE_URL="$(public_base_url "$(public_ip)")"
+  PUBLIC_IP="$(public_ip)"
+  FRONTEND_PORT="${FRONTEND_HTTP_PORT:-8081}"
+  PUBLIC_BASE_URL="$(public_base_url "$PUBLIC_IP")"
   SETUP_URL="${PUBLIC_BASE_URL}/docker-setup?token=${SETUP_TOKEN:-}"
   ADMIN_URL="${PUBLIC_BASE_URL}/criar-admin?token=${SETUP_TOKEN:-}"
   echo "Stack Docker iniciada."
+  echo ""
+  echo "URLs internas/publicadas da stack Docker:"
+  echo "Painel Docker: http://${PUBLIC_IP}:${FRONTEND_PORT}"
+  echo "Backend/API direto: http://${PUBLIC_IP}:3001/api/ping"
   echo ""
   echo "Abra a configuracao inicial no navegador:"
   echo "$SETUP_URL"
   echo ""
   echo "Depois crie o primeiro administrador:"
   echo "$ADMIN_URL"
+  echo ""
+  echo "Validacoes rapidas na VPS:"
+  echo "curl -i http://127.0.0.1:${FRONTEND_PORT}/"
+  echo "curl -i http://127.0.0.1:3001/api/ping"
+  echo "sudo ss -tulpn | grep -E ':80|:443|:${FRONTEND_PORT}|:3001'"
+  echo ""
+  echo "Para HTTPS em producao, deixe 80/443 livres no host e use Nginx/Certbot apontando para 127.0.0.1:${FRONTEND_PORT}."
+  echo "Em dominio unico, nao crie frontend/.env.production: o painel usa /api relativo pelo Nginx interno do container."
+  echo "Use VITE_API_URL apenas quando a API estiver em origem separada do painel."
 else
   echo "Docker Compose nao encontrado. Instale Docker Compose e rode install.sh novamente na VPS."
 fi
@@ -497,4 +508,3 @@ remove_ps1
 
 echo ""
 echo "Instalacao concluida."
-

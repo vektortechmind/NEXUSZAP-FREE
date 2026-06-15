@@ -76,7 +76,7 @@ Serviço opcional a partir de **R$ 29,99**.
 Ao final da instalacao, acesse a URL exibida no terminal:
 
 ```text
-http://SEU_IP/docker-setup?token=SEU_TOKEN
+http://SEU_IP:8081/docker-setup?token=SEU_TOKEN
 ```
 
 Informe o dominio publico do painel/API. Essa etapa ajusta `APP_URL`, `CORS_ORIGINS` e finaliza a configuracao inicial.
@@ -89,6 +89,42 @@ http://SEU_DOMINIO/criar-admin?token=SEU_TOKEN
 
 Enquanto o primeiro administrador nao for criado, o login normal fica bloqueado por seguranca.
 
+## HTTPS em producao com Nginx
+
+Em instalacoes Docker novas, o frontend interno fica publicado em `8081` por padrao. As portas `80` e `443` devem ficar livres para o Nginx/Certbot do host quando voce usar dominio e HTTPS.
+
+Validacoes locais na VPS:
+
+```bash
+curl -i http://127.0.0.1:8081/
+curl -i http://127.0.0.1:3001/api/ping
+sudo ss -tulpn | grep -E ':80|:443|:8081|:3001'
+```
+
+Exemplo de bloco Nginx para um unico dominio, encaminhando tudo ao frontend Docker. O Nginx interno do container preserva `/api` e `/ws/chat` para o backend:
+
+```nginx
+server {
+    listen 80;
+    server_name dominio.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:8081;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+Depois de validar DNS e acesso HTTP na porta `80`, emita o certificado com Certbot/Nginx conforme seu ambiente. O projeto nao executa Certbot automaticamente.
+
+Para dominio unico, nao crie `frontend/.env.production`: o painel usa `/api` relativo. Use `VITE_API_URL` somente quando o painel e a API estiverem em origens diferentes.
+
 ## URLs importantes
 
 Em uma instalacao padrao com Docker:
@@ -96,6 +132,7 @@ Em uma instalacao padrao com Docker:
 - Painel: `https://SEU_DOMINIO`
 - API publica: `https://SEU_DOMINIO/api`
 - Backend direto para suporte: `http://SEU_IP:3001/api`
+- Frontend Docker direto para suporte: `http://SEU_IP:8081`
 - Endpoint de integracoes: `https://SEU_DOMINIO/api/integrations/events`
 
 `APP_URL` deve apontar para a URL publica real da API. Sem isso, o painel pode exibir endpoint interno ou IP local em integracoes.

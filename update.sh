@@ -474,14 +474,14 @@ port_owned_by_compose_frontend() {
 }
 
 ensure_frontend_port() {
-  local preferred="${FRONTEND_HTTP_PORT:-80}"
+  local preferred="${FRONTEND_HTTP_PORT:-8081}"
   if ! port_in_use "$preferred" || port_owned_by_compose_frontend "$preferred"; then
     compose_env_set FRONTEND_HTTP_PORT "$preferred"
     return 0
   fi
 
   local candidate
-  for candidate in 8080 8081 8082 8090; do
+  for candidate in 8080 8082 8090; do
     if ! port_in_use "$candidate"; then
       echo "Porta ${preferred} ocupada. Usando porta ${candidate} para o painel."
       compose_env_set FRONTEND_HTTP_PORT "$candidate"
@@ -489,7 +489,7 @@ ensure_frontend_port() {
     fi
   done
 
-  echo "ERRO: nao encontrei porta HTTP livre entre ${preferred}, 8080, 8081, 8082 e 8090." >&2
+  echo "ERRO: nao encontrei porta HTTP livre entre ${preferred}, 8080, 8082 e 8090." >&2
   exit 1
 }
 
