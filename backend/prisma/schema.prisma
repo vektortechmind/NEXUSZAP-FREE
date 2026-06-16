@@ -63,6 +63,26 @@ enum IntegrationDispatchStatus {
   ERROR
 }
 
+enum ScheduledDispatchTargetType {
+  NUMBER
+  GROUP
+}
+
+enum ScheduledDispatchContentType {
+  TEXT
+  IMAGE
+  VIDEO
+}
+
+enum ScheduledDispatchStatus {
+  DRAFT
+  SCHEDULED
+  PROCESSING
+  SENT
+  FAILED
+  CANCELLED
+}
+
 model Instance {
   id                  String         @id @default(uuid())
   slot                Int            @unique
@@ -95,6 +115,7 @@ model Instance {
   messages            Message[]
   agent               Agent?
   integrationCredentials IntegrationCredential[]
+  scheduledDispatches ScheduledDispatch[]
 
   @@index([slot])
 }
@@ -307,4 +328,28 @@ model Settings {
   id          String   @id @default("github_update_settings")
   githubToken String?
   updatedAt   DateTime @updatedAt
+}
+
+model ScheduledDispatch {
+  id                String                      @id @default(uuid())
+  instanceId        String
+  instance          Instance                    @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  targetType        ScheduledDispatchTargetType
+  recipientPhone    String?
+  recipientJid      String?
+  contentType       ScheduledDispatchContentType
+  body              String?
+  mediaUrl          String?
+  scheduledAt       DateTime
+  status            ScheduledDispatchStatus     @default(SCHEDULED)
+  providerMessageId String?
+  failureCode       String?
+  providerError     String?
+  processedAt       DateTime?
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @default(now()) @updatedAt
+
+  @@index([instanceId, createdAt])
+  @@index([instanceId, scheduledAt])
+  @@index([status, scheduledAt])
 }

@@ -18,6 +18,7 @@ import updateRoutes from "./routes/update.routes";
 import { setupRoutes } from "./routes/setup.routes";
 import { integrationRoutes } from "./routes/integration.routes";
 import { chatRoutes } from "./routes/chat.routes";
+import { scheduledDispatchRoutes } from "./routes/scheduled-dispatch.routes";
 import { chatRealtime } from "./services/chat.realtime";
 import { createChatSocketServer } from "./services/chat.websocket";
 import { startChatMediaCleanupJob } from "./services/chat.mediaStorage";
@@ -110,6 +111,7 @@ export async function buildServer() {
   await fastify.register(setupRoutes, { prefix: "/api/setup" });
   await fastify.register(integrationRoutes, { prefix: "/api/integrations" });
   await fastify.register(chatRoutes, { prefix: "/api/chat" });
+  await fastify.register(scheduledDispatchRoutes, { prefix: "/api/scheduled-dispatches" });
 
   const chatSocketServer = createChatSocketServer(fastify);
   const chatMediaCleanupTimer = startChatMediaCleanupJob();
