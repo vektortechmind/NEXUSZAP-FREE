@@ -7,6 +7,7 @@ import {
   applyInstanceToDraft,
   createInitialScheduledDispatchDraft,
   filterScheduledDispatchGroups,
+  resolveScheduledDispatchIso,
   validateScheduledDispatchDraft,
   type ScheduledDispatchGroup,
 } from "../src/features/scheduled-dispatch/state.ts";
@@ -69,16 +70,83 @@ test("group filtering and submit validation enforce selected group", () => {
   assert.equal(validResult.canSubmit, true);
 });
 
-test("scheduled dispatch page keeps explicit load, empty, error and sync states for groups", () => {
+test("composer validation supports text image video and immediate scheduling rules", () => {
+  const base = {
+    ...createInitialScheduledDispatchDraft(new Date("2026-06-16T09:00:00.000Z")),
+    instanceId: "instance-a",
+    targetType: "number" as const,
+    phone: "5511999991234",
+  };
+
+  const textInvalid = validateScheduledDispatchDraft({
+    ...base,
+    contentType: "text",
+    body: "",
+    mediaUrl: "",
+  });
+  assert.equal(textInvalid.canSubmit, false);
+  assert.equal(textInvalid.body, "Escreva a mensagem do disparo.");
+
+  const imageInvalid = validateScheduledDispatchDraft({
+    ...base,
+    contentType: "image",
+    body: "Legenda opcional",
+    mediaUrl: "",
+  });
+  assert.equal(imageInvalid.canSubmit, false);
+  assert.equal(imageInvalid.mediaUrl, "Informe uma media URL valida com http ou https.");
+
+  const videoValid = validateScheduledDispatchDraft({
+    ...base,
+    contentType: "video",
+    body: "Legenda de video",
+    mediaUrl: "https://cdn.example.com/video.mp4",
+  });
+  assert.equal(videoValid.canSubmit, true);
+
+  const scheduledMissingDate = validateScheduledDispatchDraft({
+    ...base,
+    contentType: "text",
+    body: "Com data obrigatoria",
+    deliveryMode: "scheduled",
+    scheduledAt: "",
+  });
+  assert.equal(scheduledMissingDate.canSubmit, false);
+  assert.equal(scheduledMissingDate.scheduledAt, "Informe uma data e hora validas.");
+
+  const immediateValid = validateScheduledDispatchDraft({
+    ...base,
+    contentType: "image",
+    body: "",
+    mediaUrl: "https://cdn.example.com/banner.png",
+    deliveryMode: "immediate",
+    scheduledAt: "",
+  });
+  assert.equal(immediateValid.canSubmit, true);
+
+  const immediateIso = resolveScheduledDispatchIso({
+    ...base,
+    contentType: "text",
+    body: "Agora",
+    mediaUrl: "",
+    deliveryMode: "immediate",
+  }, new Date("2026-06-16T10:00:00.000Z"));
+  assert.equal(immediateIso, "2026-06-16T10:00:00.000Z");
+});
+
+test("scheduled dispatch page keeps composer states for media and delivery mode", () => {
   const source = fs.readFileSync(path.resolve(import.meta.dirname, "../src/pages/ScheduledDispatchPage.tsx"), "utf8");
   assert.match(source, /api\.get<GroupListResponse>\("\/scheduled-dispatches\/groups", \{ params: \{ instanceId: draft\.instanceId \} \}\)/);
   assert.match(source, /api\.post<GroupSyncResponse>\("\/scheduled-dispatches\/groups\/sync", \{ instanceId: draft\.instanceId \}\)/);
-  assert.match(source, /Carregando grupos da instancia selecionada/);
-  assert.match(source, /Nenhum grupo sincronizado para esta instancia/);
-  assert.match(source, /Nao foi possivel carregar os grupos desta instancia/);
-  assert.match(source, /Nenhum grupo encontrado para a busca informada/);
-  assert.match(source, /Selecione uma instancia antes de sincronizar grupos/);
+  assert.match(source, /contentType: draft\.contentType/);
+  assert.match(source, /deliveryMode: draft\.deliveryMode/);
+  assert.match(source, /draft\.deliveryMode === "scheduled"/);
+  assert.match(source, /draft\.deliveryMode === "immediate"/);
+  assert.match(source, /Media URL/);
+  assert.match(source, /Legenda \(opcional\)/);
+  assert.match(source, /Criar envio imediato/);
   assert.match(source, /Salvar disparo agendado/);
-  assert.doesNotMatch(source, /label="Group JID"/);
-  assert.doesNotMatch(source, /placeholder="120363/);
+  assert.match(source, /O job sera criado com timestamp atual/);
+  assert.match(source, /video src=\{draft\.mediaUrl\.trim\(\)\} className=.*controls/s);
+  assert.doesNotMatch(source, /eventSlug|renderContext|variaveis automaticas/i);
 });

@@ -19,7 +19,8 @@ type ScheduledDispatchCreateInput = {
   contentType: "text" | "image" | "video";
   body?: string | null;
   mediaUrl?: string | null;
-  scheduledAt: Date;
+  deliveryMode: "immediate" | "scheduled";
+  scheduledAt?: Date | null;
 };
 
 type ScheduledDispatchListInput = {
@@ -93,6 +94,24 @@ function normalizeOptionalText(value?: string | null): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function normalizeMediaUrl(value?: string | null): string | null {
+  const normalized = normalizeOptionalText(value);
+  if (!normalized) return null;
+
+  let parsed: URL;
+  try {
+    parsed = new URL(normalized);
+  } catch {
+    throw new ScheduledDispatchValidationError("Media URL invalida.");
+  }
+
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new ScheduledDispatchValidationError("Media URL deve usar http ou https.");
+  }
+
+  return parsed.toString();
 }
 
 function mapTargetType(value: ScheduledDispatchCreateInput["targetType"]): ScheduledDispatchTargetType {
@@ -279,9 +298,15 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
       const targetType = mapTargetType(input.targetType);
       const contentType = mapContentType(input.contentType);
       const body = normalizeOptionalText(input.body);
-      const mediaUrl = normalizeOptionalText(input.mediaUrl);
+      const mediaUrl = normalizeMediaUrl(input.mediaUrl);
 
-      if (Number.isNaN(input.scheduledAt.getTime())) {
+      const scheduledAt = input.deliveryMode === "immediate"
+        ? new Date()
+        : input.scheduledAt instanceof Date
+          ? input.scheduledAt
+          : new Date(Number.NaN);
+
+      if (Number.isNaN(scheduledAt.getTime())) {
         throw new ScheduledDispatchValidationError("Data de agendamento invalida.");
       }
 
@@ -324,7 +349,7 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
         contentType,
         body,
         mediaUrl,
-        scheduledAt: input.scheduledAt,
+        scheduledAt,
         status: "SCHEDULED",
       });
     },

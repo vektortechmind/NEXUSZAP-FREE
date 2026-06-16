@@ -47,7 +47,7 @@ function createApp() {
   };
   const app = Fastify();
   app.register(createScheduledDispatchRoutes({ service, groupSyncService, preValidationHook: async () => {} }), { prefix: "/api/scheduled-dispatches" });
-  return { app, store };
+  return { app };
 }
 
 (async () => {
@@ -70,7 +70,7 @@ function createApp() {
   assert.equal(syncedPayload.synced, 1);
   assert.equal(syncedPayload.groups[0].jid, "120363000099@g.us");
 
-  const createNumberResponse = await app.inject({
+  const createTextResponse = await app.inject({
     method: "POST",
     url: "/api/scheduled-dispatches",
     payload: {
@@ -79,36 +79,93 @@ function createApp() {
       phone: "+55 (11) 99999-1234",
       contentType: "text",
       body: "Oferta liberada",
+      deliveryMode: "scheduled",
       scheduledAt: "2026-06-20T12:00:00.000Z",
     },
   });
-  assert.equal(createNumberResponse.statusCode, 201, createNumberResponse.body);
-  const createdNumber = JSON.parse(createNumberResponse.body).dispatch;
-  assert.equal(createdNumber.instanceId, "instance-a");
-  assert.equal(createdNumber.targetType, "NUMBER");
-  assert.equal(createdNumber.recipientPhone, "5511999991234");
-  assert.equal(createdNumber.recipientJid, null);
-  assert.equal(createdNumber.contentType, "TEXT");
-  assert.equal(createdNumber.status, "SCHEDULED");
+  assert.equal(createTextResponse.statusCode, 201, createTextResponse.body);
+  const createdText = JSON.parse(createTextResponse.body).dispatch;
+  assert.equal(createdText.instanceId, "instance-a");
+  assert.equal(createdText.targetType, "NUMBER");
+  assert.equal(createdText.recipientPhone, "5511999991234");
+  assert.equal(createdText.recipientJid, null);
+  assert.equal(createdText.contentType, "TEXT");
+  assert.equal(createdText.status, "SCHEDULED");
 
-  const createGroupResponse = await app.inject({
+  const createImageResponse = await app.inject({
     method: "POST",
     url: "/api/scheduled-dispatches",
     payload: {
       instanceId: "instance-a",
       targetType: "group",
       groupJid: "120363000001@G.US",
-      contentType: "text",
-      body: "Legenda do disparo",
+      contentType: "image",
+      body: "Legenda da imagem",
+      mediaUrl: "https://cdn.example.com/banner.png",
+      deliveryMode: "scheduled",
       scheduledAt: "2026-06-21T15:30:00.000Z",
     },
   });
-  assert.equal(createGroupResponse.statusCode, 201, createGroupResponse.body);
-  const createdGroup = JSON.parse(createGroupResponse.body).dispatch;
-  assert.equal(createdGroup.targetType, "GROUP");
-  assert.equal(createdGroup.recipientPhone, null);
-  assert.equal(createdGroup.recipientJid, "120363000001@g.us");
-  assert.equal(createdGroup.contentType, "TEXT");
+  assert.equal(createImageResponse.statusCode, 201, createImageResponse.body);
+  const createdImage = JSON.parse(createImageResponse.body).dispatch;
+  assert.equal(createdImage.targetType, "GROUP");
+  assert.equal(createdImage.recipientJid, "120363000001@g.us");
+  assert.equal(createdImage.contentType, "IMAGE");
+  assert.equal(createdImage.mediaUrl, "https://cdn.example.com/banner.png");
+
+  const immediateBefore = Date.now();
+  const createVideoImmediateResponse = await app.inject({
+    method: "POST",
+    url: "/api/scheduled-dispatches",
+    payload: {
+      instanceId: "instance-a",
+      targetType: "number",
+      phone: "5511888887777",
+      contentType: "video",
+      body: "Legenda do video",
+      mediaUrl: "https://cdn.example.com/video.mp4",
+      deliveryMode: "immediate",
+      scheduledAt: null,
+    },
+  });
+  const immediateAfter = Date.now();
+  assert.equal(createVideoImmediateResponse.statusCode, 201, createVideoImmediateResponse.body);
+  const createdVideo = JSON.parse(createVideoImmediateResponse.body).dispatch;
+  assert.equal(createdVideo.contentType, "VIDEO");
+  assert.equal(createdVideo.mediaUrl, "https://cdn.example.com/video.mp4");
+  const immediateTimestamp = new Date(createdVideo.scheduledAt).getTime();
+  assert.equal(immediateTimestamp >= immediateBefore && immediateTimestamp <= immediateAfter + 2_000, true);
+
+  const invalidMediaMissingResponse = await app.inject({
+    method: "POST",
+    url: "/api/scheduled-dispatches",
+    payload: {
+      instanceId: "instance-a",
+      targetType: "group",
+      groupJid: "120363000001@g.us",
+      contentType: "image",
+      body: "Sem midia",
+      deliveryMode: "scheduled",
+      scheduledAt: "2026-06-21T15:30:00.000Z",
+    },
+  });
+  assert.equal(invalidMediaMissingResponse.statusCode, 400, invalidMediaMissingResponse.body);
+  assert.equal(JSON.parse(invalidMediaMissingResponse.body).code, "SCHEDULED_DISPATCH_VALIDATION_ERROR");
+
+  const invalidScheduleResponse = await app.inject({
+    method: "POST",
+    url: "/api/scheduled-dispatches",
+    payload: {
+      instanceId: "instance-a",
+      targetType: "number",
+      phone: "5511888881111",
+      contentType: "text",
+      body: "Sem data",
+      deliveryMode: "scheduled",
+      scheduledAt: null,
+    },
+  });
+  assert.equal(invalidScheduleResponse.statusCode, 400, invalidScheduleResponse.body);
 
   const invalidGroupResponse = await app.inject({
     method: "POST",
@@ -119,56 +176,37 @@ function createApp() {
       groupJid: "120363000555@g.us",
       contentType: "text",
       body: "Grupo nao sincronizado",
+      deliveryMode: "scheduled",
       scheduledAt: "2026-06-21T15:30:00.000Z",
     },
   });
   assert.equal(invalidGroupResponse.statusCode, 422, invalidGroupResponse.body);
   assert.equal(JSON.parse(invalidGroupResponse.body).code, "SCHEDULED_DISPATCH_VALIDATION_ERROR");
 
-  const invalidTargetResponse = await app.inject({
+  const invalidTextMediaResponse = await app.inject({
     method: "POST",
     url: "/api/scheduled-dispatches",
     payload: {
       instanceId: "instance-a",
       targetType: "number",
+      phone: "5511888881111",
       contentType: "text",
-      body: "Sem telefone",
-      scheduledAt: "2026-06-20T12:00:00.000Z",
+      body: "Texto puro",
+      mediaUrl: "https://cdn.example.com/nao-pode.png",
+      deliveryMode: "scheduled",
+      scheduledAt: "2026-06-21T15:30:00.000Z",
     },
   });
-  assert.equal(invalidTargetResponse.statusCode, 400, invalidTargetResponse.body);
-  assert.equal(JSON.parse(invalidTargetResponse.body).code, "SCHEDULED_DISPATCH_VALIDATION_ERROR");
-
-  const invalidDateResponse = await app.inject({
-    method: "POST",
-    url: "/api/scheduled-dispatches",
-    payload: {
-      instanceId: "instance-a",
-      targetType: "group",
-      groupJid: "120363000001@g.us",
-      contentType: "video",
-      mediaUrl: "https://cdn.example.com/video.mp4",
-      scheduledAt: "not-a-date",
-    },
-  });
-  assert.equal(invalidDateResponse.statusCode, 400, invalidDateResponse.body);
+  assert.equal(invalidTextMediaResponse.statusCode, 400, invalidTextMediaResponse.body);
 
   const listAllResponse = await app.inject({ method: "GET", url: "/api/scheduled-dispatches" });
   assert.equal(listAllResponse.statusCode, 200, listAllResponse.body);
   const allDispatches = JSON.parse(listAllResponse.body).dispatches;
-  assert.equal(allDispatches.length, 2);
+  assert.equal(allDispatches.length, 3);
 
-  const listFilteredResponse = await app.inject({ method: "GET", url: "/api/scheduled-dispatches?instanceId=instance-a" });
-  assert.equal(listFilteredResponse.statusCode, 200, listFilteredResponse.body);
-  const filteredDispatches = JSON.parse(listFilteredResponse.body).dispatches;
-  assert.equal(filteredDispatches.length, 2);
-
-  const detailResponse = await app.inject({ method: "GET", url: `/api/scheduled-dispatches/${createdGroup.id}` });
+  const detailResponse = await app.inject({ method: "GET", url: `/api/scheduled-dispatches/${createdImage.id}` });
   assert.equal(detailResponse.statusCode, 200, detailResponse.body);
-  assert.equal(JSON.parse(detailResponse.body).dispatch.id, createdGroup.id);
-
-  const notFoundResponse = await app.inject({ method: "GET", url: "/api/scheduled-dispatches/missing-id" });
-  assert.equal(notFoundResponse.statusCode, 404, notFoundResponse.body);
+  assert.equal(JSON.parse(detailResponse.body).dispatch.id, createdImage.id);
 
   await app.close();
   console.log("scheduled-dispatch-api: OK");

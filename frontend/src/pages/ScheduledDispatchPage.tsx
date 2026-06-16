@@ -11,6 +11,10 @@ import {
   applyInstanceToDraft,
   createInitialScheduledDispatchDraft,
   filterScheduledDispatchGroups,
+  isSafeMediaUrl,
+  resolveScheduledDispatchIso,
+  type ScheduledDispatchContentType,
+  type ScheduledDispatchDeliveryMode,
   type ScheduledDispatchDraft,
   type ScheduledDispatchGroup,
   validateScheduledDispatchDraft,
@@ -38,6 +42,17 @@ const textareaClassName = `${selectClassName} min-h-32 resize-y`;
 
 type InstanceOption = { id: string; name: string };
 
+const contentTypeLabels: Record<ScheduledDispatchContentType, string> = {
+  text: "Texto",
+  image: "Imagem",
+  video: "Video",
+};
+
+const deliveryModeLabels: Record<ScheduledDispatchDeliveryMode, string> = {
+  immediate: "Enviar agora",
+  scheduled: "Agendar",
+};
+
 export function ScheduledDispatchPage() {
   const { addToast } = useToast();
   const [instances, setInstances] = useState<InstanceOption[]>([]);
@@ -56,6 +71,7 @@ export function ScheduledDispatchPage() {
   const validation = useMemo(() => validateScheduledDispatchDraft(draft), [draft]);
   const visibleGroups = useMemo(() => filterScheduledDispatchGroups(groups, deferredGroupSearch), [deferredGroupSearch, groups]);
   const selectedGroup = useMemo(() => groups.find((group) => group.jid === draft.groupJid) ?? null, [draft.groupJid, groups]);
+  const mediaPreviewEnabled = draft.contentType !== "text" && isSafeMediaUrl(draft.mediaUrl);
 
   useEffect(() => {
     let ignore = false;
@@ -160,22 +176,29 @@ export function ScheduledDispatchPage() {
         targetType: draft.targetType,
         phone: draft.targetType === "number" ? draft.phone : null,
         groupJid: draft.targetType === "group" ? draft.groupJid : null,
-        contentType: "text",
-        body: draft.body,
-        mediaUrl: null,
-        scheduledAt: new Date(draft.scheduledAt).toISOString(),
+        contentType: draft.contentType,
+        body: draft.body.trim() || null,
+        mediaUrl: draft.contentType === "text" ? null : draft.mediaUrl.trim(),
+        deliveryMode: draft.deliveryMode,
+        scheduledAt: draft.deliveryMode === "scheduled" ? resolveScheduledDispatchIso(draft) : null,
       });
       setLastCreatedId(res.data.dispatch.id);
       setDraft((current) => ({
         ...current,
         phone: current.targetType === "number" ? "" : current.phone,
         body: "",
+        mediaUrl: "",
         scheduledAt: createInitialScheduledDispatchDraft().scheduledAt,
       }));
-      addToast("Disparo agendado salvo com sucesso.", "success");
+      addToast(
+        draft.deliveryMode === "immediate"
+          ? "Disparo imediato colocado na fila com sucesso."
+          : "Disparo agendado salvo com sucesso.",
+        "success"
+      );
     } catch (err) {
       console.error(err);
-      addToast("Nao foi possivel salvar o disparo agendado.", "error");
+      addToast("Nao foi possivel salvar o disparo.", "error");
     } finally {
       setSaving(false);
     }
@@ -186,7 +209,7 @@ export function ScheduledDispatchPage() {
       <PageHeader
         eyebrow="Operacao"
         title="Disparos agendados"
-        description="Selecione a instancia, defina o destino e salve um disparo de texto com agendamento. O suporte a midia e botoes entra nas proximas stories."
+        description="Monte disparos sem template com texto, imagem ou video, escolhendo envio imediato ou agendado no mesmo fluxo."
         actions={(
           <Button variant="secondary" onClick={() => void handleSyncGroups()} disabled={draft.targetType !== "group" || !draft.instanceId} loading={syncingGroups}>
             Sincronizar grupos
@@ -199,7 +222,7 @@ export function ScheduledDispatchPage() {
           <div className="space-y-5">
             <div>
               <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Destino</h2>
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Para grupos, a selecao e sempre feita a partir da lista real da instancia.</p>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Selecione a instancia e o alvo do disparo. Para grupos, a escolha continua restrita ao inventario sincronizado da instancia.</p>
             </div>
 
             {instancesError ? <InlineAlert tone="danger">{instancesError}</InlineAlert> : null}
@@ -298,8 +321,91 @@ export function ScheduledDispatchPage() {
         <Panel className="p-5 sm:p-6">
           <div className="space-y-5">
             <div>
-              <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Conteudo e agendamento</h2>
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Esta entrega cobre texto com agendamento. Midia e envio imediato entram na proxima etapa.</p>
+              <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Composer</h2>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Escolha o tipo de conteudo, informe a referencia da midia quando necessario e defina se o job entra para envio imediato ou agendado.</p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              {(["text", "image", "video"] as ScheduledDispatchContentType[]).map((contentType) => (
+                <Button
+                  key={contentType}
+                  variant={draft.contentType === contentType ? "primary" : "secondary"}
+                  onClick={() => setDraft((current) => ({ ...current, contentType, mediaUrl: contentType === "text" ? "" : current.mediaUrl }))}
+                >
+                  {contentTypeLabels[contentType]}
+                </Button>
+              ))}
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              {(["immediate", "scheduled"] as ScheduledDispatchDeliveryMode[]).map((deliveryMode) => (
+                <Button
+                  key={deliveryMode}
+                  variant={draft.deliveryMode === deliveryMode ? "primary" : "secondary"}
+                  onClick={() => setDraft((current) => ({ ...current, deliveryMode }))}
+                >
+                  {deliveryModeLabels[deliveryMode]}
+                </Button>
+              ))}
+            </div>
+
+            {draft.deliveryMode === "immediate" ? (
+              <InlineAlert tone="info">O job sera criado com timestamp atual para processamento imediato pelo worker quando essa etapa for entregue.</InlineAlert>
+            ) : null}
+
+            {draft.deliveryMode === "scheduled" ? (
+              <div>
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300" htmlFor="scheduled-dispatch-date">
+                  Agendar para
+                </label>
+                <input
+                  id="scheduled-dispatch-date"
+                  type="datetime-local"
+                  className={selectClassName}
+                  value={draft.scheduledAt}
+                  onChange={(event) => setDraft((current) => ({ ...current, scheduledAt: event.target.value }))}
+                />
+                {validation.scheduledAt ? <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{validation.scheduledAt}</p> : null}
+              </div>
+            ) : null}
+
+            {draft.contentType !== "text" ? (
+              <div className="space-y-3">
+                <Input
+                  label="Media URL"
+                  placeholder={draft.contentType === "image" ? "https://cdn.example.com/banner.png" : "https://cdn.example.com/video.mp4"}
+                  value={draft.mediaUrl}
+                  onChange={(event) => setDraft((current) => ({ ...current, mediaUrl: event.target.value }))}
+                  error={validation.mediaUrl}
+                />
+                <p className="text-xs text-slate-500 dark:text-slate-400">Use uma URL absoluta http/https para a midia que sera consumida pelo job.</p>
+              </div>
+            ) : null}
+
+            {mediaPreviewEnabled && draft.contentType === "image" ? (
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/40">
+                <img src={draft.mediaUrl.trim()} alt="Preview da imagem do disparo" className="max-h-72 w-full object-contain" />
+              </div>
+            ) : null}
+
+            {mediaPreviewEnabled && draft.contentType === "video" ? (
+              <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-950/40">
+                <video src={draft.mediaUrl.trim()} className="max-h-72 w-full rounded-lg" controls />
+              </div>
+            ) : null}
+
+            <div>
+              <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300" htmlFor="scheduled-dispatch-body">
+                {draft.contentType === "text" ? "Mensagem" : "Legenda (opcional)"}
+              </label>
+              <textarea
+                id="scheduled-dispatch-body"
+                className={textareaClassName}
+                value={draft.body}
+                onChange={(event) => setDraft((current) => ({ ...current, body: event.target.value }))}
+                placeholder={draft.contentType === "text" ? "Escreva a mensagem do disparo" : "Adicione uma legenda opcional para a midia"}
+              />
+              {validation.body ? <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{validation.body}</p> : null}
             </div>
 
             {selectedGroup ? (
@@ -310,45 +416,19 @@ export function ScheduledDispatchPage() {
             ) : null}
 
             {lastCreatedId ? (
-              <InlineAlert tone="info" title="Ultimo disparo salvo">
+              <InlineAlert tone="info" title="Ultimo job criado">
                 <span className="font-mono text-xs">{lastCreatedId}</span>
               </InlineAlert>
             ) : null}
 
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300" htmlFor="scheduled-dispatch-body">
-                Mensagem
-              </label>
-              <textarea
-                id="scheduled-dispatch-body"
-                className={textareaClassName}
-                value={draft.body}
-                onChange={(event) => setDraft((current) => ({ ...current, body: event.target.value }))}
-                placeholder="Escreva a mensagem do disparo"
-              />
-              {validation.body ? <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{validation.body}</p> : null}
-            </div>
-
-            <div>
-              <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300" htmlFor="scheduled-dispatch-date">
-                Agendar para
-              </label>
-              <input
-                id="scheduled-dispatch-date"
-                type="datetime-local"
-                className={selectClassName}
-                value={draft.scheduledAt}
-                onChange={(event) => setDraft((current) => ({ ...current, scheduledAt: event.target.value }))}
-              />
-              {validation.scheduledAt ? <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{validation.scheduledAt}</p> : null}
-            </div>
-
             <div className="rounded-lg border border-dashed border-slate-300 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:text-slate-400">
-              Tipo atual: <span className="font-semibold text-slate-900 dark:text-slate-100">Texto agendado</span>
+              Conteudo atual: <span className="font-semibold text-slate-900 dark:text-slate-100">{contentTypeLabels[draft.contentType]}</span>
+              {" · "}
+              Modo: <span className="font-semibold text-slate-900 dark:text-slate-100">{deliveryModeLabels[draft.deliveryMode]}</span>
             </div>
 
             <Button onClick={() => void handleSubmit()} loading={saving} disabled={!validation.canSubmit} className="w-full sm:w-auto">
-              Salvar disparo agendado
+              {draft.deliveryMode === "immediate" ? "Criar envio imediato" : "Salvar disparo agendado"}
             </Button>
           </div>
         </Panel>
