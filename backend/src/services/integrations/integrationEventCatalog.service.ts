@@ -22,7 +22,8 @@ export const INTEGRATION_CUSTOM_MESSAGE_MAX_LENGTH = 4000;
 const BRL_CURRENCY_FORMATTER = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 const INVALID_CUSTOM_MESSAGE_TOKENS = ["undefined", "null", "[object Object]"];
 const CTA_URL_BUTTON_ALLOWED_FIELDS = new Set(["enabled", "text", "url", "buttons"]);
-const CUSTOM_MESSAGE_ALLOWED_FIELDS = new Set(["body", "pix_followup_body", "cta_url_button"]);
+const AUTOMATIC_BUTTONS_ALLOWED_FIELDS = new Set(["access_text", "checkout_text"]);
+const CUSTOM_MESSAGE_ALLOWED_FIELDS = new Set(["body", "pix_followup_body", "cta_url_button", "automatic_buttons"]);
 const SUPPORTED_INTEGRATION_EVENT_SLUG_SET = new Set<string>(SUPPORTED_INTEGRATION_EVENT_SLUGS);
 type IntegrationProductSource = Record<string, unknown> | null;
 
@@ -71,12 +72,18 @@ export type IntegrationNormalizedCtaUrlButton = {
   buttons: Array<{ text: string; url: string }> | null;
 } | null;
 
+export type IntegrationNormalizedAutomaticButtons = {
+  accessText: string | null;
+  checkoutText: string | null;
+} | null;
+
 export type IntegrationNormalizedMessageOverride = {
   body: string | null;
   pixFollowupBody: string | null;
   bodyLength: number | null;
   pixFollowupBodyLength: number | null;
   ctaUrlButton: IntegrationNormalizedCtaUrlButton;
+  automaticButtons: IntegrationNormalizedAutomaticButtons;
 } | null;
 
 export type IntegrationExtractedContext = {
@@ -503,6 +510,44 @@ function normalizeCtaUrlButton(value: unknown): IntegrationNormalizedCtaUrlButto
   return { enabled, text, url, buttons };
 }
 
+function normalizeAutomaticButtonText(value: unknown, fieldName: string): string {
+  const normalized = normalizeCustomMessageText(value, fieldName);
+  if (normalized.length > 60) {
+    throw new InvalidIntegrationCustomMessageError(`${fieldName} excede o limite de 60 caracteres.`);
+  }
+  return normalized;
+}
+
+function normalizeAutomaticButtons(eventSlug: SupportedIntegrationEventSlug, value: unknown): IntegrationNormalizedAutomaticButtons {
+  if (eventSlug !== "envio_acesso") {
+    throw new InvalidIntegrationCustomMessageError("message.automatic_buttons so e aceito para o evento envio_acesso.");
+  }
+
+  const config = asRecord(value);
+  if (!config) {
+    throw new InvalidIntegrationCustomMessageError("message.automatic_buttons deve ser objeto.");
+  }
+
+  for (const field of Object.keys(config)) {
+    if (!AUTOMATIC_BUTTONS_ALLOWED_FIELDS.has(field)) {
+      throw new InvalidIntegrationCustomMessageError(`Campo message.automatic_buttons.${field} nao e aceito no contrato de integracao.`);
+    }
+  }
+
+  const accessText = config.access_text === undefined || config.access_text === null
+    ? null
+    : normalizeAutomaticButtonText(config.access_text, "message.automatic_buttons.access_text");
+  const checkoutText = config.checkout_text === undefined || config.checkout_text === null
+    ? null
+    : normalizeAutomaticButtonText(config.checkout_text, "message.automatic_buttons.checkout_text");
+
+  if (!accessText && !checkoutText) {
+    throw new InvalidIntegrationCustomMessageError("message.automatic_buttons deve conter access_text e/ou checkout_text.");
+  }
+
+  return { accessText, checkoutText };
+}
+
 function normalizeMessageOverride(eventSlug: SupportedIntegrationEventSlug, payload: IntegrationPayload): IntegrationNormalizedMessageOverride {
   const message = asRecord(payload.message);
   if (!message) return null;
@@ -516,21 +561,28 @@ function normalizeMessageOverride(eventSlug: SupportedIntegrationEventSlug, payl
   const hasBody = Object.prototype.hasOwnProperty.call(message, "body");
   const hasPixFollowupBody = Object.prototype.hasOwnProperty.call(message, "pix_followup_body");
   const hasCtaUrlButton = Object.prototype.hasOwnProperty.call(message, "cta_url_button");
+  const hasAutomaticButtons = Object.prototype.hasOwnProperty.call(message, "automatic_buttons");
 
   if (hasPixFollowupBody && eventSlug !== "pix_gerado") {
     throw new InvalidIntegrationCustomMessageError("message.pix_followup_body so e aceito para o evento pix_gerado.");
   }
 
+  if (hasAutomaticButtons && eventSlug !== "envio_acesso") {
+    throw new InvalidIntegrationCustomMessageError("message.automatic_buttons so e aceito para o evento envio_acesso.");
+  }
+
   const body = hasBody ? normalizeCustomMessageText(message.body, "message.body") : null;
   const pixFollowupBody = hasPixFollowupBody ? normalizeCustomMessageText(message.pix_followup_body, "message.pix_followup_body") : null;
   const ctaUrlButton = hasCtaUrlButton ? normalizeCtaUrlButton(message.cta_url_button) : null;
+  const automaticButtons = hasAutomaticButtons ? normalizeAutomaticButtons(eventSlug, message.automatic_buttons) : null;
 
-  return body || pixFollowupBody || ctaUrlButton ? {
+  return body || pixFollowupBody || ctaUrlButton || automaticButtons ? {
     body,
     pixFollowupBody,
     bodyLength: body?.length ?? null,
     pixFollowupBodyLength: pixFollowupBody?.length ?? null,
     ctaUrlButton,
+    automaticButtons,
   } : null;
 }
 

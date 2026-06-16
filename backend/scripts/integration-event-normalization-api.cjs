@@ -413,6 +413,7 @@ function expectPhoneContext(context, digits) {
       bodyLength: "Texto customizado final".length,
       pixFollowupBodyLength: null,
       ctaUrlButton: null,
+      automaticButtons: null,
     });
   }
 
@@ -477,6 +478,7 @@ function expectPhoneContext(context, digits) {
         url: "https://checkout.example.com/c/123",
         buttons: null,
       },
+      automaticButtons: null,
     });
   }
 
@@ -494,6 +496,36 @@ function expectPhoneContext(context, digits) {
     const context = normalizeIntegrationEventContext("envio_acesso", payload);
     assert.equal(context.messageOverride.ctaUrlButton.buttons.length, 2);
     assert.equal(context.messageOverride.ctaUrlButton.buttons[1].text, "Acessar comunidade");
+    assert.equal(context.messageOverride.automaticButtons, null);
+  }
+
+  {
+    const payload = createBasePayload();
+    payload.message = {
+      automatic_buttons: {
+        access_text: "Entrar agora",
+        checkout_text: "Abrir oferta",
+      },
+    };
+    const context = normalizeIntegrationEventContext("envio_acesso", payload);
+    assert.deepEqual(context.messageOverride.automaticButtons, {
+      accessText: "Entrar agora",
+      checkoutText: "Abrir oferta",
+    });
+  }
+
+  {
+    const payload = createBasePayload();
+    payload.message = {
+      automatic_buttons: {
+        checkout_text: "Abrir oferta",
+      },
+    };
+    const context = normalizeIntegrationEventContext("envio_acesso", payload);
+    assert.deepEqual(context.messageOverride.automaticButtons, {
+      accessText: null,
+      checkoutText: "Abrir oferta",
+    });
   }
 
   {
@@ -513,11 +545,14 @@ function expectPhoneContext(context, digits) {
     { cta_url_button: { enabled: true, rawPayload: {} } },
     { cta_url_button: { enabled: "yes" } },
     { cta_url_button: { enabled: true, url: "ftp://example.com" } },
+    { automatic_buttons: { access_text: "   " } },
+    { automatic_buttons: { checkout_text: "x".repeat(61) } },
+    { automatic_buttons: { rawPayload: {} } },
   ]) {
     const payload = createBasePayload();
     payload.message = invalidMessage;
     assert.throws(
-      () => normalizeIntegrationEventContext("pedido_pago", payload),
+      () => normalizeIntegrationEventContext(invalidMessage.automatic_buttons ? "envio_acesso" : "pedido_pago", payload),
       (error) => error instanceof InvalidIntegrationCustomMessageError && error.code === "INTEGRATION_CUSTOM_MESSAGE_INVALID",
     );
   }
@@ -525,6 +560,14 @@ function expectPhoneContext(context, digits) {
   {
     const payload = createBasePayload();
     payload.message = { pix_followup_body: "Nao pode fora de Pix" };
+    assert.throws(
+      () => normalizeIntegrationEventContext("pedido_pago", payload),
+      (error) => error instanceof InvalidIntegrationCustomMessageError && error.code === "INTEGRATION_CUSTOM_MESSAGE_INVALID",
+    );
+  }
+  {
+    const payload = createBasePayload();
+    payload.message = { automatic_buttons: { access_text: "Entrar agora" } };
     assert.throws(
       () => normalizeIntegrationEventContext("pedido_pago", payload),
       (error) => error instanceof InvalidIntegrationCustomMessageError && error.code === "INTEGRATION_CUSTOM_MESSAGE_INVALID",

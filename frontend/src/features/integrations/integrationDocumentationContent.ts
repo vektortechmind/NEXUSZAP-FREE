@@ -268,6 +268,9 @@ export const INTEGRATION_RENDER_RULES = [
 export const INTEGRATION_CUSTOM_MESSAGE_RULES = [
   "payload.message é opcional. Se ele não for enviado, o NexusZAP usa o template padrão do evento.",
   "payload.message.body e payload.message.pix_followup_body, quando enviados, devem ser strings não vazias com até 4000 caracteres cada. Esse limite vale só para o texto customizado visível, não para o payload inteiro.",
+  "No evento envio_acesso, payload.message.automatic_buttons pode customizar apenas os labels visíveis dos botões automáticos usando access_text e checkout_text, com até 60 caracteres por campo.",
+  "payload.message.automatic_buttons só é aceito em envio_acesso. Fora desse evento, o backend rejeita o payload com erro 422 de contrato.",
+  "Customizar payload.message.automatic_buttons não cria botão novo, não altera URLs e não remove os fallbacks do runtime; o bloco só troca o texto visível quando access.url e/ou checkoutLink já gerariam botão automático.",
   "O backend não processa placeholders como {{nome}}; envie o texto final já renderizado pela ferramenta externa.",
   "Em eventos image, payload.message.body substitui o corpo visível e também vira a caption da imagem. Se a imagem falhar, o mesmo texto segue no fallback textual.",
   "Em boleto_gerado, o texto customizado substitui o body/caption visível, mas não altera document.url, fileName ou mimetype do PDF.",
@@ -311,6 +314,31 @@ export const INTEGRATION_CUSTOM_PIX_FOLLOWUP_EXAMPLE = `{
     "message": {
       "body": "João, seu Pix foi gerado. Pague até o vencimento para manter seu pedido.",
       "pix_followup_body": "Pix copia e cola:\n00020126580014BR.GOV.BCB.PIX0136pix-456-chave-dinamica"
+    }
+  }
+}`;
+
+export const INTEGRATION_CUSTOM_ACCESS_BUTTONS_EXAMPLE = `{
+  "event": "envio_acesso",
+  "instanceId": "$INSTANCE_ID",
+  "timestamp": "2026-05-30T15:20:00.000Z",
+  "dedupKey": "acesso-321-enviado-20260530",
+  "payload": {
+    "customer": { "name": "Paula Rocha", "phone": "5511977776666" },
+    "checkoutLink": "https://checkout.exemplo.com/oferta/321",
+    "order": {
+      "product": { "name": "Comunidade Premium" }
+    },
+    "access": {
+      "url": "https://portal.exemplo.com/aluno/321",
+      "login": "paula@example.com",
+      "password": "senha-temporaria"
+    },
+    "message": {
+      "automatic_buttons": {
+        "access_text": "ENTRAR AGORA",
+        "checkout_text": "ABRIR OFERTA"
+      }
     }
   }
 }`;
@@ -651,8 +679,9 @@ export const INTEGRATION_TROUBLESHOOTING = [
   {
     title: "Texto customizado rejeitado",
     steps: [
-      "Use apenas payload.message.body e, no evento pix_gerado, payload.message.pix_followup_body.",
+      "Use payload.message.body, payload.message.pix_followup_body no evento pix_gerado e payload.message.automatic_buttons apenas em envio_acesso.",
       "Garanta que os valores sejam strings não vazias com até 4000 caracteres cada; esse limite vale apenas para cada texto customizado.",
+      "Em payload.message.automatic_buttons, use somente access_text e checkout_text com até 60 caracteres por campo.",
       "Não envie campos técnicos em payload.message, como caption, messageType, providerPayload, relayMessage, nativeFlow, buttons, templateMessage ou interactiveMessage.",
     ],
   },

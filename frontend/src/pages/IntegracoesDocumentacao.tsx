@@ -5,6 +5,7 @@ import { Panel } from "../components/ui/Panel";
 import { Section } from "../components/ui/Section";
 import {
   INTEGRATION_CONTEXT_FIELDS,
+  INTEGRATION_CUSTOM_ACCESS_BUTTONS_EXAMPLE,
   INTEGRATION_CREDENTIAL_FIELDS,
   INTEGRATION_CUSTOM_MESSAGE_EXAMPLE,
   INTEGRATION_CUSTOM_MESSAGE_RULES,
@@ -345,6 +346,7 @@ export function IntegracoesDocumentacao() {
                 <div className="space-y-4">
                   <CodeBlock language="json" code={INTEGRATION_CUSTOM_MESSAGE_EXAMPLE} />
                   <CodeBlock language="json" code={INTEGRATION_CUSTOM_PIX_FOLLOWUP_EXAMPLE} />
+                  <CodeBlock language="json" code={INTEGRATION_CUSTOM_ACCESS_BUTTONS_EXAMPLE} />
                 </div>
               </div>
 
@@ -422,4 +424,3 @@ export function IntegracoesDocumentacao() {
     </div>
   );
 }
-

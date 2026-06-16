@@ -721,11 +721,12 @@ function buildInteractiveFallbackText(template: IntegrationRenderedDispatchTempl
 
 function getAutomaticNativeInteractiveButtons(template: IntegrationRenderedDispatchTemplate): NativeInteractiveButton[] {
   const buttons: NativeInteractiveButton[] = [];
+  const automaticButtons = template.context.messageOverride?.automaticButtons;
 
   switch (template.eventSlug) {
     case "envio_acesso":
-      pushUrlButton(buttons, "ACESSAR AREA", accessContextUrl(template.context));
-      pushUrlButton(buttons, "ABRIR CHECKOUT", template.context.checkoutLink && template.context.checkoutLink !== accessContextUrl(template.context) ? template.context.checkoutLink : null);
+      pushUrlButton(buttons, automaticButtons?.accessText ?? "ACESSAR AREA", accessContextUrl(template.context));
+      pushUrlButton(buttons, automaticButtons?.checkoutText ?? "ABRIR CHECKOUT", template.context.checkoutLink && template.context.checkoutLink !== accessContextUrl(template.context) ? template.context.checkoutLink : null);
       break;
     case "pedido_pago":
       pushUrlButton(buttons, "ACESSAR PRODUTO", template.linkUrl ?? template.context.checkoutLink);

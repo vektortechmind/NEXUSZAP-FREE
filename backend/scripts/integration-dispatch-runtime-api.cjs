@@ -964,6 +964,55 @@ function createDispatchService(options = {}) {
 
 
   {
+    const payload = createBasePayload();
+    payload.message = {
+      automatic_buttons: {
+        access_text: "ENTRAR AGORA",
+        checkout_text: "ABRIR OFERTA",
+      },
+    };
+    const relayCalls = [];
+    const sentPayloads = [];
+    const { service, store } = createDispatchService({
+      sentPayloads,
+      sock: {
+        async relayMessage(jid, message, options) {
+          relayCalls.push({ jid, message, options });
+          return "wamid.envio-acesso-custom.media-native";
+        },
+        async sendMessage(jid, content) {
+          sentPayloads.push({ jid, content });
+          return { key: { id: "wamid.envio-acesso-custom.unexpected-text" } };
+        },
+        async waUploadToServer() {
+          return {
+            mediaUrl: "https://mmg.example.com/image.enc",
+            directPath: "/v/t62.7118/image.enc",
+          };
+        },
+      },
+    });
+    await service.dispatchEvent({
+      instanceId: "instance-a",
+      eventSlug: "envio_acesso",
+      dedupKey: "evt-envio-acesso-custom-buttons",
+      payload,
+    });
+    const summary = Array.from(store.logs.values())[0].payloadSummaryJson;
+    const buttons = relayCalls[0].message.interactiveMessage.nativeFlowMessage.buttons;
+    const ctaUrlLabels = buttons
+      .filter((button) => button.name === "cta_url")
+      .map((button) => JSON.parse(button.buttonParamsJson).display_text);
+    assert.equal(relayCalls.length, 1);
+    assert.equal(sentPayloads.length, 0);
+    assert.equal(ctaUrlLabels.includes("ENTRAR AGORA"), true);
+    assert.equal(ctaUrlLabels.includes("ABRIR OFERTA"), true);
+    assert.equal(ctaUrlLabels.includes("ACESSAR AREA"), false);
+    assert.equal(ctaUrlLabels.includes("ABRIR CHECKOUT"), false);
+    assert.equal(summary.includes('"deliveryPath":"image_clean"'), true);
+  }
+
+  {
     const relayCalls = [];
     const sentPayloads = [];
     const { service, store } = createDispatchService({
