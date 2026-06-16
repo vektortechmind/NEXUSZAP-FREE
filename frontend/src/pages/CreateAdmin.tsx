@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
 import { isAxiosError } from "axios";
 import { CheckCircle2, KeyRound, Lock, Mail, ShieldCheck, UserPlus } from "lucide-react";
+import { useLocation } from "react-router-dom";
 import { api } from "../lib/axios";
 import { Button } from "../components/ui/Button";
 import { Input } from "../components/ui/Input";
 import { InlineAlert } from "../components/ui/InlineAlert";
 import { ThemeToggle } from "../components/ThemeToggle";
+import { useSetupRouteGuard } from "../features/setup/useSetupRouteGuard";
 
 function apiError(err: unknown): string {
   if (!isAxiosError(err)) return "Não foi possível criar o administrador.";
@@ -13,7 +15,9 @@ function apiError(err: unknown): string {
 }
 
 export function CreateAdmin() {
-  const params = useMemo(() => new URLSearchParams(window.location.search), []);
+  const { search } = useLocation();
+  const { checking, error: statusError } = useSetupRouteGuard();
+  const params = useMemo(() => new URLSearchParams(search), [search]);
   const token = params.get("token") ?? "";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -35,6 +39,30 @@ export function CreateAdmin() {
       setLoading(false);
     }
   };
+
+  if (checking) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[var(--nexus-bg)] px-4 text-[var(--nexus-text)]">
+        <div className="text-center">
+          <div className="mx-auto mb-4 h-10 w-10 rounded-full border-2 border-slate-300 border-t-emerald-600 motion-safe:animate-spin dark:border-slate-700 dark:border-t-emerald-400" />
+          <p className="text-sm font-medium text-slate-600 dark:text-slate-400">Verificando status da instalacao...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (statusError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[var(--nexus-bg)] px-4 text-[var(--nexus-text)]">
+        <div className="w-full max-w-lg rounded-lg border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900">
+          <InlineAlert tone="danger" title="Falha ao validar setup">{statusError}</InlineAlert>
+          <Button onClick={() => window.location.reload()} className="mt-5 w-full">
+            Tentar novamente
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[var(--nexus-bg)] text-[var(--nexus-text)]">
