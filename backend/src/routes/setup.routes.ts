@@ -3,10 +3,13 @@ import { z } from "zod";
 import {
   getSetupStatus,
   isAdminSetupRequired,
+  isSetupCompleted,
+  isSetupOpen,
   isSetupTokenValid,
   mergeCorsOrigins,
   normalizePublicUrl,
   readEnvValue,
+  removeEnvKeys,
   updateEnvFile,
   updateFrontendProductionApiUrl
 } from "../services/setup.service";
@@ -55,6 +58,14 @@ function requireSetupToken(token: string | undefined) {
   }
 }
 
+function requireSetupOpen() {
+  if (!isSetupOpen()) {
+    const error = new Error(isSetupCompleted() ? "Setup inicial já foi concluído." : "Setup inicial não está disponível.");
+    error.name = "SETUP_CLOSED";
+    throw error;
+  }
+}
+
 export async function setupRoutes(fastify: FastifyInstance) {
   fastify.get("/status", { config: { rateLimit: { max: 60, timeWindow: "1 minute" } } }, async (request) => {
     const tokenValid = isSetupTokenValid(tokenFromQuery(request.query));
@@ -64,6 +75,7 @@ export async function setupRoutes(fastify: FastifyInstance) {
   fastify.post("/docker", { config: { rateLimit: { max: 10, timeWindow: "1 minute" } } }, async (request, reply) => {
     try {
       const body = dockerSetupSchema.parse(request.body);
+      requireSetupOpen();
       requireSetupToken(body.token);
 
       const appUrl = normalizePublicUrl(body.apiDomain);
@@ -81,6 +93,9 @@ export async function setupRoutes(fastify: FastifyInstance) {
       const nextBaseUrl = panelUrl ?? appUrl;
       return reply.send({ success: true, appUrl, panelUrl, nextUrl: `${nextBaseUrl}/criar-admin?token=${body.token}` });
     } catch (error) {
+      if (error instanceof Error && error.name === "SETUP_CLOSED") {
+        return reply.status(409).send({ error: error.message });
+      }
       if (error instanceof Error && error.name === "SETUP_TOKEN_INVALID") {
         return reply.status(403).send({ error: error.message });
       }
@@ -91,6 +106,7 @@ export async function setupRoutes(fastify: FastifyInstance) {
   fastify.post("/admin", { config: { rateLimit: { max: 5, timeWindow: "1 minute" } } }, async (request, reply) => {
     try {
       const body = adminSetupSchema.parse(request.body);
+      requireSetupOpen();
       requireSetupToken(body.token);
 
       if (!isAdminSetupRequired()) {
@@ -103,9 +119,13 @@ export async function setupRoutes(fastify: FastifyInstance) {
         ADMIN_SETUP_REQUIRED: "false",
         SETUP_COMPLETED: "true"
       });
+      removeEnvKeys(["SETUP_TOKEN"]);
 
       return reply.send({ success: true, loginUrl: "/login" });
     } catch (error) {
+      if (error instanceof Error && error.name === "SETUP_CLOSED") {
+        return reply.status(409).send({ error: error.message });
+      }
       if (error instanceof Error && error.name === "SETUP_TOKEN_INVALID") {
         return reply.status(403).send({ error: error.message });
       }

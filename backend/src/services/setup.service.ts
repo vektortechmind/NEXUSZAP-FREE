@@ -5,6 +5,10 @@ type EnvUpdates = Record<string, string>;
 
 const DEFAULT_ADMIN_EMAIL = "admin@nexuszap.com";
 
+function hasEnvFileOverride(): boolean {
+  return typeof process.env.NEXUS_ENV_FILE === "string" && process.env.NEXUS_ENV_FILE.trim().length > 0;
+}
+
 function resolveEnvPath(): string {
   const candidates = [
     process.env.NEXUS_ENV_FILE,
@@ -56,10 +60,16 @@ export function readEnvFileValue(key: string): string | undefined {
 }
 
 export function readConfiguredAppUrl(): string | undefined {
+  if (hasEnvFileOverride()) {
+    return readEnvFileValue("APP_URL");
+  }
   return readEnvFileValue("APP_URL") ?? process.env.APP_URL;
 }
 
 export function readEnvValue(key: string): string | undefined {
+  if (hasEnvFileOverride()) {
+    return readEnvFileValue(key) ?? process.env[key];
+  }
   if (process.env[key] !== undefined) return process.env[key];
   return readEnvFileValue(key);
 }
@@ -113,6 +123,13 @@ function updateKeyValueEnvFile(filePath: string, updates: EnvUpdates, removeKeys
   });
 }
 
+export function removeEnvKeys(keys: string[]): void {
+  for (const key of keys) {
+    delete process.env[key];
+  }
+  updateKeyValueEnvFile(resolveEnvPath(), {}, keys);
+}
+
 export function updateFrontendProductionApiUrl(appUrl: string, panelUrl: string | null): void {
   const envPath = resolveFrontendProductionEnvPath();
   if (panelUrl && panelUrl !== appUrl) {
@@ -140,6 +157,14 @@ export function isAdminSetupRequired(): boolean {
   return (readEnvValue("ADMIN_EMAIL") ?? process.env.ADMIN_EMAIL) === DEFAULT_ADMIN_EMAIL;
 }
 
+export function isSetupCompleted(): boolean {
+  return (readEnvValue("SETUP_COMPLETED") ?? process.env.SETUP_COMPLETED) === "true";
+}
+
+export function isSetupOpen(): boolean {
+  return Boolean(getSetupToken()) && isAdminSetupRequired() && !isSetupCompleted();
+}
+
 export function getAdminCredentials() {
   return {
     email: readEnvValue("ADMIN_EMAIL") ?? process.env.ADMIN_EMAIL ?? DEFAULT_ADMIN_EMAIL,
@@ -149,11 +174,15 @@ export function getAdminCredentials() {
 
 export function getSetupStatus() {
   const appUrl = readConfiguredAppUrl() ?? null;
+  const setupCompleted = isSetupCompleted();
+  const setupOpen = isSetupOpen();
   return {
     appUrl,
     dockerConfigured: Boolean(appUrl),
     adminSetupRequired: isAdminSetupRequired(),
-    setupTokenRequired: Boolean(getSetupToken())
+    setupTokenRequired: Boolean(getSetupToken()),
+    setupCompleted,
+    setupOpen
   };
 }
 

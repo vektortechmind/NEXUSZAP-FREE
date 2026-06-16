@@ -4,8 +4,10 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || "test-secret-with-more-than-3
 process.env.ADMIN_EMAIL = "admin@nexuszap.com";
 process.env.ADMIN_PASSWORD = "TempPassword1!";
 process.env.ADMIN_SETUP_REQUIRED = "true";
+process.env.SETUP_COMPLETED = "false";
 process.env.SETUP_TOKEN = "test-setup-token-with-enough-length";
 process.env.CORS_ORIGINS = "http://localhost";
+delete process.env.APP_URL;
 process.env.PORT = process.env.PORT || "0";
 
 const assert = require("assert");
@@ -42,6 +44,21 @@ const { buildServer } = require("../src/server");
   const forbidden = await app.inject({ method: "POST", url: "/api/setup/docker", payload: { apiDomain: "api.example.com" } });
   assert.equal(forbidden.statusCode, 403);
 
+  const initialStatus = await app.inject({
+    method: "GET",
+    url: "/api/setup/status?token=test-setup-token-with-enough-length"
+  });
+  assert.equal(initialStatus.statusCode, 200, initialStatus.body);
+  assert.deepEqual(JSON.parse(initialStatus.body), {
+    appUrl: null,
+    dockerConfigured: false,
+    adminSetupRequired: true,
+    setupTokenRequired: true,
+    setupCompleted: false,
+    setupOpen: true,
+    tokenValid: true
+  });
+
   const docker = await app.inject({
     method: "POST",
     url: "/api/setup/docker",
@@ -74,6 +91,33 @@ const { buildServer } = require("../src/server");
     }
   });
   assert.equal(admin.statusCode, 200, admin.body);
+
+  const postAdminEnvContent = fs.readFileSync(envPath, "utf8");
+  assert.ok(postAdminEnvContent.includes('ADMIN_SETUP_REQUIRED="false"'));
+  assert.ok(postAdminEnvContent.includes('SETUP_COMPLETED="true"'));
+  assert.ok(!postAdminEnvContent.includes("SETUP_TOKEN="));
+
+  const closedDocker = await app.inject({
+    method: "POST",
+    url: "/api/setup/docker",
+    payload: { apiDomain: "api2.example.com", token: "test-setup-token-with-enough-length" }
+  });
+  assert.equal(closedDocker.statusCode, 409, closedDocker.body);
+
+  const closedStatus = await app.inject({
+    method: "GET",
+    url: "/api/setup/status?token=test-setup-token-with-enough-length"
+  });
+  assert.equal(closedStatus.statusCode, 200, closedStatus.body);
+  assert.deepEqual(JSON.parse(closedStatus.body), {
+    appUrl: "https://api.example.com",
+    dockerConfigured: true,
+    adminSetupRequired: false,
+    setupTokenRequired: false,
+    setupCompleted: true,
+    setupOpen: false,
+    tokenValid: false
+  });
 
   const secondAdmin = await app.inject({
     method: "POST",
