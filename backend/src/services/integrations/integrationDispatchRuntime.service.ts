@@ -725,7 +725,7 @@ function getAutomaticNativeInteractiveButtons(template: IntegrationRenderedDispa
   switch (template.eventSlug) {
     case "envio_acesso":
       pushUrlButton(buttons, "ACESSAR AREA", accessContextUrl(template.context));
-      pushUrlButton(buttons, "ACESSAR COMUNIDADE", template.context.checkoutLink && template.context.checkoutLink !== accessContextUrl(template.context) ? template.context.checkoutLink : null);
+      pushUrlButton(buttons, "ABRIR CHECKOUT", template.context.checkoutLink && template.context.checkoutLink !== accessContextUrl(template.context) ? template.context.checkoutLink : null);
       break;
     case "pedido_pago":
       pushUrlButton(buttons, "ACESSAR PRODUTO", template.linkUrl ?? template.context.checkoutLink);

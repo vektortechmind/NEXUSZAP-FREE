@@ -1080,6 +1080,14 @@ function createDispatchService(options = {}) {
     assert.equal(sentPayloads.length, 0);
     assert.equal(Boolean(interactive.header.imageMessage), true);
     assert.equal(buttons.some((button) => button.name === expectedButtonName), true);
+    if (eventSlug === "envio_acesso") {
+      const ctaUrlLabels = buttons
+        .filter((button) => button.name === "cta_url")
+        .map((button) => JSON.parse(button.buttonParamsJson).display_text);
+      assert.equal(ctaUrlLabels.includes("ACESSAR AREA"), true);
+      assert.equal(ctaUrlLabels.includes("ABRIR CHECKOUT"), true);
+      assert.equal(ctaUrlLabels.includes("ACESSAR COMUNIDADE"), false);
+    }
     assert.equal(interactive.body.text.includes(forbiddenText), false);
     assert.equal(summary.includes('"deliveryPath":"image_clean"'), true);
   }
