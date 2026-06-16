@@ -9,6 +9,7 @@ import { Agente } from "./pages/Agente";
 import { Apis } from "./pages/Apis";
 import { Dashboard } from "./pages/Dashboard";
 import { ChatPage } from "./pages/ChatPage";
+import { ScheduledDispatchPage } from "./pages/ScheduledDispatchPage";
 import { Integracoes } from "./pages/Integracoes";
 import { IntegracoesDocumentacao } from "./pages/IntegracoesDocumentacao";
 import { DockerSetup } from "./pages/DockerSetup";
@@ -118,6 +119,7 @@ function AppRoutes() {
         <Route path="telegram" element={<Navigate to="/agente" replace />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="chat" element={<ChatPage />} />
+        <Route path="disparos" element={<ScheduledDispatchPage />} />
         <Route path="settings" element={<Apis />} />
       </Route>
     </Routes>

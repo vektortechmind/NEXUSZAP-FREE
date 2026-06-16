@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, preValidationHookHandler } from "fastify";
 import { z } from "zod";
+import { chatService } from "../services/chat.service";
 import {
   createScheduledDispatchService,
   scheduledDispatchService,
@@ -9,9 +10,14 @@ import {
   type ScheduledDispatchStore,
 } from "../services/scheduled-dispatch.service";
 
+type GroupSyncService = {
+  syncGroups(input: { instanceId: string }): Promise<Array<{ instanceId: string; jid: string; name: string | null; lastMessageAt: Date }>>;
+};
+
 type ScheduledDispatchRoutesDeps = {
   service?: ReturnType<typeof createScheduledDispatchService>;
   store?: ScheduledDispatchStore;
+  groupSyncService?: GroupSyncService;
   preValidationHook?: preValidationHookHandler;
 };
 
@@ -30,6 +36,15 @@ const listDispatchesQuerySchema = z.object({
   instanceId: z.string().trim().min(1).max(191).optional(),
 });
 
+const listGroupsQuerySchema = z.object({
+  instanceId: z.string().trim().min(1).max(191),
+  search: z.string().trim().max(191).optional(),
+});
+
+const syncGroupsBodySchema = z.object({
+  instanceId: z.string().trim().min(1).max(191),
+});
+
 const dispatchParamsSchema = z.object({
   id: z.string().trim().min(1).max(191),
 });
@@ -38,6 +53,16 @@ function serializeDate<T extends Record<string, unknown>>(row: T): T {
   return Object.fromEntries(
     Object.entries(row).map(([key, value]) => [key, value instanceof Date ? value.toISOString() : value])
   ) as T;
+}
+
+function serializeGroupTarget(group: { instanceId: string; jid: string; name: string | null; lastMessageAt: Date; updatedAt?: Date }) {
+  return serializeDate({
+    instanceId: group.instanceId,
+    jid: group.jid,
+    name: group.name,
+    lastMessageAt: group.lastMessageAt,
+    updatedAt: group.updatedAt ?? group.lastMessageAt,
+  });
 }
 
 function sendKnownError(reply: FastifyReply, err: unknown) {
@@ -58,6 +83,7 @@ function sendKnownError(reply: FastifyReply, err: unknown) {
 
 export function createScheduledDispatchRoutes(deps: ScheduledDispatchRoutesDeps = {}) {
   const service = deps.service ?? createScheduledDispatchService({ store: deps.store });
+  const groupSyncService = deps.groupSyncService ?? chatService;
   const preValidationHook = deps.preValidationHook ?? (async (request, reply) => {
     const { verifyJwt } = await import("../security/middlewares");
     return verifyJwt(request, reply);
@@ -71,6 +97,26 @@ export function createScheduledDispatchRoutes(deps: ScheduledDispatchRoutesDeps 
         const query = listDispatchesQuerySchema.parse(request.query);
         const dispatches = await service.listDispatches(query);
         return reply.send({ dispatches: dispatches.map(serializeDate) });
+      } catch (err) {
+        return sendKnownError(reply, err);
+      }
+    });
+
+    fastify.get("/groups", async (request, reply) => {
+      try {
+        const query = listGroupsQuerySchema.parse(request.query);
+        const groups = await service.listGroupTargets(query);
+        return reply.send({ groups: groups.map(serializeGroupTarget) });
+      } catch (err) {
+        return sendKnownError(reply, err);
+      }
+    });
+
+    fastify.post("/groups/sync", async (request, reply) => {
+      try {
+        const body = syncGroupsBodySchema.parse(request.body);
+        const groups = await groupSyncService.syncGroups(body);
+        return reply.status(200).send({ synced: groups.length, groups: groups.map(serializeGroupTarget) });
       } catch (err) {
         return sendKnownError(reply, err);
       }

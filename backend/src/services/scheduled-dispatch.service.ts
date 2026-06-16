@@ -3,6 +3,14 @@ import { prisma } from "../database/prisma";
 
 export type ScheduledDispatchRecord = ScheduledDispatch;
 
+export type ScheduledDispatchGroupTarget = {
+  instanceId: string;
+  jid: string;
+  name: string | null;
+  lastMessageAt: Date;
+  updatedAt: Date;
+};
+
 type ScheduledDispatchCreateInput = {
   instanceId: string;
   targetType: "number" | "group";
@@ -20,6 +28,8 @@ type ScheduledDispatchListInput = {
 
 export type ScheduledDispatchStore = {
   findInstance(instanceId: string): Promise<{ id: string } | null>;
+  listGroupTargets(input: { instanceId: string; search?: string }): Promise<ScheduledDispatchGroupTarget[]>;
+  findGroupTarget(input: { instanceId: string; jid: string }): Promise<ScheduledDispatchGroupTarget | null>;
   createDispatch(input: {
     instanceId: string;
     targetType: ScheduledDispatchTargetType;
@@ -100,6 +110,49 @@ export const prismaScheduledDispatchStore: ScheduledDispatchStore = {
     return prisma.instance.findUnique({ where: { id: instanceId }, select: { id: true } });
   },
 
+  async listGroupTargets(input) {
+    const search = normalizeOptionalText(input.search);
+    return prisma.conversation.findMany({
+      where: {
+        instanceId: input.instanceId,
+        isGroup: true,
+        ...(search
+          ? {
+              OR: [
+                { name: { contains: search, mode: "insensitive" } },
+                { jid: { contains: search, mode: "insensitive" } },
+              ],
+            }
+          : {}),
+      },
+      select: {
+        instanceId: true,
+        jid: true,
+        name: true,
+        lastMessageAt: true,
+        updatedAt: true,
+      },
+      orderBy: [{ updatedAt: "desc" }, { lastMessageAt: "desc" }, { name: "asc" }],
+    });
+  },
+
+  async findGroupTarget(input) {
+    return prisma.conversation.findFirst({
+      where: {
+        instanceId: input.instanceId,
+        jid: input.jid,
+        isGroup: true,
+      },
+      select: {
+        instanceId: true,
+        jid: true,
+        name: true,
+        lastMessageAt: true,
+        updatedAt: true,
+      },
+    });
+  },
+
   async createDispatch(input) {
     return prisma.scheduledDispatch.create({
       data: {
@@ -128,16 +181,50 @@ export const prismaScheduledDispatchStore: ScheduledDispatchStore = {
   },
 };
 
-export function createInMemoryScheduledDispatchStore(seed: { instances?: Array<{ id: string }> } = {}): ScheduledDispatchStore & {
+export function createInMemoryScheduledDispatchStore(seed: {
+  instances?: Array<{ id: string }>;
+  groups?: Array<{ instanceId: string; jid: string; name?: string | null; lastMessageAt?: Date; updatedAt?: Date }>;
+} = {}): ScheduledDispatchStore & {
   dispatches: Map<string, ScheduledDispatchRecord>;
 } {
   const instances = new Map((seed.instances ?? []).map((instance) => [instance.id, instance]));
   const dispatches = new Map<string, ScheduledDispatchRecord>();
+  const groups = new Map<string, ScheduledDispatchGroupTarget>(
+    (seed.groups ?? []).map((group) => {
+      const lastMessageAt = group.lastMessageAt ?? new Date();
+      const updatedAt = group.updatedAt ?? lastMessageAt;
+      const jid = normalizeGroupJid(group.jid);
+      return [`${group.instanceId}:${jid}`, {
+        instanceId: group.instanceId,
+        jid,
+        name: normalizeOptionalText(group.name) ?? null,
+        lastMessageAt,
+        updatedAt,
+      }];
+    })
+  );
 
   return {
     dispatches,
     async findInstance(instanceId) {
       return instances.get(instanceId) ?? null;
+    },
+    async listGroupTargets(input) {
+      const query = normalizeOptionalText(input.search)?.toLowerCase() ?? null;
+      return Array.from(groups.values())
+        .filter((group) => {
+          if (group.instanceId !== input.instanceId) return false;
+          if (!query) return true;
+          return [group.name ?? "", group.jid].some((value) => value.toLowerCase().includes(query));
+        })
+        .sort((left, right) => {
+          const updatedDiff = right.updatedAt.getTime() - left.updatedAt.getTime();
+          if (updatedDiff !== 0) return updatedDiff;
+          return right.lastMessageAt.getTime() - left.lastMessageAt.getTime();
+        });
+    },
+    async findGroupTarget(input) {
+      return groups.get(`${input.instanceId}:${normalizeGroupJid(input.jid)}`) ?? null;
     },
     async createDispatch(input) {
       const now = new Date();
@@ -205,6 +292,13 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
         ? normalizeGroupJid(input.groupJid ?? "")
         : null;
 
+      if (recipientJid) {
+        const target = await store.findGroupTarget({ instanceId: input.instanceId, jid: recipientJid });
+        if (!target) {
+          throw new ScheduledDispatchValidationError("Grupo selecionado nao pertence a instancia informada.", 422);
+        }
+      }
+
       if (input.targetType === "number" && normalizeOptionalText(input.groupJid)) {
         throw new ScheduledDispatchValidationError("Disparo para numero nao aceita groupJid.");
       }
@@ -244,6 +338,11 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
       const dispatch = await store.findDispatchById(dispatchId);
       if (!dispatch) throw new ScheduledDispatchNotFoundError(dispatchId);
       return dispatch;
+    },
+
+    async listGroupTargets(input: { instanceId: string; search?: string }) {
+      await ensureInstance(input.instanceId);
+      return store.listGroupTargets(input);
     },
   };
 }

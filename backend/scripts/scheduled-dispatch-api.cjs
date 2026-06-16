@@ -11,8 +11,7 @@ const Fastify = require("fastify");
 const path = require("path");
 
 const backendRoot = path.resolve(__dirname, "..");
-const npmCommand = process.platform === "win32" ? "npm run build" : "npm run build";
-execSync(npmCommand, { cwd: backendRoot, stdio: "inherit" });
+execSync("npm run build", { cwd: backendRoot, stdio: "inherit" });
 
 const { createScheduledDispatchRoutes } = require("../dist/routes/scheduled-dispatch.routes.js");
 const {
@@ -21,16 +20,55 @@ const {
 } = require("../dist/services/scheduled-dispatch.service.js");
 
 function createApp() {
-  const store = createInMemoryScheduledDispatchStore({ instances: [{ id: "instance-a" }, { id: "instance-b" }] });
+  const store = createInMemoryScheduledDispatchStore({
+    instances: [{ id: "instance-a" }, { id: "instance-b" }],
+    groups: [
+      {
+        instanceId: "instance-a",
+        jid: "120363000001@g.us",
+        name: "Grupo Vendas",
+        lastMessageAt: new Date("2026-06-16T10:00:00.000Z"),
+        updatedAt: new Date("2026-06-16T10:30:00.000Z"),
+      },
+    ],
+  });
   const service = createScheduledDispatchService({ store });
+  const groupSyncService = {
+    async syncGroups({ instanceId }) {
+      return [
+        {
+          instanceId,
+          jid: "120363000099@g.us",
+          name: "Grupo Sincronizado",
+          lastMessageAt: new Date("2026-06-16T12:00:00.000Z"),
+        },
+      ];
+    },
+  };
   const app = Fastify();
-  app.register(createScheduledDispatchRoutes({ service, preValidationHook: async () => {} }), { prefix: "/api/scheduled-dispatches" });
+  app.register(createScheduledDispatchRoutes({ service, groupSyncService, preValidationHook: async () => {} }), { prefix: "/api/scheduled-dispatches" });
   return { app, store };
 }
 
 (async () => {
   const { app } = createApp();
   await app.ready();
+
+  const listGroupsResponse = await app.inject({ method: "GET", url: "/api/scheduled-dispatches/groups?instanceId=instance-a" });
+  assert.equal(listGroupsResponse.statusCode, 200, listGroupsResponse.body);
+  const listedGroups = JSON.parse(listGroupsResponse.body).groups;
+  assert.equal(listedGroups.length, 1);
+  assert.equal(listedGroups[0].jid, "120363000001@g.us");
+
+  const syncGroupsResponse = await app.inject({
+    method: "POST",
+    url: "/api/scheduled-dispatches/groups/sync",
+    payload: { instanceId: "instance-b" },
+  });
+  assert.equal(syncGroupsResponse.statusCode, 200, syncGroupsResponse.body);
+  const syncedPayload = JSON.parse(syncGroupsResponse.body);
+  assert.equal(syncedPayload.synced, 1);
+  assert.equal(syncedPayload.groups[0].jid, "120363000099@g.us");
 
   const createNumberResponse = await app.inject({
     method: "POST",
@@ -60,9 +98,8 @@ function createApp() {
       instanceId: "instance-a",
       targetType: "group",
       groupJid: "120363000001@G.US",
-      contentType: "image",
-      body: "Legenda da imagem",
-      mediaUrl: "https://cdn.example.com/banner.png",
+      contentType: "text",
+      body: "Legenda do disparo",
       scheduledAt: "2026-06-21T15:30:00.000Z",
     },
   });
@@ -71,7 +108,22 @@ function createApp() {
   assert.equal(createdGroup.targetType, "GROUP");
   assert.equal(createdGroup.recipientPhone, null);
   assert.equal(createdGroup.recipientJid, "120363000001@g.us");
-  assert.equal(createdGroup.contentType, "IMAGE");
+  assert.equal(createdGroup.contentType, "TEXT");
+
+  const invalidGroupResponse = await app.inject({
+    method: "POST",
+    url: "/api/scheduled-dispatches",
+    payload: {
+      instanceId: "instance-a",
+      targetType: "group",
+      groupJid: "120363000555@g.us",
+      contentType: "text",
+      body: "Grupo nao sincronizado",
+      scheduledAt: "2026-06-21T15:30:00.000Z",
+    },
+  });
+  assert.equal(invalidGroupResponse.statusCode, 422, invalidGroupResponse.body);
+  assert.equal(JSON.parse(invalidGroupResponse.body).code, "SCHEDULED_DISPATCH_VALIDATION_ERROR");
 
   const invalidTargetResponse = await app.inject({
     method: "POST",
