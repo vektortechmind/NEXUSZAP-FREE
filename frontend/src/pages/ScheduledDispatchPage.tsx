@@ -100,6 +100,12 @@ function sortDispatchHistory(dispatches: ScheduledDispatchHistoryItem[]) {
   });
 }
 
+function pruneSelectedGroupJids(groups: ScheduledDispatchGroup[], groupJids: string[]) {
+  if (groupJids.length === 0) return groupJids;
+  const known = new Set(groups.map((group) => group.jid));
+  return groupJids.filter((jid) => known.has(jid));
+}
+
 export function ScheduledDispatchPage() {
   const { addToast } = useToast();
   const mediaInputRef = useRef<HTMLInputElement | null>(null);
@@ -132,10 +138,11 @@ export function ScheduledDispatchPage() {
   const hasUploadedMedia = draft.contentType !== "text" && Boolean(draft.mediaUrl.trim());
   const visibleHistory = useMemo(() => sortDispatchHistory(history), [history]);
   const historyTotalPages = Math.max(1, Math.ceil(visibleHistory.length / HISTORY_PAGE_SIZE));
+  const currentHistoryPage = Math.min(historyPage, historyTotalPages);
   const pagedHistory = useMemo(() => {
-    const start = (historyPage - 1) * HISTORY_PAGE_SIZE;
+    const start = (currentHistoryPage - 1) * HISTORY_PAGE_SIZE;
     return visibleHistory.slice(start, start + HISTORY_PAGE_SIZE);
-  }, [historyPage, visibleHistory]);
+  }, [currentHistoryPage, visibleHistory]);
 
   useEffect(() => {
     let ignore = false;
@@ -189,35 +196,62 @@ export function ScheduledDispatchPage() {
   }
 
   useEffect(() => {
-    void loadHistory(draft.instanceId);
+    let ignore = false;
+
+    async function syncHistory() {
+      await Promise.resolve();
+
+      if (!draft.instanceId) {
+        if (ignore) return;
+        setHistory([]);
+        setHistoryError(null);
+        setLoadingHistory(false);
+        return;
+      }
+
+      if (!ignore) setLoadingHistory(true);
+      try {
+        const res = await api.get<DispatchListResponse>("/scheduled-dispatches", { params: { instanceId: draft.instanceId } });
+        if (ignore) return;
+        setHistory(res.data.dispatches);
+        setHistoryError(null);
+      } catch (err) {
+        console.error(err);
+        if (ignore) return;
+        setHistory([]);
+        setHistoryError("Nao foi possivel carregar o historico de disparos.");
+      } finally {
+        if (!ignore) setLoadingHistory(false);
+      }
+    }
+
+    void syncHistory();
+    return () => {
+      ignore = true;
+    };
   }, [draft.instanceId]);
 
   useEffect(() => {
-    setHistoryPage(1);
-  }, [draft.instanceId, history.length]);
-
-  useEffect(() => {
-    if (historyPage > historyTotalPages) {
-      setHistoryPage(historyTotalPages);
-    }
-  }, [historyPage, historyTotalPages]);
-
-  useEffect(() => {
-    if (draft.targetType !== "group" || !draft.instanceId) {
-      setGroups([]);
-      setGroupsError(null);
-      return;
-    }
-
     let ignore = false;
 
     async function loadGroups() {
-      setLoadingGroups(true);
+      await Promise.resolve();
+
+      if (draft.targetType !== "group" || !draft.instanceId) {
+        if (ignore) return;
+        setGroups([]);
+        setGroupsError(null);
+        setLoadingGroups(false);
+        return;
+      }
+
+      if (!ignore) setLoadingGroups(true);
       try {
         const res = await api.get<GroupListResponse>("/scheduled-dispatches/groups", { params: { instanceId: draft.instanceId } });
         if (ignore) return;
         setGroups(res.data.groups);
         setGroupsError(null);
+        setDraft((current) => ({ ...current, groupJids: pruneSelectedGroupJids(res.data.groups, current.groupJids) }));
       } catch (err) {
         console.error(err);
         if (ignore) return;
@@ -234,12 +268,6 @@ export function ScheduledDispatchPage() {
     };
   }, [draft.instanceId, draft.targetType]);
 
-  useEffect(() => {
-    if (draft.targetType !== "group" || draft.groupJids.length === 0) return;
-    const known = new Set(groups.map((group) => group.jid));
-    setDraft((current) => ({ ...current, groupJids: current.groupJids.filter((jid) => known.has(jid)) }));
-  }, [draft.groupJids.length, draft.targetType, groups]);
-
   async function handleSyncGroups() {
     if (!draft.instanceId) {
       addToast("Selecione uma instancia antes de sincronizar grupos.", "error");
@@ -251,6 +279,7 @@ export function ScheduledDispatchPage() {
       const res = await api.post<GroupSyncResponse>("/scheduled-dispatches/groups/sync", { instanceId: draft.instanceId });
       setGroups(res.data.groups);
       setGroupsError(null);
+      setDraft((current) => ({ ...current, groupJids: pruneSelectedGroupJids(res.data.groups, current.groupJids) }));
       addToast(res.data.synced > 0 ? `${res.data.synced} grupo(s) sincronizado(s).` : "Nenhum grupo encontrado para esta instancia.", "success");
     } catch (err) {
       console.error(err);
@@ -338,6 +367,7 @@ export function ScheduledDispatchPage() {
         buttons: [],
         scheduledAt: createInitialScheduledDispatchDraft().scheduledAt,
       }));
+      setHistoryPage(1);
       await loadHistory(draft.instanceId);
       addToast(
         draft.deliveryMode === "immediate"
@@ -357,6 +387,7 @@ export function ScheduledDispatchPage() {
     setCancellingId(dispatchId);
     try {
       await api.post<DispatchMutationResponse>(`/scheduled-dispatches/${dispatchId}/cancel`);
+      setHistoryPage(1);
       await loadHistory(draft.instanceId);
       addToast("Disparo cancelado.", "success");
     } catch (err) {
@@ -380,6 +411,7 @@ export function ScheduledDispatchPage() {
     setClearingHistory(true);
     try {
       const res = await api.delete<ClearHistoryResponse>("/scheduled-dispatches/history", { params: { instanceId: draft.instanceId } });
+      setHistoryPage(1);
       await loadHistory(draft.instanceId);
       addToast(res.data.deleted > 0 ? `${res.data.deleted} item(ns) removido(s) do historico.` : "Nenhum item terminal para remover.", "success");
     } catch (err) {
@@ -428,7 +460,10 @@ export function ScheduledDispatchPage() {
               <select
                 className={`${selectClassName} mt-2`}
                 value={draft.instanceId}
-                onChange={(event) => setDraft((current) => applyInstanceToDraft(current, event.target.value))}
+                onChange={(event) => {
+                  setHistoryPage(1);
+                  setDraft((current) => applyInstanceToDraft(current, event.target.value));
+                }}
                 disabled={loadingInstances || instances.length === 0}
               >
                 <option value="">Selecione uma instancia</option>
@@ -738,7 +773,7 @@ export function ScheduledDispatchPage() {
               <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Consulte status e cancele jobs pendentes.</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" onClick={() => void loadHistory(draft.instanceId)} disabled={!draft.instanceId} loading={loadingHistory}>
+              <Button variant="secondary" onClick={() => { setHistoryPage(1); void loadHistory(draft.instanceId); }} disabled={!draft.instanceId} loading={loadingHistory}>
                 Atualizar historico
               </Button>
               <Button variant="secondary" onClick={() => void handleClearHistory()} disabled={!draft.instanceId} loading={clearingHistory}>
@@ -831,12 +866,12 @@ export function ScheduledDispatchPage() {
 
           {visibleHistory.length > HISTORY_PAGE_SIZE ? (
             <div className="flex flex-col gap-3 border-t border-slate-200 pt-3 text-sm text-slate-600 dark:border-slate-800 dark:text-slate-400 sm:flex-row sm:items-center sm:justify-between">
-              <span>Pagina {historyPage} de {historyTotalPages} · {visibleHistory.length} itens</span>
+              <span>Pagina {currentHistoryPage} de {historyTotalPages} · {visibleHistory.length} itens</span>
               <div className="flex items-center gap-2">
-                <Button variant="secondary" onClick={() => setHistoryPage((current) => Math.max(1, current - 1))} disabled={historyPage === 1}>
+                <Button variant="secondary" onClick={() => setHistoryPage((current) => Math.max(1, current - 1))} disabled={currentHistoryPage === 1}>
                   Anterior
                 </Button>
-                <Button variant="secondary" onClick={() => setHistoryPage((current) => Math.min(historyTotalPages, current + 1))} disabled={historyPage === historyTotalPages}>
+                <Button variant="secondary" onClick={() => setHistoryPage((current) => Math.min(historyTotalPages, current + 1))} disabled={currentHistoryPage === historyTotalPages}>
                   Proxima
                 </Button>
               </div>

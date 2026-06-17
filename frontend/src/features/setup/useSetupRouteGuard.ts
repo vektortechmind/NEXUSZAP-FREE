@@ -15,6 +15,11 @@ type SetupRouteGuardState = {
   error: string;
 };
 
+type SetupRouteGuardSnapshot = {
+  lastCheckedSearch: string;
+  error: string;
+};
+
 function buildStatusUrl(search: string): string {
   const token = new URLSearchParams(search).get("token");
   if (!token) return "/setup/status";
@@ -38,7 +43,7 @@ function setupStatusError(error: unknown): string {
 export function useSetupRouteGuard(): SetupRouteGuardState {
   const navigate = useNavigate();
   const { search } = useLocation();
-  const [state, setState] = useState<SetupRouteGuardState>({ checking: true, error: "" });
+  const [snapshot, setSnapshot] = useState<SetupRouteGuardSnapshot | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -53,14 +58,13 @@ export function useSetupRouteGuard(): SetupRouteGuardState {
           return;
         }
 
-        setState({ checking: false, error: "" });
+        setSnapshot({ lastCheckedSearch: search, error: "" });
       } catch (error) {
         if (!active) return;
-        setState({ checking: false, error: setupStatusError(error) });
+        setSnapshot({ lastCheckedSearch: search, error: setupStatusError(error) });
       }
     };
 
-    setState({ checking: true, error: "" });
     void verifySetup();
 
     return () => {
@@ -68,5 +72,8 @@ export function useSetupRouteGuard(): SetupRouteGuardState {
     };
   }, [navigate, search]);
 
-  return state;
+  return {
+    checking: snapshot === null || snapshot.lastCheckedSearch !== search,
+    error: snapshot?.lastCheckedSearch === search ? snapshot.error : "",
+  };
 }
