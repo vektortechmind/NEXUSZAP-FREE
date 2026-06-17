@@ -138,6 +138,32 @@ function createApp() {
   const immediateTimestamp = new Date(createdVideo.scheduledAt).getTime();
   assert.equal(immediateTimestamp >= immediateBefore && immediateTimestamp <= immediateAfter + 2_000, true);
 
+  const cancelCandidateResponse = await app.inject({
+    method: "POST",
+    url: "/api/scheduled-dispatches",
+    payload: {
+      instanceId: "instance-a",
+      targetType: "number",
+      phone: "5511999990000",
+      contentType: "text",
+      body: "Cancelar depois",
+      deliveryMode: "scheduled",
+      scheduledAt: "2026-06-30T15:30:00.000Z",
+    },
+  });
+  assert.equal(cancelCandidateResponse.statusCode, 201, cancelCandidateResponse.body);
+  const cancelCandidate = JSON.parse(cancelCandidateResponse.body).dispatch;
+
+  const cancelResponse = await app.inject({ method: "POST", url: `/api/scheduled-dispatches/${cancelCandidate.id}/cancel` });
+  assert.equal(cancelResponse.statusCode, 200, cancelResponse.body);
+  const cancelledDispatch = JSON.parse(cancelResponse.body).dispatch;
+  assert.equal(cancelledDispatch.status, "CANCELLED");
+  assert.equal(Boolean(cancelledDispatch.processedAt), true);
+
+  const cancelConflictResponse = await app.inject({ method: "POST", url: `/api/scheduled-dispatches/${cancelCandidate.id}/cancel` });
+  assert.equal(cancelConflictResponse.statusCode, 409, cancelConflictResponse.body);
+  assert.equal(JSON.parse(cancelConflictResponse.body).code, "SCHEDULED_DISPATCH_CONFLICT");
+
   const invalidMediaMissingResponse = await app.inject({
     method: "POST",
     url: "/api/scheduled-dispatches",
@@ -277,7 +303,8 @@ function createApp() {
   const listAllResponse = await app.inject({ method: "GET", url: "/api/scheduled-dispatches" });
   assert.equal(listAllResponse.statusCode, 200, listAllResponse.body);
   const allDispatches = JSON.parse(listAllResponse.body).dispatches;
-  assert.equal(allDispatches.length, 3);
+  assert.equal(allDispatches.length, 4);
+  assert.equal(allDispatches.some((dispatch) => dispatch.status === "CANCELLED"), true);
 
   const detailResponse = await app.inject({ method: "GET", url: `/api/scheduled-dispatches/${createdImage.id}` });
   assert.equal(detailResponse.statusCode, 200, detailResponse.body);

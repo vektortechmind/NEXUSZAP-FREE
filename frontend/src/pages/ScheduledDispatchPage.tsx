@@ -9,6 +9,7 @@ import { api } from "../lib/axios";
 import type { InstanceStatus } from "../features/instances/types";
 import {
   applyInstanceToDraft,
+  canCancelScheduledDispatch,
   createEmptyScheduledDispatchButton,
   createInitialScheduledDispatchDraft,
   filterScheduledDispatchGroups,
@@ -16,31 +17,22 @@ import {
   MAX_SCHEDULED_DISPATCH_BUTTONS,
   normalizeScheduledDispatchButtons,
   resolveScheduledDispatchIso,
+  resolveScheduledDispatchTargetLabel,
+  SCHEDULED_DISPATCH_STATUS_LABELS,
   type ScheduledDispatchContentType,
   type ScheduledDispatchDeliveryMode,
   type ScheduledDispatchDraft,
   type ScheduledDispatchGroup,
+  type ScheduledDispatchHistoryItem,
+  type ScheduledDispatchStatus,
   type ScheduledDispatchUrlButton,
   validateScheduledDispatchDraft,
 } from "../features/scheduled-dispatch/state";
 
 type GroupListResponse = { groups: ScheduledDispatchGroup[] };
 type GroupSyncResponse = { synced: number; groups: ScheduledDispatchGroup[] };
-type DispatchCreateResponse = {
-  dispatch: {
-    id: string;
-    instanceId: string;
-    targetType: "NUMBER" | "GROUP";
-    recipientPhone: string | null;
-    recipientJid: string | null;
-    contentType: "TEXT" | "IMAGE" | "VIDEO";
-    body: string | null;
-    mediaUrl: string | null;
-    buttons: Array<{ text: string; url: string }>;
-    scheduledAt: string;
-    status: string;
-  };
-};
+type DispatchListResponse = { dispatches: ScheduledDispatchHistoryItem[] };
+type DispatchMutationResponse = { dispatch: ScheduledDispatchHistoryItem };
 
 const selectClassName = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition-colors duration-200 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-emerald-400 dark:focus:ring-emerald-400/25";
 const textareaClassName = `${selectClassName} min-h-32 resize-y`;
@@ -53,13 +45,53 @@ const contentTypeLabels: Record<ScheduledDispatchContentType, string> = {
   video: "Video",
 };
 
+const historyContentTypeLabels: Record<ScheduledDispatchHistoryItem["contentType"], string> = {
+  TEXT: "Texto",
+  IMAGE: "Imagem",
+  VIDEO: "Video",
+};
+
 const deliveryModeLabels: Record<ScheduledDispatchDeliveryMode, string> = {
   immediate: "Enviar agora",
   scheduled: "Agendar",
 };
 
+const statusToneClassName: Record<ScheduledDispatchStatus, string> = {
+  SCHEDULED: "bg-amber-100 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+  PROCESSING: "bg-sky-100 text-sky-800 dark:bg-sky-950/40 dark:text-sky-300",
+  SENT: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300",
+  FAILED: "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300",
+  CANCELLED: "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+};
+
 function clearButtonsForVideo(buttons: ScheduledDispatchUrlButton[]) {
   return buttons.length > 0 ? [] : buttons;
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) return "-";
+  return new Intl.DateTimeFormat("pt-BR", {
+    dateStyle: "short",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function sortDispatchHistory(dispatches: ScheduledDispatchHistoryItem[]) {
+  const weight = (status: ScheduledDispatchStatus) => {
+    if (status === "PROCESSING") return 0;
+    if (status === "SCHEDULED") return 1;
+    if (status === "FAILED") return 2;
+    if (status === "SENT") return 3;
+    return 4;
+  };
+
+  return [...dispatches].sort((left, right) => {
+    const statusDiff = weight(left.status) - weight(right.status);
+    if (statusDiff !== 0) return statusDiff;
+    const scheduledDiff = new Date(right.scheduledAt).getTime() - new Date(left.scheduledAt).getTime();
+    if (scheduledDiff !== 0) return scheduledDiff;
+    return new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime();
+  });
 }
 
 export function ScheduledDispatchPage() {
@@ -76,11 +108,16 @@ export function ScheduledDispatchPage() {
   const [groupsError, setGroupsError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [lastCreatedId, setLastCreatedId] = useState<string | null>(null);
+  const [history, setHistory] = useState<ScheduledDispatchHistoryItem[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   const validation = useMemo(() => validateScheduledDispatchDraft(draft), [draft]);
   const visibleGroups = useMemo(() => filterScheduledDispatchGroups(groups, deferredGroupSearch), [deferredGroupSearch, groups]);
   const selectedGroup = useMemo(() => groups.find((group) => group.jid === draft.groupJid) ?? null, [draft.groupJid, groups]);
   const mediaPreviewEnabled = draft.contentType !== "text" && isSafeMediaUrl(draft.mediaUrl);
+  const visibleHistory = useMemo(() => sortDispatchHistory(history), [history]);
 
   useEffect(() => {
     let ignore = false;
@@ -111,6 +148,31 @@ export function ScheduledDispatchPage() {
       ignore = true;
     };
   }, []);
+
+  async function loadHistory(instanceId: string) {
+    if (!instanceId) {
+      setHistory([]);
+      setHistoryError(null);
+      return;
+    }
+
+    setLoadingHistory(true);
+    try {
+      const res = await api.get<DispatchListResponse>("/scheduled-dispatches", { params: { instanceId } });
+      setHistory(res.data.dispatches);
+      setHistoryError(null);
+    } catch (err) {
+      console.error(err);
+      setHistory([]);
+      setHistoryError("Nao foi possivel carregar o historico de disparos.");
+    } finally {
+      setLoadingHistory(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadHistory(draft.instanceId);
+  }, [draft.instanceId]);
 
   useEffect(() => {
     if (draft.targetType !== "group" || !draft.instanceId) {
@@ -180,7 +242,7 @@ export function ScheduledDispatchPage() {
 
     setSaving(true);
     try {
-      const res = await api.post<DispatchCreateResponse>("/scheduled-dispatches", {
+      const res = await api.post<DispatchMutationResponse>("/scheduled-dispatches", {
         instanceId: draft.instanceId,
         targetType: draft.targetType,
         phone: draft.targetType === "number" ? draft.phone : null,
@@ -201,6 +263,7 @@ export function ScheduledDispatchPage() {
         buttons: [],
         scheduledAt: createInitialScheduledDispatchDraft().scheduledAt,
       }));
+      await loadHistory(draft.instanceId);
       addToast(
         draft.deliveryMode === "immediate"
           ? "Disparo imediato colocado na fila com sucesso."
@@ -212,6 +275,20 @@ export function ScheduledDispatchPage() {
       addToast("Nao foi possivel salvar o disparo.", "error");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleCancel(dispatchId: string) {
+    setCancellingId(dispatchId);
+    try {
+      await api.post<DispatchMutationResponse>(`/scheduled-dispatches/${dispatchId}/cancel`);
+      await loadHistory(draft.instanceId);
+      addToast("Disparo cancelado.", "success");
+    } catch (err) {
+      console.error(err);
+      addToast("Nao foi possivel cancelar o disparo.", "error");
+    } finally {
+      setCancellingId(null);
     }
   }
 
@@ -509,6 +586,102 @@ export function ScheduledDispatchPage() {
           </div>
         </Panel>
       </div>
+
+      <Panel className="p-5 sm:p-6">
+        <div className="space-y-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Historico operacional</h2>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Acompanhe jobs pendentes, em processamento, enviados, falhos ou cancelados. Nao existe retry automatico nesta rodada.</p>
+            </div>
+            <Button variant="secondary" onClick={() => void loadHistory(draft.instanceId)} disabled={!draft.instanceId} loading={loadingHistory}>
+              Atualizar historico
+            </Button>
+          </div>
+
+          {historyError ? <InlineAlert tone="danger">{historyError}</InlineAlert> : null}
+          {loadingHistory ? <InlineAlert tone="info">Carregando historico dos disparos...</InlineAlert> : null}
+          {!loadingHistory && !historyError && visibleHistory.length === 0 ? (
+            <InlineAlert tone="info">Nenhum disparo encontrado para a instancia selecionada.</InlineAlert>
+          ) : null}
+
+          {visibleHistory.length > 0 ? (
+            <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
+              <ul className="divide-y divide-slate-200 dark:divide-slate-800">
+                {visibleHistory.map((dispatch) => (
+                  <li key={dispatch.id} className="bg-white px-4 py-4 dark:bg-slate-950/40">
+                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusToneClassName[dispatch.status]}`}>{SCHEDULED_DISPATCH_STATUS_LABELS[dispatch.status]}</span>
+                          <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{historyContentTypeLabels[dispatch.contentType]}</span>
+                          <span className="font-mono text-xs text-slate-500 dark:text-slate-400">{dispatch.id}</span>
+                        </div>
+
+                        <div className="grid gap-2 text-sm text-slate-600 dark:text-slate-400 sm:grid-cols-2 xl:grid-cols-4">
+                          <div>
+                            <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-500">Destino</span>
+                            <span className="block break-all font-mono">{resolveScheduledDispatchTargetLabel(dispatch)}</span>
+                          </div>
+                          <div>
+                            <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-500">Agendado</span>
+                            <span className="block">{formatDateTime(dispatch.scheduledAt)}</span>
+                          </div>
+                          <div>
+                            <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-500">Processado</span>
+                            <span className="block">{formatDateTime(dispatch.processedAt)}</span>
+                          </div>
+                          <div>
+                            <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-500">Provider ID</span>
+                            <span className="block break-all font-mono">{dispatch.providerMessageId || "-"}</span>
+                          </div>
+                        </div>
+
+                        {dispatch.body ? (
+                          <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-slate-900 dark:text-slate-300">{dispatch.body}</p>
+                        ) : null}
+
+                        {dispatch.buttons.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {dispatch.buttons.map((button, index) => (
+                              <a key={`${dispatch.id}-button-${index}`} href={button.url} target="_blank" rel="noreferrer" className="inline-flex rounded-full border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 transition-colors hover:border-emerald-500 hover:text-emerald-700 dark:border-slate-700 dark:text-slate-300 dark:hover:border-emerald-400 dark:hover:text-emerald-300">
+                                {button.text}
+                              </a>
+                            ))}
+                          </div>
+                        ) : null}
+
+                        {dispatch.failureCode || dispatch.providerError ? (
+                          <InlineAlert tone="danger" title={dispatch.failureCode || "Falha"}>
+                            {dispatch.providerError || "O worker registrou falha sem detalhe adicional."}
+                          </InlineAlert>
+                        ) : null}
+
+                        {dispatch.status === "FAILED" ? (
+                          <p className="text-xs text-slate-500 dark:text-slate-500">Falhas permanecem visiveis no historico. Retry automatico fica fora do MVP desta rodada.</p>
+                        ) : null}
+                      </div>
+
+                      <div className="flex shrink-0 items-start gap-2">
+                        {canCancelScheduledDispatch(dispatch.status) ? (
+                          <Button
+                            variant="secondary"
+                            onClick={() => void handleCancel(dispatch.id)}
+                            loading={cancellingId === dispatch.id}
+                            disabled={cancellingId !== null && cancellingId !== dispatch.id}
+                          >
+                            Cancelar job
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      </Panel>
     </section>
   );
 }

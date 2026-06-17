@@ -35,6 +35,16 @@ type ScheduledDispatchListInput = {
   instanceId?: string;
 };
 
+type ScheduledDispatchTransitionInput = {
+  id: string;
+  from: ScheduledDispatchStatus | ScheduledDispatchStatus[];
+  to: ScheduledDispatchStatus;
+  providerMessageId?: string | null;
+  failureCode?: string | null;
+  providerError?: string | null;
+  processedAt?: Date | null;
+};
+
 export type ScheduledDispatchStore = {
   findInstance(instanceId: string): Promise<{ id: string } | null>;
   listGroupTargets(input: { instanceId: string; search?: string }): Promise<ScheduledDispatchGroupTarget[]>;
@@ -52,7 +62,9 @@ export type ScheduledDispatchStore = {
     status: ScheduledDispatchStatus;
   }): Promise<ScheduledDispatchRecord>;
   listDispatches(input: ScheduledDispatchListInput): Promise<ScheduledDispatchRecord[]>;
+  listDueDispatches(input: { now: Date; limit: number }): Promise<ScheduledDispatchRecord[]>;
   findDispatchById(id: string): Promise<ScheduledDispatchRecord | null>;
+  transitionDispatch(input: ScheduledDispatchTransitionInput): Promise<ScheduledDispatchRecord | null>;
 };
 
 export class ScheduledDispatchValidationError extends Error {
@@ -76,6 +88,14 @@ export class ScheduledDispatchNotFoundError extends Error {
 
   constructor(dispatchId: string) {
     super(`Disparo agendado ${dispatchId} nao encontrado.`);
+  }
+}
+
+export class ScheduledDispatchConflictError extends Error {
+  code = "SCHEDULED_DISPATCH_CONFLICT";
+
+  constructor(message: string, public statusCode = 409) {
+    super(message);
   }
 }
 
@@ -172,7 +192,7 @@ function serializeScheduledDispatchButtons(buttons: ScheduledDispatchUrlButton[]
   return buttons.length ? JSON.stringify(buttons) : null;
 }
 
-function parseScheduledDispatchButtons(buttonsJson: string | null): ScheduledDispatchUrlButton[] {
+export function parseScheduledDispatchButtons(buttonsJson: string | null): ScheduledDispatchUrlButton[] {
   if (!buttonsJson) return [];
   try {
     const parsed = JSON.parse(buttonsJson) as unknown;
@@ -205,6 +225,51 @@ function mapContentType(value: ScheduledDispatchCreateInput["contentType"]): Sch
   if (value === "image") return "IMAGE";
   if (value === "video") return "VIDEO";
   return "TEXT";
+}
+
+function byDispatchHistoryOrder(left: ScheduledDispatchRecord, right: ScheduledDispatchRecord) {
+  const weight = (status: ScheduledDispatchStatus) => {
+    if (status === "PROCESSING") return 0;
+    if (status === "SCHEDULED") return 1;
+    if (status === "FAILED") return 2;
+    if (status === "SENT") return 3;
+    if (status === "CANCELLED") return 4;
+    return 5;
+  };
+
+  const statusDiff = weight(left.status) - weight(right.status);
+  if (statusDiff !== 0) return statusDiff;
+
+  const scheduledDiff = right.scheduledAt.getTime() - left.scheduledAt.getTime();
+  if (scheduledDiff !== 0) return scheduledDiff;
+
+  return right.createdAt.getTime() - left.createdAt.getTime();
+}
+
+async function transitionDispatchWithPrisma(input: ScheduledDispatchTransitionInput) {
+  return prisma.$transaction(async (tx) => {
+    const allowedStatuses = Array.isArray(input.from) ? input.from : [input.from];
+    const result = await tx.scheduledDispatch.updateMany({
+      where: {
+        id: input.id,
+        status: { in: allowedStatuses },
+      },
+      data: {
+        status: input.to,
+        providerMessageId: input.providerMessageId === undefined ? undefined : input.providerMessageId,
+        failureCode: input.failureCode === undefined ? undefined : input.failureCode,
+        providerError: input.providerError === undefined ? undefined : input.providerError,
+        processedAt: input.processedAt === undefined ? undefined : input.processedAt,
+      },
+    });
+
+    if (result.count !== 1) return null;
+
+    const updated = await tx.scheduledDispatch.findUnique({ where: { id: input.id } });
+    if (!updated) return null;
+
+    return updated;
+  });
 }
 
 export const prismaScheduledDispatchStore: ScheduledDispatchStore = {
@@ -275,12 +340,27 @@ export const prismaScheduledDispatchStore: ScheduledDispatchStore = {
   async listDispatches(input) {
     return prisma.scheduledDispatch.findMany({
       where: input.instanceId ? { instanceId: input.instanceId } : undefined,
-      orderBy: [{ scheduledAt: "asc" }, { createdAt: "desc" }],
+      orderBy: [{ scheduledAt: "desc" }, { createdAt: "desc" }],
+    });
+  },
+
+  async listDueDispatches(input) {
+    return prisma.scheduledDispatch.findMany({
+      where: {
+        status: "SCHEDULED",
+        scheduledAt: { lte: input.now },
+      },
+      orderBy: [{ scheduledAt: "asc" }, { createdAt: "asc" }],
+      take: input.limit,
     });
   },
 
   async findDispatchById(id) {
     return prisma.scheduledDispatch.findUnique({ where: { id } });
+  },
+
+  async transitionDispatch(input) {
+    return transitionDispatchWithPrisma(input);
   },
 };
 
@@ -356,14 +436,38 @@ export function createInMemoryScheduledDispatchStore(seed: {
     async listDispatches(input) {
       return Array.from(dispatches.values())
         .filter((dispatch) => !input.instanceId || dispatch.instanceId === input.instanceId)
+        .sort(byDispatchHistoryOrder);
+    },
+    async listDueDispatches(input) {
+      return Array.from(dispatches.values())
+        .filter((dispatch) => dispatch.status === "SCHEDULED" && dispatch.scheduledAt.getTime() <= input.now.getTime())
         .sort((left, right) => {
           const scheduledDiff = left.scheduledAt.getTime() - right.scheduledAt.getTime();
           if (scheduledDiff !== 0) return scheduledDiff;
-          return right.createdAt.getTime() - left.createdAt.getTime();
-        });
+          return left.createdAt.getTime() - right.createdAt.getTime();
+        })
+        .slice(0, input.limit);
     },
     async findDispatchById(id) {
       return dispatches.get(id) ?? null;
+    },
+    async transitionDispatch(input) {
+      const current = dispatches.get(input.id);
+      if (!current) return null;
+      const allowedStatuses = Array.isArray(input.from) ? input.from : [input.from];
+      if (!allowedStatuses.includes(current.status)) return null;
+
+      const updated: ScheduledDispatchRecord = {
+        ...current,
+        status: input.to,
+        providerMessageId: input.providerMessageId === undefined ? current.providerMessageId : input.providerMessageId,
+        failureCode: input.failureCode === undefined ? current.failureCode : input.failureCode,
+        providerError: input.providerError === undefined ? current.providerError : input.providerError,
+        processedAt: input.processedAt === undefined ? current.processedAt : input.processedAt,
+        updatedAt: new Date(),
+      };
+      dispatches.set(updated.id, updated);
+      return updated;
     },
   };
 }
@@ -448,7 +552,7 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
     async listDispatches(input: ScheduledDispatchListInput) {
       if (input.instanceId) await ensureInstance(input.instanceId);
       const dispatches = await store.listDispatches(input);
-      return dispatches.map(toScheduledDispatchView);
+      return dispatches.sort(byDispatchHistoryOrder).map(toScheduledDispatchView);
     },
 
     async getDispatch(dispatchId: string) {
@@ -460,6 +564,71 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
     async listGroupTargets(input: { instanceId: string; search?: string }) {
       await ensureInstance(input.instanceId);
       return store.listGroupTargets(input);
+    },
+
+    async claimDueDispatches(input: { now?: Date; limit?: number } = {}) {
+      const dueDispatches = await store.listDueDispatches({
+        now: input.now ?? new Date(),
+        limit: Math.min(Math.max(input.limit ?? 10, 1), 100),
+      });
+      const claimed: ScheduledDispatchViewRecord[] = [];
+
+      for (const dispatch of dueDispatches) {
+        const record = await store.transitionDispatch({
+          id: dispatch.id,
+          from: "SCHEDULED",
+          to: "PROCESSING",
+          providerMessageId: null,
+          failureCode: null,
+          providerError: null,
+          processedAt: null,
+        });
+        if (record) claimed.push(toScheduledDispatchView(record));
+      }
+
+      return claimed;
+    },
+
+    async markDispatchSent(input: { id: string; providerMessageId?: string | null; processedAt?: Date }) {
+      const record = await store.transitionDispatch({
+        id: input.id,
+        from: "PROCESSING",
+        to: "SENT",
+        providerMessageId: input.providerMessageId ?? null,
+        failureCode: null,
+        providerError: null,
+        processedAt: input.processedAt ?? new Date(),
+      });
+      if (!record) throw new ScheduledDispatchConflictError("Disparo nao esta em processamento para concluir envio.");
+      return toScheduledDispatchView(record);
+    },
+
+    async markDispatchFailed(input: { id: string; failureCode: string; providerError?: string | null; processedAt?: Date }) {
+      const record = await store.transitionDispatch({
+        id: input.id,
+        from: "PROCESSING",
+        to: "FAILED",
+        failureCode: input.failureCode,
+        providerError: normalizeOptionalText(input.providerError) ?? null,
+        processedAt: input.processedAt ?? new Date(),
+      });
+      if (!record) throw new ScheduledDispatchConflictError("Disparo nao esta em processamento para marcar falha.");
+      return toScheduledDispatchView(record);
+    },
+
+    async cancelDispatch(dispatchId: string) {
+      const existing = await store.findDispatchById(dispatchId);
+      if (!existing) throw new ScheduledDispatchNotFoundError(dispatchId);
+      const record = await store.transitionDispatch({
+        id: dispatchId,
+        from: "SCHEDULED",
+        to: "CANCELLED",
+        processedAt: new Date(),
+      });
+      if (!record) {
+        throw new ScheduledDispatchConflictError("Somente disparos pendentes podem ser cancelados.");
+      }
+      return toScheduledDispatchView(record);
     },
   };
 }

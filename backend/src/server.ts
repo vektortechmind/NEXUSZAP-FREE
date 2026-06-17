@@ -22,6 +22,7 @@ import { scheduledDispatchRoutes } from "./routes/scheduled-dispatch.routes";
 import { chatRealtime } from "./services/chat.realtime";
 import { createChatSocketServer } from "./services/chat.websocket";
 import { startChatMediaCleanupJob } from "./services/chat.mediaStorage";
+import { scheduledDispatchWorker } from "./services/scheduled-dispatch.worker";
 import { InstanceManager } from "./whatsapp/InstanceManager";
 import { TelegramBotManager } from "./telegram/TelegramBotManager";
 import { buildAllowedOrigins, createOriginGuard, isCorsOriginAllowedForRequest, verifyCsrf } from "./security/middlewares";
@@ -115,9 +116,11 @@ export async function buildServer() {
 
   const chatSocketServer = createChatSocketServer(fastify);
   const chatMediaCleanupTimer = startChatMediaCleanupJob();
+  scheduledDispatchWorker.start();
   fastify.addHook("onClose", async () => {
     chatRealtime.setEmitter(null);
     clearInterval(chatMediaCleanupTimer);
+    scheduledDispatchWorker.stop();
     chatSocketServer.close();
   });
 

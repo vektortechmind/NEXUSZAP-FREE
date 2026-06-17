@@ -6,6 +6,28 @@ export type ScheduledDispatchUrlButton = {
   url: string;
 };
 
+export type ScheduledDispatchStatus = "SCHEDULED" | "PROCESSING" | "SENT" | "FAILED" | "CANCELLED";
+
+export type ScheduledDispatchHistoryItem = {
+  id: string;
+  instanceId: string;
+  targetType: "NUMBER" | "GROUP";
+  recipientPhone: string | null;
+  recipientJid: string | null;
+  contentType: "TEXT" | "IMAGE" | "VIDEO";
+  body: string | null;
+  mediaUrl: string | null;
+  buttons: ScheduledDispatchUrlButton[];
+  scheduledAt: string;
+  status: ScheduledDispatchStatus;
+  providerMessageId: string | null;
+  failureCode: string | null;
+  providerError: string | null;
+  processedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ScheduledDispatchGroup = {
   instanceId: string;
   jid: string;
@@ -40,6 +62,14 @@ export type ScheduledDispatchDraftValidation = {
 
 export const MAX_SCHEDULED_DISPATCH_BUTTONS = 3;
 export const MAX_SCHEDULED_DISPATCH_BUTTON_TEXT_LENGTH = 60;
+
+export const SCHEDULED_DISPATCH_STATUS_LABELS: Record<ScheduledDispatchStatus, string> = {
+  SCHEDULED: "Agendado",
+  PROCESSING: "Processando",
+  SENT: "Enviado",
+  FAILED: "Falhou",
+  CANCELLED: "Cancelado",
+};
 
 export function createEmptyScheduledDispatchButton(): ScheduledDispatchUrlButton {
   return { text: "", url: "" };
@@ -177,4 +207,13 @@ export function validateScheduledDispatchDraft(draft: ScheduledDispatchDraft): S
   }
 
   return result;
+}
+
+export function canCancelScheduledDispatch(status: ScheduledDispatchStatus) {
+  return status === "SCHEDULED";
+}
+
+export function resolveScheduledDispatchTargetLabel(item: ScheduledDispatchHistoryItem) {
+  if (item.targetType === "GROUP") return item.recipientJid || "Grupo";
+  return item.recipientPhone || "Numero";
 }

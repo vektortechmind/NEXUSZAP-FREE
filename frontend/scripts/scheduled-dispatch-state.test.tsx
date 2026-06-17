@@ -5,11 +5,14 @@ import path from "node:path";
 import { APP_NAV_GROUPS, getAppRouteTitle } from "../src/features/navigation/appNavigation.ts";
 import {
   applyInstanceToDraft,
+  canCancelScheduledDispatch,
   createEmptyScheduledDispatchButton,
   createInitialScheduledDispatchDraft,
   filterScheduledDispatchGroups,
   MAX_SCHEDULED_DISPATCH_BUTTONS,
   resolveScheduledDispatchIso,
+  resolveScheduledDispatchTargetLabel,
+  SCHEDULED_DISPATCH_STATUS_LABELS,
   validateScheduledDispatchDraft,
   type ScheduledDispatchGroup,
 } from "../src/features/scheduled-dispatch/state.ts";
@@ -176,7 +179,9 @@ test("composer validation supports text image video and immediate scheduling rul
 test("scheduled dispatch page keeps composer states for media and delivery mode", () => {
   const source = fs.readFileSync(path.resolve(import.meta.dirname, "../src/pages/ScheduledDispatchPage.tsx"), "utf8");
   assert.match(source, /api\.get<GroupListResponse>\("\/scheduled-dispatches\/groups", \{ params: \{ instanceId: draft\.instanceId \} \}\)/);
+  assert.match(source, /api\.get<DispatchListResponse>\("\/scheduled-dispatches", \{ params: \{ instanceId \} \}\)/);
   assert.match(source, /api\.post<GroupSyncResponse>\("\/scheduled-dispatches\/groups\/sync", \{ instanceId: draft\.instanceId \}\)/);
+  assert.match(source, /api\.post<DispatchMutationResponse>\(`\/scheduled-dispatches\/\$\{dispatchId\}\/cancel`\)/);
   assert.match(source, /contentType: draft\.contentType/);
   assert.match(source, /buttons: draft\.contentType === "video" \? \[\] : normalizeScheduledDispatchButtons\(draft\.buttons\)/);
   assert.match(source, /deliveryMode: draft\.deliveryMode/);
@@ -189,10 +194,39 @@ test("scheduled dispatch page keeps composer states for media and delivery mode"
   assert.match(source, /Criar envio imediato/);
   assert.match(source, /Salvar disparo agendado/);
   assert.match(source, /O job sera criado com timestamp atual/);
+  assert.match(source, /Historico operacional/);
+  assert.match(source, /Atualizar historico/);
+  assert.match(source, /Cancelar job/);
+  assert.match(source, /Retry automatico fica fora do MVP desta rodada/);
   assert.match(source, /video src=\{draft\.mediaUrl\.trim\(\)\} className=.*controls/s);
   assert.doesNotMatch(source, /eventSlug|renderContext|variaveis automaticas/i);
 });
 
 test("empty scheduled dispatch button factory starts blank", () => {
   assert.deepEqual(createEmptyScheduledDispatchButton(), { text: "", url: "" });
+});
+
+test("scheduled dispatch history helpers expose status labels and cancellation rules", () => {
+  assert.equal(SCHEDULED_DISPATCH_STATUS_LABELS.SCHEDULED, "Agendado");
+  assert.equal(canCancelScheduledDispatch("SCHEDULED"), true);
+  assert.equal(canCancelScheduledDispatch("PROCESSING"), false);
+  assert.equal(resolveScheduledDispatchTargetLabel({
+    id: "1",
+    instanceId: "instance-a",
+    targetType: "GROUP",
+    recipientPhone: null,
+    recipientJid: "120363000001@g.us",
+    contentType: "TEXT",
+    body: null,
+    mediaUrl: null,
+    buttons: [],
+    scheduledAt: "2026-06-16T10:00:00.000Z",
+    status: "SCHEDULED",
+    providerMessageId: null,
+    failureCode: null,
+    providerError: null,
+    processedAt: null,
+    createdAt: "2026-06-16T09:00:00.000Z",
+    updatedAt: "2026-06-16T09:00:00.000Z",
+  }), "120363000001@g.us");
 });

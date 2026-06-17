@@ -4,6 +4,7 @@ import { chatService } from "../services/chat.service";
 import {
   createScheduledDispatchService,
   scheduledDispatchService,
+  ScheduledDispatchConflictError,
   ScheduledDispatchInstanceNotFoundError,
   ScheduledDispatchNotFoundError,
   ScheduledDispatchValidationError,
@@ -85,6 +86,9 @@ function sendKnownError(reply: FastifyReply, err: unknown) {
   if (err instanceof ScheduledDispatchNotFoundError) {
     return reply.status(404).send({ error: err.message, code: err.code });
   }
+  if (err instanceof ScheduledDispatchConflictError) {
+    return reply.status(err.statusCode).send({ error: err.message, code: err.code });
+  }
   throw err;
 }
 
@@ -133,6 +137,16 @@ export function createScheduledDispatchRoutes(deps: ScheduledDispatchRoutesDeps 
       try {
         const params = dispatchParamsSchema.parse(request.params);
         const dispatch = await service.getDispatch(params.id);
+        return reply.send({ dispatch: serializeDate(dispatch) });
+      } catch (err) {
+        return sendKnownError(reply, err);
+      }
+    });
+
+    fastify.post("/:id/cancel", async (request, reply) => {
+      try {
+        const params = dispatchParamsSchema.parse(request.params);
+        const dispatch = await service.cancelDispatch(params.id);
         return reply.send({ dispatch: serializeDate(dispatch) });
       } catch (err) {
         return sendKnownError(reply, err);
