@@ -2,6 +2,13 @@ import { type ScheduledDispatch, type ScheduledDispatchContentType, type Schedul
 import { prisma } from "../database/prisma";
 
 export type ScheduledDispatchRecord = ScheduledDispatch;
+export type ScheduledDispatchUrlButton = {
+  text: string;
+  url: string;
+};
+export type ScheduledDispatchViewRecord = Omit<ScheduledDispatchRecord, "buttonsJson"> & {
+  buttons: ScheduledDispatchUrlButton[];
+};
 
 export type ScheduledDispatchGroupTarget = {
   instanceId: string;
@@ -19,6 +26,7 @@ type ScheduledDispatchCreateInput = {
   contentType: "text" | "image" | "video";
   body?: string | null;
   mediaUrl?: string | null;
+  buttons?: ScheduledDispatchUrlButton[] | null;
   deliveryMode: "immediate" | "scheduled";
   scheduledAt?: Date | null;
 };
@@ -39,6 +47,7 @@ export type ScheduledDispatchStore = {
     contentType: ScheduledDispatchContentType;
     body?: string | null;
     mediaUrl?: string | null;
+    buttonsJson?: string | null;
     scheduledAt: Date;
     status: ScheduledDispatchStatus;
   }): Promise<ScheduledDispatchRecord>;
@@ -96,6 +105,9 @@ function normalizeOptionalText(value?: string | null): string | null {
   return trimmed ? trimmed : null;
 }
 
+const MAX_SCHEDULED_DISPATCH_BUTTONS = 3;
+const MAX_SCHEDULED_DISPATCH_BUTTON_TEXT_LENGTH = 60;
+
 function normalizeMediaUrl(value?: string | null): string | null {
   const normalized = normalizeOptionalText(value);
   if (!normalized) return null;
@@ -112,6 +124,77 @@ function normalizeMediaUrl(value?: string | null): string | null {
   }
 
   return parsed.toString();
+}
+
+function normalizeUrl(value: string, field: string): string {
+  let parsed: URL;
+  try {
+    parsed = new URL(value.trim());
+  } catch {
+    throw new ScheduledDispatchValidationError(`${field} invalida.`);
+  }
+
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new ScheduledDispatchValidationError(`${field} deve usar http ou https.`);
+  }
+
+  return parsed.toString();
+}
+
+function normalizeScheduledDispatchButtons(buttons?: ScheduledDispatchUrlButton[] | null): ScheduledDispatchUrlButton[] {
+  if (!buttons?.length) return [];
+  if (buttons.length > MAX_SCHEDULED_DISPATCH_BUTTONS) {
+    throw new ScheduledDispatchValidationError(`Disparo aceita no maximo ${MAX_SCHEDULED_DISPATCH_BUTTONS} botoes URL.`);
+  }
+
+  return buttons.map((button, index) => {
+    const text = normalizeOptionalText(button.text);
+    if (!text) {
+      throw new ScheduledDispatchValidationError(`buttons.${index}.text e obrigatorio.`);
+    }
+    if (text.length > MAX_SCHEDULED_DISPATCH_BUTTON_TEXT_LENGTH) {
+      throw new ScheduledDispatchValidationError(`buttons.${index}.text excede ${MAX_SCHEDULED_DISPATCH_BUTTON_TEXT_LENGTH} caracteres.`);
+    }
+
+    const url = normalizeOptionalText(button.url);
+    if (!url) {
+      throw new ScheduledDispatchValidationError(`buttons.${index}.url e obrigatoria.`);
+    }
+
+    return {
+      text,
+      url: normalizeUrl(url, `buttons.${index}.url`),
+    };
+  });
+}
+
+function serializeScheduledDispatchButtons(buttons: ScheduledDispatchUrlButton[]): string | null {
+  return buttons.length ? JSON.stringify(buttons) : null;
+}
+
+function parseScheduledDispatchButtons(buttonsJson: string | null): ScheduledDispatchUrlButton[] {
+  if (!buttonsJson) return [];
+  try {
+    const parsed = JSON.parse(buttonsJson) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((item) => {
+      if (!item || typeof item !== "object") return [];
+      const text = normalizeOptionalText((item as { text?: string }).text);
+      const url = normalizeOptionalText((item as { url?: string }).url);
+      if (!text || !url) return [];
+      return [{ text, url }];
+    });
+  } catch {
+    return [];
+  }
+}
+
+function toScheduledDispatchView(record: ScheduledDispatchRecord): ScheduledDispatchViewRecord {
+  const { buttonsJson, ...rest } = record;
+  return {
+    ...rest,
+    buttons: parseScheduledDispatchButtons(buttonsJson),
+  };
 }
 
 function mapTargetType(value: ScheduledDispatchCreateInput["targetType"]): ScheduledDispatchTargetType {
@@ -182,6 +265,7 @@ export const prismaScheduledDispatchStore: ScheduledDispatchStore = {
         contentType: input.contentType,
         body: input.body ?? null,
         mediaUrl: input.mediaUrl ?? null,
+        buttonsJson: input.buttonsJson ?? null,
         scheduledAt: input.scheduledAt,
         status: input.status,
       },
@@ -256,6 +340,7 @@ export function createInMemoryScheduledDispatchStore(seed: {
         contentType: input.contentType,
         body: input.body ?? null,
         mediaUrl: input.mediaUrl ?? null,
+        buttonsJson: input.buttonsJson ?? null,
         scheduledAt: input.scheduledAt,
         status: input.status,
         providerMessageId: null,
@@ -299,6 +384,7 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
       const contentType = mapContentType(input.contentType);
       const body = normalizeOptionalText(input.body);
       const mediaUrl = normalizeMediaUrl(input.mediaUrl);
+      const buttons = normalizeScheduledDispatchButtons(input.buttons);
 
       const scheduledAt = input.deliveryMode === "immediate"
         ? new Date()
@@ -341,7 +427,11 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
         throw new ScheduledDispatchValidationError("Disparo com midia exige mediaUrl.");
       }
 
-      return store.createDispatch({
+      if (contentType === "VIDEO" && buttons.length > 0) {
+        throw new ScheduledDispatchValidationError("Disparo de video nao suporta botoes URL nesta etapa.");
+      }
+
+      return toScheduledDispatchView(await store.createDispatch({
         instanceId: input.instanceId,
         targetType,
         recipientPhone,
@@ -349,20 +439,22 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
         contentType,
         body,
         mediaUrl,
+        buttonsJson: serializeScheduledDispatchButtons(buttons),
         scheduledAt,
         status: "SCHEDULED",
-      });
+      }));
     },
 
     async listDispatches(input: ScheduledDispatchListInput) {
       if (input.instanceId) await ensureInstance(input.instanceId);
-      return store.listDispatches(input);
+      const dispatches = await store.listDispatches(input);
+      return dispatches.map(toScheduledDispatchView);
     },
 
     async getDispatch(dispatchId: string) {
       const dispatch = await store.findDispatchById(dispatchId);
       if (!dispatch) throw new ScheduledDispatchNotFoundError(dispatchId);
-      return dispatch;
+      return toScheduledDispatchView(dispatch);
     },
 
     async listGroupTargets(input: { instanceId: string; search?: string }) {

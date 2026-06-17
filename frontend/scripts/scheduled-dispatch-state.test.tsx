@@ -5,8 +5,10 @@ import path from "node:path";
 import { APP_NAV_GROUPS, getAppRouteTitle } from "../src/features/navigation/appNavigation.ts";
 import {
   applyInstanceToDraft,
+  createEmptyScheduledDispatchButton,
   createInitialScheduledDispatchDraft,
   filterScheduledDispatchGroups,
+  MAX_SCHEDULED_DISPATCH_BUTTONS,
   resolveScheduledDispatchIso,
   validateScheduledDispatchDraft,
   type ScheduledDispatchGroup,
@@ -104,6 +106,43 @@ test("composer validation supports text image video and immediate scheduling rul
   });
   assert.equal(videoValid.canSubmit, true);
 
+  const textWithButtonValid = validateScheduledDispatchDraft({
+    ...base,
+    contentType: "text",
+    body: "Oferta com clique",
+    buttons: [{ text: "Abrir oferta", url: "https://example.com/oferta" }],
+  });
+  assert.equal(textWithButtonValid.canSubmit, true);
+
+  const invalidButtonUrl = validateScheduledDispatchDraft({
+    ...base,
+    contentType: "image",
+    body: "Legenda",
+    mediaUrl: "https://cdn.example.com/banner.png",
+    buttons: [{ text: "Abrir", url: "ftp://example.com" }],
+  });
+  assert.equal(invalidButtonUrl.canSubmit, false);
+  assert.equal(invalidButtonUrl.buttons, "Informe uma URL http/https valida no botao 1.");
+
+  const videoWithButtonInvalid = validateScheduledDispatchDraft({
+    ...base,
+    contentType: "video",
+    body: "Legenda",
+    mediaUrl: "https://cdn.example.com/video.mp4",
+    buttons: [{ text: "Abrir", url: "https://example.com" }],
+  });
+  assert.equal(videoWithButtonInvalid.canSubmit, false);
+  assert.equal(videoWithButtonInvalid.buttons, "Video nao suporta botoes URL nesta etapa.");
+
+  const tooManyButtonsInvalid = validateScheduledDispatchDraft({
+    ...base,
+    contentType: "text",
+    body: "Campanha",
+    buttons: Array.from({ length: MAX_SCHEDULED_DISPATCH_BUTTONS + 1 }, (_, index) => ({ text: `Botao ${index + 1}`, url: `https://example.com/${index + 1}` })),
+  });
+  assert.equal(tooManyButtonsInvalid.canSubmit, false);
+  assert.equal(tooManyButtonsInvalid.buttons, `Adicione no maximo ${MAX_SCHEDULED_DISPATCH_BUTTONS} botoes URL.`);
+
   const scheduledMissingDate = validateScheduledDispatchDraft({
     ...base,
     contentType: "text",
@@ -139,14 +178,21 @@ test("scheduled dispatch page keeps composer states for media and delivery mode"
   assert.match(source, /api\.get<GroupListResponse>\("\/scheduled-dispatches\/groups", \{ params: \{ instanceId: draft\.instanceId \} \}\)/);
   assert.match(source, /api\.post<GroupSyncResponse>\("\/scheduled-dispatches\/groups\/sync", \{ instanceId: draft\.instanceId \}\)/);
   assert.match(source, /contentType: draft\.contentType/);
+  assert.match(source, /buttons: draft\.contentType === "video" \? \[\] : normalizeScheduledDispatchButtons\(draft\.buttons\)/);
   assert.match(source, /deliveryMode: draft\.deliveryMode/);
   assert.match(source, /draft\.deliveryMode === "scheduled"/);
   assert.match(source, /draft\.deliveryMode === "immediate"/);
   assert.match(source, /Media URL/);
+  assert.match(source, /Adicionar botao/);
+  assert.match(source, /Video com botoes URL fica fora do MVP desta etapa/);
   assert.match(source, /Legenda \(opcional\)/);
   assert.match(source, /Criar envio imediato/);
   assert.match(source, /Salvar disparo agendado/);
   assert.match(source, /O job sera criado com timestamp atual/);
   assert.match(source, /video src=\{draft\.mediaUrl\.trim\(\)\} className=.*controls/s);
   assert.doesNotMatch(source, /eventSlug|renderContext|variaveis automaticas/i);
+});
+
+test("empty scheduled dispatch button factory starts blank", () => {
+  assert.deepEqual(createEmptyScheduledDispatchButton(), { text: "", url: "" });
 });

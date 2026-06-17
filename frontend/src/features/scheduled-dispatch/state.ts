@@ -1,6 +1,10 @@
 export type ScheduledDispatchTargetType = "number" | "group";
 export type ScheduledDispatchContentType = "text" | "image" | "video";
 export type ScheduledDispatchDeliveryMode = "immediate" | "scheduled";
+export type ScheduledDispatchUrlButton = {
+  text: string;
+  url: string;
+};
 
 export type ScheduledDispatchGroup = {
   instanceId: string;
@@ -18,6 +22,7 @@ export type ScheduledDispatchDraft = {
   contentType: ScheduledDispatchContentType;
   body: string;
   mediaUrl: string;
+  buttons: ScheduledDispatchUrlButton[];
   deliveryMode: ScheduledDispatchDeliveryMode;
   scheduledAt: string;
 };
@@ -27,10 +32,18 @@ export type ScheduledDispatchDraftValidation = {
   groupJid?: string;
   body?: string;
   mediaUrl?: string;
+  buttons?: string;
   scheduledAt?: string;
   instanceId?: string;
   canSubmit: boolean;
 };
+
+export const MAX_SCHEDULED_DISPATCH_BUTTONS = 3;
+export const MAX_SCHEDULED_DISPATCH_BUTTON_TEXT_LENGTH = 60;
+
+export function createEmptyScheduledDispatchButton(): ScheduledDispatchUrlButton {
+  return { text: "", url: "" };
+}
 
 export function createInitialScheduledDispatchDraft(now = new Date()): ScheduledDispatchDraft {
   const nextSlot = new Date(now.getTime() + 15 * 60 * 1000);
@@ -43,6 +56,7 @@ export function createInitialScheduledDispatchDraft(now = new Date()): Scheduled
     contentType: "text",
     body: "",
     mediaUrl: "",
+    buttons: [],
     deliveryMode: "scheduled",
     scheduledAt: formatDateTimeLocal(nextSlot),
   };
@@ -62,6 +76,12 @@ export function isSafeMediaUrl(value: string) {
   } catch {
     return false;
   }
+}
+
+export function normalizeScheduledDispatchButtons(buttons: ScheduledDispatchUrlButton[]) {
+  return buttons
+    .map((button) => ({ text: button.text.trim(), url: button.url.trim() }))
+    .filter((button) => button.text || button.url);
 }
 
 export function applyInstanceToDraft(draft: ScheduledDispatchDraft, instanceId: string): ScheduledDispatchDraft {
@@ -86,6 +106,7 @@ export function resolveScheduledDispatchIso(draft: ScheduledDispatchDraft, now =
 
 export function validateScheduledDispatchDraft(draft: ScheduledDispatchDraft): ScheduledDispatchDraftValidation {
   const result: ScheduledDispatchDraftValidation = { canSubmit: true };
+  const buttons = normalizeScheduledDispatchButtons(draft.buttons);
 
   if (!draft.instanceId.trim()) {
     result.instanceId = "Selecione uma instancia.";
@@ -119,6 +140,32 @@ export function validateScheduledDispatchDraft(draft: ScheduledDispatchDraft): S
   if ((draft.contentType === "image" || draft.contentType === "video") && !isSafeMediaUrl(draft.mediaUrl)) {
     result.mediaUrl = "Informe uma media URL valida com http ou https.";
     result.canSubmit = false;
+  }
+
+  if (buttons.length > MAX_SCHEDULED_DISPATCH_BUTTONS) {
+    result.buttons = `Adicione no maximo ${MAX_SCHEDULED_DISPATCH_BUTTONS} botoes URL.`;
+    result.canSubmit = false;
+  } else if (draft.contentType === "video" && buttons.length > 0) {
+    result.buttons = "Video nao suporta botoes URL nesta etapa.";
+    result.canSubmit = false;
+  } else {
+    for (const [index, button] of buttons.entries()) {
+      if (!button.text) {
+        result.buttons = `Preencha o texto do botao ${index + 1}.`;
+        result.canSubmit = false;
+        break;
+      }
+      if (button.text.length > MAX_SCHEDULED_DISPATCH_BUTTON_TEXT_LENGTH) {
+        result.buttons = `O texto do botao ${index + 1} excede ${MAX_SCHEDULED_DISPATCH_BUTTON_TEXT_LENGTH} caracteres.`;
+        result.canSubmit = false;
+        break;
+      }
+      if (!isSafeMediaUrl(button.url)) {
+        result.buttons = `Informe uma URL http/https valida no botao ${index + 1}.`;
+        result.canSubmit = false;
+        break;
+      }
+    }
   }
 
   if (draft.deliveryMode === "scheduled") {

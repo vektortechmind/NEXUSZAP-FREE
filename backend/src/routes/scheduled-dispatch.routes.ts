@@ -29,9 +29,15 @@ const createDispatchBodySchema = z.object({
   contentType: z.enum(["text", "image", "video"]),
   body: z.string().trim().max(4000).optional().nullable(),
   mediaUrl: z.string().trim().max(2048).optional().nullable(),
+  buttons: z.array(
+    z.object({
+      text: z.string().trim().min(1).max(60),
+      url: z.string().trim().min(1).max(2048),
+    }).strict()
+  ).max(3).optional().nullable(),
   deliveryMode: z.enum(["immediate", "scheduled"]),
   scheduledAt: z.string().datetime().optional().nullable(),
-});
+}).strict();
 
 const listDispatchesQuerySchema = z.object({
   instanceId: z.string().trim().min(1).max(191).optional(),
@@ -144,6 +150,7 @@ export function createScheduledDispatchRoutes(deps: ScheduledDispatchRoutesDeps 
           contentType: body.contentType,
           body: body.body ?? null,
           mediaUrl: body.mediaUrl ?? null,
+          buttons: body.buttons ?? null,
           deliveryMode: body.deliveryMode,
           scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
         });

@@ -9,14 +9,18 @@ import { api } from "../lib/axios";
 import type { InstanceStatus } from "../features/instances/types";
 import {
   applyInstanceToDraft,
+  createEmptyScheduledDispatchButton,
   createInitialScheduledDispatchDraft,
   filterScheduledDispatchGroups,
   isSafeMediaUrl,
+  MAX_SCHEDULED_DISPATCH_BUTTONS,
+  normalizeScheduledDispatchButtons,
   resolveScheduledDispatchIso,
   type ScheduledDispatchContentType,
   type ScheduledDispatchDeliveryMode,
   type ScheduledDispatchDraft,
   type ScheduledDispatchGroup,
+  type ScheduledDispatchUrlButton,
   validateScheduledDispatchDraft,
 } from "../features/scheduled-dispatch/state";
 
@@ -32,6 +36,7 @@ type DispatchCreateResponse = {
     contentType: "TEXT" | "IMAGE" | "VIDEO";
     body: string | null;
     mediaUrl: string | null;
+    buttons: Array<{ text: string; url: string }>;
     scheduledAt: string;
     status: string;
   };
@@ -52,6 +57,10 @@ const deliveryModeLabels: Record<ScheduledDispatchDeliveryMode, string> = {
   immediate: "Enviar agora",
   scheduled: "Agendar",
 };
+
+function clearButtonsForVideo(buttons: ScheduledDispatchUrlButton[]) {
+  return buttons.length > 0 ? [] : buttons;
+}
 
 export function ScheduledDispatchPage() {
   const { addToast } = useToast();
@@ -179,6 +188,7 @@ export function ScheduledDispatchPage() {
         contentType: draft.contentType,
         body: draft.body.trim() || null,
         mediaUrl: draft.contentType === "text" ? null : draft.mediaUrl.trim(),
+        buttons: draft.contentType === "video" ? [] : normalizeScheduledDispatchButtons(draft.buttons),
         deliveryMode: draft.deliveryMode,
         scheduledAt: draft.deliveryMode === "scheduled" ? resolveScheduledDispatchIso(draft) : null,
       });
@@ -188,6 +198,7 @@ export function ScheduledDispatchPage() {
         phone: current.targetType === "number" ? "" : current.phone,
         body: "",
         mediaUrl: "",
+        buttons: [],
         scheduledAt: createInitialScheduledDispatchDraft().scheduledAt,
       }));
       addToast(
@@ -330,7 +341,12 @@ export function ScheduledDispatchPage() {
                 <Button
                   key={contentType}
                   variant={draft.contentType === contentType ? "primary" : "secondary"}
-                  onClick={() => setDraft((current) => ({ ...current, contentType, mediaUrl: contentType === "text" ? "" : current.mediaUrl }))}
+                  onClick={() => setDraft((current) => ({
+                    ...current,
+                    contentType,
+                    mediaUrl: contentType === "text" ? "" : current.mediaUrl,
+                    buttons: contentType === "video" ? clearButtonsForVideo(current.buttons) : current.buttons,
+                  }))}
                 >
                   {contentTypeLabels[contentType]}
                 </Button>
@@ -408,6 +424,64 @@ export function ScheduledDispatchPage() {
               {validation.body ? <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{validation.body}</p> : null}
             </div>
 
+            {draft.contentType === "video" ? (
+              <InlineAlert tone="warning">Video com botoes URL fica fora do MVP desta etapa. Troque para texto ou imagem para habilitar acoes clicaveis.</InlineAlert>
+            ) : (
+              <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/30">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Botoes opcionais</h3>
+                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Adicione ate {MAX_SCHEDULED_DISPATCH_BUTTONS} URLs controladas pelo painel. O payload cru de provider continua fora de escopo.</p>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setDraft((current) => current.buttons.length >= MAX_SCHEDULED_DISPATCH_BUTTONS ? current : ({ ...current, buttons: [...current.buttons, createEmptyScheduledDispatchButton()] }))}
+                    disabled={draft.buttons.length >= MAX_SCHEDULED_DISPATCH_BUTTONS}
+                  >
+                    Adicionar botao
+                  </Button>
+                </div>
+
+                {draft.buttons.length === 0 ? (
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum botao configurado. O disparo continua valido sem acoes adicionais.</p>
+                ) : null}
+
+                {draft.buttons.map((button, index) => (
+                  <div key={`scheduled-dispatch-button-${index}`} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950/60">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Botao {index + 1}</span>
+                      <Button
+                        variant="ghost"
+                        onClick={() => setDraft((current) => ({ ...current, buttons: current.buttons.filter((_, currentIndex) => currentIndex !== index) }))}
+                      >
+                        Remover
+                      </Button>
+                    </div>
+                    <Input
+                      label="Texto do botao"
+                      placeholder="Ex.: Abrir oferta"
+                      value={button.text}
+                      onChange={(event) => setDraft((current) => ({
+                        ...current,
+                        buttons: current.buttons.map((entry, currentIndex) => currentIndex === index ? { ...entry, text: event.target.value } : entry),
+                      }))}
+                    />
+                    <Input
+                      label="URL do botao"
+                      placeholder="https://example.com/oferta"
+                      value={button.url}
+                      onChange={(event) => setDraft((current) => ({
+                        ...current,
+                        buttons: current.buttons.map((entry, currentIndex) => currentIndex === index ? { ...entry, url: event.target.value } : entry),
+                      }))}
+                    />
+                  </div>
+                ))}
+
+                {validation.buttons ? <p className="text-sm text-red-600 dark:text-red-400">{validation.buttons}</p> : null}
+              </div>
+            )}
+
             {selectedGroup ? (
               <InlineAlert tone="success" title="Grupo selecionado">
                 <span className="font-medium">{selectedGroup.name?.trim() || "Grupo sem nome"}</span>
@@ -425,6 +499,8 @@ export function ScheduledDispatchPage() {
               Conteudo atual: <span className="font-semibold text-slate-900 dark:text-slate-100">{contentTypeLabels[draft.contentType]}</span>
               {" · "}
               Modo: <span className="font-semibold text-slate-900 dark:text-slate-100">{deliveryModeLabels[draft.deliveryMode]}</span>
+              {" · "}
+              Botoes: <span className="font-semibold text-slate-900 dark:text-slate-100">{normalizeScheduledDispatchButtons(draft.buttons).length}</span>
             </div>
 
             <Button onClick={() => void handleSubmit()} loading={saving} disabled={!validation.canSubmit} className="w-full sm:w-auto">

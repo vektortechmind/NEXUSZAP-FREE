@@ -340,6 +340,7 @@ model ScheduledDispatch {
   contentType       ScheduledDispatchContentType
   body              String?
   mediaUrl          String?
+  buttonsJson       String?
   scheduledAt       DateTime
   status            ScheduledDispatchStatus     @default(SCHEDULED)
   providerMessageId String?

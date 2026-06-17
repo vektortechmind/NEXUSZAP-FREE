@@ -79,6 +79,7 @@ function createApp() {
       phone: "+55 (11) 99999-1234",
       contentType: "text",
       body: "Oferta liberada",
+      buttons: [{ text: "Abrir oferta", url: "https://example.com/oferta" }],
       deliveryMode: "scheduled",
       scheduledAt: "2026-06-20T12:00:00.000Z",
     },
@@ -91,6 +92,7 @@ function createApp() {
   assert.equal(createdText.recipientJid, null);
   assert.equal(createdText.contentType, "TEXT");
   assert.equal(createdText.status, "SCHEDULED");
+  assert.deepEqual(createdText.buttons, [{ text: "Abrir oferta", url: "https://example.com/oferta" }]);
 
   const createImageResponse = await app.inject({
     method: "POST",
@@ -166,6 +168,79 @@ function createApp() {
     },
   });
   assert.equal(invalidScheduleResponse.statusCode, 400, invalidScheduleResponse.body);
+
+  const invalidButtonsLimitResponse = await app.inject({
+    method: "POST",
+    url: "/api/scheduled-dispatches",
+    payload: {
+      instanceId: "instance-a",
+      targetType: "number",
+      phone: "5511888881111",
+      contentType: "text",
+      body: "Campanha com botoes demais",
+      buttons: [
+        { text: "Botao 1", url: "https://example.com/1" },
+        { text: "Botao 2", url: "https://example.com/2" },
+        { text: "Botao 3", url: "https://example.com/3" },
+        { text: "Botao 4", url: "https://example.com/4" },
+      ],
+      deliveryMode: "scheduled",
+      scheduledAt: "2026-06-21T15:30:00.000Z",
+    },
+  });
+  assert.equal(invalidButtonsLimitResponse.statusCode, 400, invalidButtonsLimitResponse.body);
+  assert.equal(JSON.parse(invalidButtonsLimitResponse.body).code, "SCHEDULED_DISPATCH_CONTRACT_INVALID");
+
+  const invalidButtonUrlResponse = await app.inject({
+    method: "POST",
+    url: "/api/scheduled-dispatches",
+    payload: {
+      instanceId: "instance-a",
+      targetType: "number",
+      phone: "5511888881111",
+      contentType: "text",
+      body: "Campanha com URL invalida",
+      buttons: [{ text: "Abrir", url: "notaurl" }],
+      deliveryMode: "scheduled",
+      scheduledAt: "2026-06-21T15:30:00.000Z",
+    },
+  });
+  assert.equal(invalidButtonUrlResponse.statusCode, 400, invalidButtonUrlResponse.body);
+
+  const invalidRawInteractivePayloadResponse = await app.inject({
+    method: "POST",
+    url: "/api/scheduled-dispatches",
+    payload: {
+      instanceId: "instance-a",
+      targetType: "number",
+      phone: "5511888881111",
+      contentType: "text",
+      body: "Payload cru",
+      deliveryMode: "scheduled",
+      scheduledAt: "2026-06-21T15:30:00.000Z",
+      interactiveMessage: { body: { text: "nao pode" } },
+    },
+  });
+  assert.equal(invalidRawInteractivePayloadResponse.statusCode, 400, invalidRawInteractivePayloadResponse.body);
+  assert.equal(JSON.parse(invalidRawInteractivePayloadResponse.body).code, "SCHEDULED_DISPATCH_CONTRACT_INVALID");
+
+  const invalidVideoButtonsResponse = await app.inject({
+    method: "POST",
+    url: "/api/scheduled-dispatches",
+    payload: {
+      instanceId: "instance-a",
+      targetType: "number",
+      phone: "5511888881111",
+      contentType: "video",
+      body: "Video com clique",
+      mediaUrl: "https://cdn.example.com/video.mp4",
+      buttons: [{ text: "Abrir", url: "https://example.com/video" }],
+      deliveryMode: "scheduled",
+      scheduledAt: "2026-06-21T15:30:00.000Z",
+    },
+  });
+  assert.equal(invalidVideoButtonsResponse.statusCode, 400, invalidVideoButtonsResponse.body);
+  assert.equal(JSON.parse(invalidVideoButtonsResponse.body).code, "SCHEDULED_DISPATCH_VALIDATION_ERROR");
 
   const invalidGroupResponse = await app.inject({
     method: "POST",
