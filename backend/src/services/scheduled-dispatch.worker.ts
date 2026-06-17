@@ -6,6 +6,11 @@ import {
   type ScheduledDispatchViewRecord,
   scheduledDispatchService,
 } from "./scheduled-dispatch.service";
+import {
+  isScheduledDispatchMediaUrl,
+  parseScheduledDispatchMediaUrl,
+  readScheduledDispatchMedia,
+} from "./scheduled-dispatch.mediaStorage";
 import { downloadIntegrationImageAsset } from "./integrations/integrationDispatchRuntime.service";
 import { InstanceManager } from "../whatsapp/InstanceManager";
 import { sendCtaUrlInteractiveMessage, sendNativeInteractiveMessage, type NativeInteractiveRelaySocket } from "../whatsapp/interactiveSender";
@@ -47,6 +52,56 @@ function mimeTypeFromUrl(url: string, contentType: ScheduledDispatchViewRecord["
   return "video/mp4";
 }
 
+async function resolveDispatchMedia(
+  dispatch: ScheduledDispatchViewRecord,
+  mediaDownloader: typeof downloadIntegrationImageAsset,
+) {
+  if (!dispatch.mediaUrl) {
+    throw new Error("Disparo com midia sem mediaUrl valida.");
+  }
+
+  if (isScheduledDispatchMediaUrl(dispatch.mediaUrl)) {
+    const parsed = parseScheduledDispatchMediaUrl(dispatch.mediaUrl);
+    if (!parsed) {
+      throw new Error("Media local do disparo invalida.");
+    }
+    const media = await readScheduledDispatchMedia(parsed);
+    return {
+      buffer: media.buffer,
+      mimeType: media.mimeType,
+      fileName: media.fileName,
+    };
+  }
+
+  const media = await mediaDownloader(dispatch.mediaUrl);
+  return {
+    buffer: media.buffer,
+    mimeType: media.mimeType,
+    fileName: dispatch.contentType === "VIDEO" ? "video.mp4" : "imagem.png",
+  };
+}
+
+async function sendDispatchButtons(input: {
+  instanceId: string;
+  jid: string;
+  body: string | null;
+  buttons: ScheduledDispatchUrlButton[];
+  socketLookup: (instanceId: string) => NativeInteractiveRelaySocket | null;
+}) {
+  const sock = input.socketLookup(input.instanceId);
+  if (!sock) throw new ChatInstanceOfflineError(input.instanceId);
+
+  const body = input.body?.trim() || "Abrir conteudo";
+  const result = await sendCtaUrlInteractiveMessage(sock, input.jid, {
+    body,
+    buttons: input.buttons.map((button) => ({ text: button.text, url: button.url })),
+  }, {
+    fallbackText: buildInteractiveFallbackText(body, input.buttons),
+  });
+
+  return result.providerMessageId ?? result.fallbackProviderMessageId ?? null;
+}
+
 function mapFailure(error: unknown) {
   if (error instanceof ChatInstanceOfflineError) {
     return { failureCode: error.code, providerError: error.message };
@@ -81,15 +136,15 @@ export function createScheduledDispatchWorker(deps: ScheduledDispatchWorkerDeps 
       if (!body) throw new Error("Disparo de texto sem body valido.");
 
       if (buttons.length > 0) {
-        const sock = socketLookup(dispatch.instanceId);
-        if (!sock) throw new ChatInstanceOfflineError(dispatch.instanceId);
-        const result = await sendCtaUrlInteractiveMessage(sock, jid, {
-          body,
-          buttons: buttons.map((button) => ({ text: button.text, url: button.url })),
-        }, {
-          fallbackText: buildInteractiveFallbackText(body, buttons),
-        });
-        return { providerMessageId: result.providerMessageId ?? result.fallbackProviderMessageId ?? null };
+        return {
+          providerMessageId: await sendDispatchButtons({
+            instanceId: dispatch.instanceId,
+            jid,
+            body,
+            buttons,
+            socketLookup,
+          }),
+        };
       }
 
       const sent = await chat.sendTextMessage({
@@ -100,27 +155,27 @@ export function createScheduledDispatchWorker(deps: ScheduledDispatchWorkerDeps 
       return { providerMessageId: sent.providerMessageId ?? null };
     }
 
-    if (!dispatch.mediaUrl) {
-      throw new Error("Disparo com midia sem mediaUrl valida.");
-    }
+    const media = await resolveDispatchMedia(dispatch, mediaDownloader);
 
-    const media = await mediaDownloader(dispatch.mediaUrl);
-    if (dispatch.contentType === "IMAGE" && buttons.length > 0) {
+    if (buttons.length > 0) {
       const sock = socketLookup(dispatch.instanceId);
       if (!sock) throw new ChatInstanceOfflineError(dispatch.instanceId);
-      const result = await sendNativeInteractiveMessage(sock, jid, {
-        body: dispatch.body?.trim() || "Abrir conteudo",
-        buttons: buttons.map((button) => ({ kind: "cta_url" as const, text: button.text, url: button.url })),
-      }, {
-        fallbackText: buildInteractiveFallbackText(dispatch.body, buttons),
-        headerImageBuffer: media.buffer,
-        headerImageMimeType: media.mimeType ?? mimeTypeFromUrl(dispatch.mediaUrl, dispatch.contentType),
-      });
-      return { providerMessageId: result.providerMessageId ?? result.fallbackProviderMessageId ?? null };
-    }
 
-    if (dispatch.contentType === "VIDEO" && buttons.length > 0) {
-      throw new Error("Disparo de video nao suporta botoes URL nesta etapa.");
+      if (typeof sock.relayMessage === "function" && typeof sock.waUploadToServer === "function") {
+        const body = dispatch.body?.trim() || "Abrir conteudo";
+        const result = await sendNativeInteractiveMessage(sock, jid, {
+          body,
+          buttons: buttons.map((button) => ({ kind: "cta_url" as const, text: button.text, url: button.url })),
+        }, {
+          fallbackText: buildInteractiveFallbackText(body, buttons),
+          headerImageBuffer: dispatch.contentType === "IMAGE" ? media.buffer : null,
+          headerImageMimeType: dispatch.contentType === "IMAGE" ? (media.mimeType ?? mimeTypeFromUrl(dispatch.mediaUrl ?? media.fileName, dispatch.contentType)) : null,
+          headerVideoBuffer: dispatch.contentType === "VIDEO" ? media.buffer : null,
+          headerVideoMimeType: dispatch.contentType === "VIDEO" ? (media.mimeType ?? mimeTypeFromUrl(dispatch.mediaUrl ?? media.fileName, dispatch.contentType)) : null,
+        });
+
+        return { providerMessageId: result.providerMessageId ?? result.fallbackProviderMessageId ?? null };
+      }
     }
 
     const sent = await chat.sendMediaMessage({
@@ -128,11 +183,24 @@ export function createScheduledDispatchWorker(deps: ScheduledDispatchWorkerDeps 
       jid,
       messageType: dispatch.contentType,
       buffer: media.buffer,
-      mimeType: media.mimeType ?? mimeTypeFromUrl(dispatch.mediaUrl, dispatch.contentType),
+      mimeType: media.mimeType ?? mimeTypeFromUrl(dispatch.mediaUrl ?? media.fileName, dispatch.contentType),
       caption: dispatch.body,
-      fileName: dispatch.contentType === "VIDEO" ? "video.mp4" : "imagem",
+      fileName: media.fileName,
     });
-    return { providerMessageId: sent.providerMessageId ?? null };
+
+    if (buttons.length === 0) {
+      return { providerMessageId: sent.providerMessageId ?? null };
+    }
+
+    const buttonProviderMessageId = await sendDispatchButtons({
+      instanceId: dispatch.instanceId,
+      jid,
+      body: dispatch.body,
+      buttons,
+      socketLookup,
+    });
+
+    return { providerMessageId: buttonProviderMessageId ?? sent.providerMessageId ?? null };
   }
 
   async function processClaimedDispatch(dispatch: ScheduledDispatchViewRecord) {

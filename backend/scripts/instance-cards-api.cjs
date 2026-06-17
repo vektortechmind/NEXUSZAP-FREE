@@ -17,7 +17,9 @@ function assertInstanceServiceContracts() {
   assert.ok(source.includes("export async function getPrimaryInstance()"), "service deve expor lookup explicito da instancia primaria de WhatsApp");
   assert.ok(source.includes("export async function getTelegramInstance()"), "service deve expor lookup explicito de Telegram");
   assert.ok(source.includes("export async function getOrCreateTelegramInstance()"), "service deve criar Telegram apenas por fluxo explicito");
-  assert.ok(source.includes("throw new InstanceLinkedAgentError();"), "exclusao deve bloquear instancias com agente vinculado");
+  assert.ok(implementationSource.includes("await deleteKnowledgeBinary(file.storagePath);"), "exclusao da instancia deve remover binarios do storage");
+  assert.ok(implementationSource.includes("where: { instanceId }"), "exclusao da instancia deve limpar todos os arquivos da instancia");
+  assert.ok(implementationSource.includes("await tx.agent.delete({"), "exclusao da instancia deve remover o agente vinculado");
   assert.ok(implementationSource.includes("export const MAX_WHATSAPP_INSTANCES = 5;"), "limite WhatsApp deve permitir cinco instancias");
   assert.ok(implementationSource.includes("findNextWhatsAppSlot"), "service deve centralizar escolha do proximo slot WhatsApp");
   assert.ok(!implementationSource.includes("[1, 2, 3]"), "service nao deve manter slots WhatsApp hardcoded ate 3");
@@ -27,7 +29,7 @@ function assertAgentRoutesContracts() {
   const source = read("src/routes/agent.routes.ts");
 
   assert.ok(source.includes("const instances = await listInstances();"), "rota /instances deve usar listagem filtrada do service");
-  assert.ok(source.includes("if (err instanceof InstanceLinkedAgentError)"), "rota delete deve traduzir bloqueio de agente vinculado");
+  assert.ok(!source.includes("if (err instanceof InstanceLinkedAgentError)"), "rota delete nao deve mais bloquear instancia por agente vinculado");
   assert.ok(source.includes("const instance = await getOrCreateTelegramInstance();"), "save-token deve persistir Telegram explicitamente");
   assert.ok(source.includes("const instance = await getTelegramInstance();"), "rotas Telegram nao devem bootstrapar instancia primaria");
   assert.ok(source.includes("instanceId: undefined"), "status Telegram vazio deve responder sem instanceId");
@@ -111,6 +113,4 @@ assertProviderFallbackIsolationContracts();
 assertFrontendContracts();
 
 console.log("instance-cards-api: OK");
-
-
 

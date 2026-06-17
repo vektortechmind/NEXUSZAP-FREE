@@ -28,6 +28,10 @@ const { createScheduledDispatchWorker } = require("../dist/services/scheduled-di
 
   let textSendCount = 0;
   let relayCount = 0;
+  let mediaSendCount = 0;
+  const sentJids = [];
+  const interactiveBodies = [];
+  const interactiveHeaders = [];
 
   const worker = createScheduledDispatchWorker({
     service,
@@ -37,20 +41,32 @@ const { createScheduledDispatchWorker } = require("../dist/services/scheduled-di
           throw new ChatProviderSendError("provider blew up");
         }
         textSendCount += 1;
+        sentJids.push(input.jid);
         return { providerMessageId: `text-${textSendCount}` };
       },
-      async sendMediaMessage() {
-        return { providerMessageId: "media-1" };
+      async sendMediaMessage(input) {
+        mediaSendCount += 1;
+        sentJids.push(input.jid);
+        return { providerMessageId: `media-${mediaSendCount}` };
       },
     },
     socketLookup() {
       return {
-        async relayMessage() {
+        async relayMessage(jid, message) {
           relayCount += 1;
+          sentJids.push(jid);
+          interactiveBodies.push(message?.interactiveMessage?.body?.text || null);
+          interactiveHeaders.push(message?.interactiveMessage?.header || null);
           return `interactive-${relayCount}`;
         },
         async sendMessage() {
           return { key: { id: `fallback-${relayCount}` } };
+        },
+        async waUploadToServer() {
+          return {
+            mediaUrl: "https://mmg.example.com/dispatch-media.enc",
+            directPath: "/v/t62.7118/dispatch-media.enc",
+          };
         },
       };
     },
@@ -92,6 +108,19 @@ const { createScheduledDispatchWorker } = require("../dist/services/scheduled-di
     scheduledAt: new Date("2026-06-16T10:00:00.000Z"),
   });
 
+  const numberWithMediaAndButtons = await service.createDispatch({
+    instanceId: "instance-a",
+    targetType: "number",
+    phone: "1198765432",
+    contentType: "image",
+    body: "Abrir material",
+    mediaUrl: "https://example.com/banner.png",
+    buttons: [{ text: "Abrir", url: "https://example.com/material" }],
+    deliveryMode: "scheduled",
+    scheduledAt: new Date("2026-06-16T10:00:00.000Z"),
+  });
+  assert.equal(numberWithMediaAndButtons.recipientPhone, "551198765432");
+
   const futureCancelled = await service.createDispatch({
     instanceId: "instance-a",
     targetType: "number",
@@ -104,7 +133,7 @@ const { createScheduledDispatchWorker } = require("../dist/services/scheduled-di
   await service.cancelDispatch(futureCancelled.id);
 
   const processed = await worker.runDue(new Date("2026-06-16T11:00:00.000Z"));
-  assert.equal(processed, 3);
+  assert.equal(processed, 4);
 
   const sentPlainText = await service.getDispatch(plainText.id);
   assert.equal(sentPlainText.status, "SENT");
@@ -120,13 +149,22 @@ const { createScheduledDispatchWorker } = require("../dist/services/scheduled-di
   assert.equal(failedDispatch.failureCode, "CHAT_PROVIDER_SEND_FAILED");
   assert.match(failedDispatch.providerError || "", /provider blew up/i);
 
+  const sentMediaInteractive = await service.getDispatch(numberWithMediaAndButtons.id);
+  assert.equal(sentMediaInteractive.status, "SENT");
+  assert.equal(sentMediaInteractive.providerMessageId, "interactive-2");
+  assert.equal(interactiveBodies[1], "Abrir material");
+  assert.equal(Boolean(interactiveHeaders[1]?.hasMediaAttachment), true);
+  assert.equal(Boolean(interactiveHeaders[1]?.imageMessage), true);
+
   const cancelledDispatch = await service.getDispatch(futureCancelled.id);
   assert.equal(cancelledDispatch.status, "CANCELLED");
 
   const reprocessed = await worker.runDue(new Date("2026-06-16T12:00:00.000Z"));
   assert.equal(reprocessed, 0);
   assert.equal(textSendCount, 1);
-  assert.equal(relayCount, 1);
+  assert.equal(relayCount, 2);
+  assert.equal(mediaSendCount, 0);
+  assert.equal(sentJids.includes("551198765432@s.whatsapp.net"), true);
 
   const concurrentStore = createInMemoryScheduledDispatchStore({
     instances: [{ id: "instance-b" }],

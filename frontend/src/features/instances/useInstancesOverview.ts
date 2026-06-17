@@ -296,11 +296,10 @@ export function useInstancesOverview(addToast: (message: string, tone?: "success
   }, [addToast, loadData]);
 
   const handleDeleteInstance = useCallback(async (card: ChannelCard) => {
-    if (card.channel === "WHATSAPP" && card.agent) {
-      addToast(`Exclua o agente ${card.agent.name} antes de remover a instância ${card.name}.`, "warning");
-      return;
-    }
-    if (!window.confirm(`Excluir a instância ${card.name}?\n\nEsta ação remove a instância e suas sessões locais.`)) return;
+    const linkedAgentMessage = card.channel === "WHATSAPP" && card.agent
+      ? `\n\nO agente vinculado ${card.agent.name} também será excluído.`
+      : "";
+    if (!window.confirm(`Excluir a instância ${card.name}?\n\nEsta ação remove a instância, suas sessões locais e vínculos operacionais.${linkedAgentMessage}`)) return;
     setBusyKey(card.key);
     setBusyAction("delete");
     try {

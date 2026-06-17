@@ -25,7 +25,7 @@ export const APP_NAV_GROUPS: AppNavGroup[] = [
   {
     label: "Inteligência",
     items: [
-      { name: "Agente IA", path: "/agente", icon: Sparkles },
+      { name: "Agentes de IA", path: "/agente", icon: Sparkles },
     ],
   },
   {
@@ -42,7 +42,7 @@ const ROUTE_META = [
   { match: (path: string) => path.startsWith("/chat"), title: "Conversas" },
   { match: (path: string) => path.startsWith("/disparos"), title: "Disparos" },
   { match: (path: string) => path.startsWith("/integracoes"), title: "Integrações" },
-  { match: (path: string) => path.startsWith("/agente") || path.startsWith("/telegram"), title: "Agentes" },
+  { match: (path: string) => path.startsWith("/agente") || path.startsWith("/telegram"), title: "Agentes de IA" },
   { match: (path: string) => path.startsWith("/settings"), title: "Configurações" },
 ] as const;
 

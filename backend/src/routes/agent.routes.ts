@@ -9,7 +9,6 @@ import { agentWorkspaceRoutes } from "./agent/workspace.routes";
 /*
 Compatibilidade estrutural da Story 026:
 - const instances = await listInstances();
-- if (err instanceof InstanceLinkedAgentError)
 - const instance = await getOrCreateTelegramInstance();
 - const instance = await getTelegramInstance();
 - instanceId: undefined

@@ -1,4 +1,5 @@
 import { prisma } from "../../database/prisma";
+import { deleteKnowledgeBinary } from "../knowledge/fileStorage.service";
 import { InstanceManager } from "../../whatsapp/InstanceManager";
 
 export const TELEGRAM_INSTANCE_SLOT = 0;
@@ -104,16 +105,6 @@ export async function getInstanceById(instanceId: string) {
   return prisma.instance.findUnique({ where: { id: instanceId } });
 }
 
-export class InstanceLinkedAgentError extends Error {
-  statusCode: number;
-
-  constructor(message = "Exclua o agente vinculado antes de remover esta instância.") {
-    super(message);
-    this.name = "INSTANCE_LINKED_AGENT_ERROR";
-    this.statusCode = 409;
-  }
-}
-
 export async function deleteInstance(instanceId: string) {
   const instance = await prisma.instance.findUnique({
     where: { id: instanceId },
@@ -128,15 +119,31 @@ export async function deleteInstance(instanceId: string) {
     return null;
   }
 
-  if (instance.agent) {
-    throw new InstanceLinkedAgentError();
-  }
-
   if (InstanceManager.isRunning(instanceId) || instance.status === "CONNECTED" || instance.status === "RECONNECTING") {
     await InstanceManager.stop(instanceId);
   }
 
+  const files = await prisma.file.findMany({
+    where: { instanceId },
+    select: { id: true, storagePath: true },
+  });
+
+  for (const file of files) {
+    // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Physical knowledge files must be removed deterministically before deleting their database records.
+    await deleteKnowledgeBinary(file.storagePath);
+  }
+
   await prisma.$transaction(async (tx) => {
+    await tx.file.deleteMany({
+      where: { instanceId },
+    });
+
+    if (instance.agent) {
+      await tx.agent.delete({
+        where: { id: instance.agent.id },
+      });
+    }
+
     await tx.session.deleteMany({ where: { instanceId } });
 
     await tx.instance.delete({ where: { id: instanceId } });

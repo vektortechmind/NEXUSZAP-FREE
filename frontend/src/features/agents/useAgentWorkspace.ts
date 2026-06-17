@@ -201,7 +201,7 @@ export function useAgentWorkspace(addToast: (message: string, tone?: "success" |
 
   const tabs = useMemo(() => {
     const baseTabs = [
-      { value: "agent", label: "Agente" },
+      { value: "agent", label: "Agente de IA" },
       { value: "ai", label: "IA" },
       { value: "files", label: "Arquivos" },
     ];

@@ -176,6 +176,47 @@ async function assertNativeSenderRelay() {
   assert.strictEqual(calls.length, 1);
 }
 
+async function assertNativeSenderRelayWithMediaHeaders() {
+  const calls = [];
+  const sock = {
+    async relayMessage(jid, message, options) {
+      calls.push({ jid, message, options });
+      return "provider-native-media-id";
+    },
+    async sendMessage() {
+      throw new Error("fallback nao deveria ser usado");
+    },
+    async waUploadToServer() {
+      return {
+        mediaUrl: "https://mmg.example.com/native-media.enc",
+        directPath: "/v/t62.7118/native-media.enc",
+      };
+    },
+  };
+
+  const imageResult = await sendNativeInteractiveMessage(sock, "5511999999999@s.whatsapp.net", {
+    body: "Catalogo disponivel.",
+    buttons: [{ kind: "cta_url", text: "Abrir catalogo", url: "https://app.example.com/catalogo" }],
+  }, {
+    headerImageBuffer: Buffer.from("image"),
+    headerImageMimeType: "image/png",
+  });
+
+  const videoResult = await sendNativeInteractiveMessage(sock, "5511999999999@s.whatsapp.net", {
+    body: "Video disponivel.",
+    buttons: [{ kind: "cta_url", text: "Abrir video", url: "https://app.example.com/video" }],
+  }, {
+    headerVideoBuffer: Buffer.from("video"),
+    headerVideoMimeType: "video/mp4",
+  });
+
+  assert.strictEqual(imageResult.deliveryPath, "interactive_native");
+  assert.strictEqual(videoResult.deliveryPath, "interactive_native");
+  assert.strictEqual(calls.length, 2);
+  assert.ok(calls[0].message.interactiveMessage.header.imageMessage, "deve anexar cabecalho de imagem");
+  assert.ok(calls[1].message.interactiveMessage.header.videoMessage, "deve anexar cabecalho de video");
+}
+
 async function assertSenderFallback() {
   const sent = [];
   const sock = {
@@ -218,6 +259,7 @@ async function main() {
   assertValidation();
   await assertSenderRelay();
   await assertNativeSenderRelay();
+  await assertNativeSenderRelayWithMediaHeaders();
   await assertSenderFallback();
   assertPublicContractUnchanged();
   console.log("interactive-cta-url-helper-api: ok");

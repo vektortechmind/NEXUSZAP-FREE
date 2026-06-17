@@ -27,6 +27,8 @@ export type SendNativeInteractiveOptions = {
   sendFallbackAfterInteractiveSuccess?: boolean;
   headerImageBuffer?: Buffer | null;
   headerImageMimeType?: string | null;
+  headerVideoBuffer?: Buffer | null;
+  headerVideoMimeType?: string | null;
 };
 
 export type SendCtaUrlInteractiveOptions = SendNativeInteractiveOptions;
@@ -82,6 +84,41 @@ async function sendFallbackText(
   return extractMessageId(sent);
 }
 
+async function attachNativeInteractiveHeaderMedia(
+  sock: NativeInteractiveRelaySocket,
+  payload: ReturnType<typeof buildNativeInteractivePayload>,
+  options: SendNativeInteractiveOptions,
+) {
+  if (typeof sock.waUploadToServer !== "function") return;
+
+  if (options.headerImageBuffer) {
+    const media = await prepareWAMessageMedia({
+      image: options.headerImageBuffer,
+      mimetype: options.headerImageMimeType ?? undefined,
+    }, { upload: sock.waUploadToServer });
+    if (media.imageMessage) {
+      (payload.message.interactiveMessage as proto.Message.IInteractiveMessage).header = {
+        hasMediaAttachment: true,
+        imageMessage: media.imageMessage,
+      };
+    }
+    return;
+  }
+
+  if (options.headerVideoBuffer) {
+    const media = await prepareWAMessageMedia({
+      video: options.headerVideoBuffer,
+      mimetype: options.headerVideoMimeType ?? undefined,
+    }, { upload: sock.waUploadToServer });
+    if (media.videoMessage) {
+      (payload.message.interactiveMessage as proto.Message.IInteractiveMessage).header = {
+        hasMediaAttachment: true,
+        videoMessage: media.videoMessage,
+      } as proto.Message.InteractiveMessage.IHeader;
+    }
+  }
+}
+
 export async function sendNativeInteractiveMessage(
   sock: NativeInteractiveRelaySocket,
   jid: string,
@@ -110,18 +147,7 @@ export async function sendNativeInteractiveMessage(
 
   try {
     // Payload shape adapted from MIT-licensed native flow/additionalNodes patterns in itsliaaa/baileys.
-    if (options.headerImageBuffer && typeof sock.waUploadToServer === "function") {
-      const media = await prepareWAMessageMedia({
-        image: options.headerImageBuffer,
-        mimetype: options.headerImageMimeType ?? undefined,
-      }, { upload: sock.waUploadToServer });
-      if (media.imageMessage) {
-        payload.message.interactiveMessage.header = {
-          hasMediaAttachment: true,
-          imageMessage: media.imageMessage,
-        };
-      }
-    }
+    await attachNativeInteractiveHeaderMedia(sock, payload, options);
 
     const message = proto.Message.create(payload.message);
     const providerMessageId = await sock.relayMessage(jid, message, {

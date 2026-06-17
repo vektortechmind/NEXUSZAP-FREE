@@ -5,7 +5,6 @@ import {
   createInstance,
   deleteInstance,
   getInstanceById,
-  InstanceLinkedAgentError,
   listInstances,
   MaxWhatsAppInstancesError,
 } from "../../services/instances/instance.service";
@@ -162,25 +161,17 @@ export async function agentInstanceRoutes(fastify: FastifyInstance) {
     config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
   }, async (request, reply) => {
     const { instanceId } = request.params as { instanceId: string };
-    try {
-      const telegramStatus = TelegramBotManager.getStatus();
-      const deleted = await deleteInstance(instanceId);
+    const telegramStatus = TelegramBotManager.getStatus();
+    const deleted = await deleteInstance(instanceId);
 
-      if (!deleted) {
-        return reply.status(404).send({ error: "Instância não encontrada." });
-      }
-
-      if (telegramStatus.instanceId === instanceId) {
-        await TelegramBotManager.stop();
-      }
-
-      return reply.send({ success: true, id: deleted.id, name: deleted.name });
-    } catch (err) {
-      if (err instanceof InstanceLinkedAgentError) {
-        return reply.status(err.statusCode).send({ error: err.message });
-      }
-
-      throw err;
+    if (!deleted) {
+      return reply.status(404).send({ error: "Instância não encontrada." });
     }
+
+    if (telegramStatus.instanceId === instanceId) {
+      await TelegramBotManager.stop();
+    }
+
+    return reply.send({ success: true, id: deleted.id, name: deleted.name });
   });
 }

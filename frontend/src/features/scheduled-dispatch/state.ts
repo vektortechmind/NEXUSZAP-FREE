@@ -39,24 +39,29 @@ export type ScheduledDispatchGroup = {
 export type ScheduledDispatchDraft = {
   instanceId: string;
   targetType: ScheduledDispatchTargetType;
-  phone: string;
-  groupJid: string;
+  phonesText: string;
+  groupJids: string[];
+  numberDelaySeconds: string;
+  groupDelaySeconds: string;
   contentType: ScheduledDispatchContentType;
   body: string;
   mediaUrl: string;
+  mediaFileName: string;
   buttons: ScheduledDispatchUrlButton[];
   deliveryMode: ScheduledDispatchDeliveryMode;
   scheduledAt: string;
 };
 
 export type ScheduledDispatchDraftValidation = {
-  phone?: string;
-  groupJid?: string;
+  phonesText?: string;
+  groupJids?: string;
   body?: string;
   mediaUrl?: string;
   buttons?: string;
   scheduledAt?: string;
   instanceId?: string;
+  numberDelaySeconds?: string;
+  groupDelaySeconds?: string;
   canSubmit: boolean;
 };
 
@@ -71,7 +76,7 @@ export const SCHEDULED_DISPATCH_STATUS_LABELS: Record<ScheduledDispatchStatus, s
   CANCELLED: "Cancelado",
 };
 
-export function createEmptyScheduledDispatchButton(): ScheduledDispatchUrlButton {
+export function createEmptyScheduledDispatchButton() {
   return { text: "", url: "" };
 }
 
@@ -81,11 +86,14 @@ export function createInitialScheduledDispatchDraft(now = new Date()): Scheduled
   return {
     instanceId: "",
     targetType: "group",
-    phone: "",
-    groupJid: "",
+    phonesText: "",
+    groupJids: [],
+    numberDelaySeconds: "0",
+    groupDelaySeconds: "0",
     contentType: "text",
     body: "",
     mediaUrl: "",
+    mediaFileName: "",
     buttons: [],
     deliveryMode: "scheduled",
     scheduledAt: formatDateTimeLocal(nextSlot),
@@ -99,13 +107,7 @@ export function formatDateTimeLocal(value: Date) {
 
 export function isSafeMediaUrl(value: string) {
   const trimmed = value.trim();
-  if (!trimmed) return false;
-  try {
-    const parsed = new URL(trimmed);
-    return parsed.protocol === "https:" || parsed.protocol === "http:";
-  } catch {
-    return false;
-  }
+  return trimmed.startsWith("/api/scheduled-dispatches/media/");
 }
 
 export function normalizeScheduledDispatchButtons(buttons: ScheduledDispatchUrlButton[]) {
@@ -114,12 +116,39 @@ export function normalizeScheduledDispatchButtons(buttons: ScheduledDispatchUrlB
     .filter((button) => button.text || button.url);
 }
 
+function normalizeBrazilPhoneDigits(digits: string) {
+  if (digits.startsWith("55") && (digits.length === 12 || digits.length === 13)) {
+    return digits;
+  }
+
+  if (!digits.startsWith("55") && (digits.length === 10 || digits.length === 11)) {
+    return `55${digits}`;
+  }
+
+  return digits;
+}
+
+export function normalizeScheduledDispatchPhones(phonesText: string) {
+  const unique = new Set<string>();
+  return phonesText
+    .split(/[\n,;]+/)
+    .map((entry) => normalizeBrazilPhoneDigits(entry.replace(/\D/g, "")))
+    .filter((entry) => entry.length > 0)
+    .filter((entry) => {
+      if (unique.has(entry)) return false;
+      unique.add(entry);
+      return true;
+    });
+}
+
 export function applyInstanceToDraft(draft: ScheduledDispatchDraft, instanceId: string): ScheduledDispatchDraft {
   if (draft.instanceId === instanceId) return draft;
   return {
     ...draft,
     instanceId,
-    groupJid: "",
+    groupJids: [],
+    mediaUrl: "",
+    mediaFileName: "",
   };
 }
 
@@ -129,9 +158,27 @@ export function filterScheduledDispatchGroups(groups: ScheduledDispatchGroup[], 
   return groups.filter((group) => [group.name ?? "", group.jid].some((value) => value.toLowerCase().includes(query)));
 }
 
+export function normalizeScheduledDispatchDelay(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return 0;
+  const parsed = Number(trimmed);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : Number.NaN;
+}
+
 export function resolveScheduledDispatchIso(draft: ScheduledDispatchDraft, now = new Date()) {
   if (draft.deliveryMode === "immediate") return now.toISOString();
   return new Date(draft.scheduledAt).toISOString();
+}
+
+function isSafeButtonUrl(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === "https:" || parsed.protocol === "http:";
+  } catch {
+    return false;
+  }
 }
 
 export function validateScheduledDispatchDraft(draft: ScheduledDispatchDraft): ScheduledDispatchDraftValidation {
@@ -144,16 +191,30 @@ export function validateScheduledDispatchDraft(draft: ScheduledDispatchDraft): S
   }
 
   if (draft.targetType === "number") {
-    const digits = draft.phone.replace(/\D/g, "");
-    if (digits.length < 8 || digits.length > 15) {
-      result.phone = "Informe um numero valido.";
+    const phones = normalizeScheduledDispatchPhones(draft.phonesText);
+    if (phones.length === 0 || phones.some((phone) => phone.length < 8 || phone.length > 15)) {
+      result.phonesText = "Informe ao menos um numero valido.";
+      result.canSubmit = false;
+    }
+
+    const numberDelaySeconds = normalizeScheduledDispatchDelay(draft.numberDelaySeconds);
+    if (Number.isNaN(numberDelaySeconds) || numberDelaySeconds > 86_400) {
+      result.numberDelaySeconds = "Informe um atraso entre 0 e 86400 segundos.";
       result.canSubmit = false;
     }
   }
 
-  if (draft.targetType === "group" && !draft.groupJid.trim()) {
-    result.groupJid = "Selecione um grupo valido.";
+  if (draft.targetType === "group" && draft.groupJids.length === 0) {
+    result.groupJids = "Selecione ao menos um grupo valido.";
     result.canSubmit = false;
+  }
+
+  if (draft.targetType === "group") {
+    const groupDelaySeconds = normalizeScheduledDispatchDelay(draft.groupDelaySeconds);
+    if (Number.isNaN(groupDelaySeconds) || groupDelaySeconds > 86_400) {
+      result.groupDelaySeconds = "Informe um atraso entre 0 e 86400 segundos.";
+      result.canSubmit = false;
+    }
   }
 
   if (draft.contentType === "text") {
@@ -162,21 +223,20 @@ export function validateScheduledDispatchDraft(draft: ScheduledDispatchDraft): S
       result.canSubmit = false;
     }
     if (draft.mediaUrl.trim()) {
-      result.mediaUrl = "Disparo de texto nao aceita media URL.";
+      result.mediaUrl = "Disparo de texto nao aceita midia.";
       result.canSubmit = false;
     }
   }
 
   if ((draft.contentType === "image" || draft.contentType === "video") && !isSafeMediaUrl(draft.mediaUrl)) {
-    result.mediaUrl = "Informe uma media URL valida com http ou https.";
+    result.mediaUrl = draft.contentType === "image"
+      ? "Envie uma imagem local para o disparo."
+      : "Envie um video local para o disparo.";
     result.canSubmit = false;
   }
 
   if (buttons.length > MAX_SCHEDULED_DISPATCH_BUTTONS) {
     result.buttons = `Adicione no maximo ${MAX_SCHEDULED_DISPATCH_BUTTONS} botoes URL.`;
-    result.canSubmit = false;
-  } else if (draft.contentType === "video" && buttons.length > 0) {
-    result.buttons = "Video nao suporta botoes URL nesta etapa.";
     result.canSubmit = false;
   } else {
     for (const [index, button] of buttons.entries()) {
@@ -190,7 +250,7 @@ export function validateScheduledDispatchDraft(draft: ScheduledDispatchDraft): S
         result.canSubmit = false;
         break;
       }
-      if (!isSafeMediaUrl(button.url)) {
+      if (!isSafeButtonUrl(button.url)) {
         result.buttons = `Informe uma URL http/https valida no botao ${index + 1}.`;
         result.canSubmit = false;
         break;

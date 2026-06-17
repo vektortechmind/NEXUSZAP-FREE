@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "../contexts/ToastContext";
 import { Button } from "../components/ui/Button";
 import { InlineAlert } from "../components/ui/InlineAlert";
@@ -15,7 +15,9 @@ import {
   filterScheduledDispatchGroups,
   isSafeMediaUrl,
   MAX_SCHEDULED_DISPATCH_BUTTONS,
+  normalizeScheduledDispatchDelay,
   normalizeScheduledDispatchButtons,
+  normalizeScheduledDispatchPhones,
   resolveScheduledDispatchIso,
   resolveScheduledDispatchTargetLabel,
   SCHEDULED_DISPATCH_STATUS_LABELS,
@@ -25,17 +27,19 @@ import {
   type ScheduledDispatchGroup,
   type ScheduledDispatchHistoryItem,
   type ScheduledDispatchStatus,
-  type ScheduledDispatchUrlButton,
   validateScheduledDispatchDraft,
 } from "../features/scheduled-dispatch/state";
 
 type GroupListResponse = { groups: ScheduledDispatchGroup[] };
 type GroupSyncResponse = { synced: number; groups: ScheduledDispatchGroup[] };
 type DispatchListResponse = { dispatches: ScheduledDispatchHistoryItem[] };
-type DispatchMutationResponse = { dispatch: ScheduledDispatchHistoryItem };
+type DispatchMutationResponse = { dispatch: ScheduledDispatchHistoryItem | null; dispatches: ScheduledDispatchHistoryItem[] };
+type UploadMediaResponse = { mediaId: string; fileName: string; mimeType: string; mediaUrl: string };
+type ClearHistoryResponse = { deleted: number };
 
 const selectClassName = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition-colors duration-200 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-emerald-400 dark:focus:ring-emerald-400/25";
 const textareaClassName = `${selectClassName} min-h-32 resize-y`;
+const HISTORY_PAGE_SIZE = 100;
 
 type InstanceOption = { id: string; name: string };
 
@@ -64,8 +68,10 @@ const statusToneClassName: Record<ScheduledDispatchStatus, string> = {
   CANCELLED: "bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
 };
 
-function clearButtonsForVideo(buttons: ScheduledDispatchUrlButton[]) {
-  return buttons.length > 0 ? [] : buttons;
+function resolveUploadContentType(file: File): ScheduledDispatchContentType | null {
+  if (file.type.startsWith("image/")) return "image";
+  if (file.type.startsWith("video/")) return "video";
+  return null;
 }
 
 function formatDateTime(value: string | null) {
@@ -96,6 +102,9 @@ function sortDispatchHistory(dispatches: ScheduledDispatchHistoryItem[]) {
 
 export function ScheduledDispatchPage() {
   const { addToast } = useToast();
+  const mediaInputRef = useRef<HTMLInputElement | null>(null);
+  const [activeView, setActiveView] = useState<"composer" | "history">("composer");
+  const [historyPage, setHistoryPage] = useState(1);
   const [instances, setInstances] = useState<InstanceOption[]>([]);
   const [loadingInstances, setLoadingInstances] = useState(true);
   const [instancesError, setInstancesError] = useState<string | null>(null);
@@ -107,17 +116,26 @@ export function ScheduledDispatchPage() {
   const [syncingGroups, setSyncingGroups] = useState(false);
   const [groupsError, setGroupsError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [lastCreatedId, setLastCreatedId] = useState<string | null>(null);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [lastCreatedIds, setLastCreatedIds] = useState<string[]>([]);
   const [history, setHistory] = useState<ScheduledDispatchHistoryItem[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [clearingHistory, setClearingHistory] = useState(false);
 
   const validation = useMemo(() => validateScheduledDispatchDraft(draft), [draft]);
   const visibleGroups = useMemo(() => filterScheduledDispatchGroups(groups, deferredGroupSearch), [deferredGroupSearch, groups]);
-  const selectedGroup = useMemo(() => groups.find((group) => group.jid === draft.groupJid) ?? null, [draft.groupJid, groups]);
+  const selectedGroups = useMemo(() => groups.filter((group) => draft.groupJids.includes(group.jid)), [draft.groupJids, groups]);
+  const parsedPhones = useMemo(() => normalizeScheduledDispatchPhones(draft.phonesText), [draft.phonesText]);
   const mediaPreviewEnabled = draft.contentType !== "text" && isSafeMediaUrl(draft.mediaUrl);
+  const hasUploadedMedia = draft.contentType !== "text" && Boolean(draft.mediaUrl.trim());
   const visibleHistory = useMemo(() => sortDispatchHistory(history), [history]);
+  const historyTotalPages = Math.max(1, Math.ceil(visibleHistory.length / HISTORY_PAGE_SIZE));
+  const pagedHistory = useMemo(() => {
+    const start = (historyPage - 1) * HISTORY_PAGE_SIZE;
+    return visibleHistory.slice(start, start + HISTORY_PAGE_SIZE);
+  }, [historyPage, visibleHistory]);
 
   useEffect(() => {
     let ignore = false;
@@ -175,6 +193,16 @@ export function ScheduledDispatchPage() {
   }, [draft.instanceId]);
 
   useEffect(() => {
+    setHistoryPage(1);
+  }, [draft.instanceId, history.length]);
+
+  useEffect(() => {
+    if (historyPage > historyTotalPages) {
+      setHistoryPage(historyTotalPages);
+    }
+  }, [historyPage, historyTotalPages]);
+
+  useEffect(() => {
     if (draft.targetType !== "group" || !draft.instanceId) {
       setGroups([]);
       setGroupsError(null);
@@ -207,10 +235,10 @@ export function ScheduledDispatchPage() {
   }, [draft.instanceId, draft.targetType]);
 
   useEffect(() => {
-    if (draft.targetType !== "group" || !draft.groupJid) return;
-    if (groups.some((group) => group.jid === draft.groupJid)) return;
-    setDraft((current) => ({ ...current, groupJid: "" }));
-  }, [draft.groupJid, draft.targetType, groups]);
+    if (draft.targetType !== "group" || draft.groupJids.length === 0) return;
+    const known = new Set(groups.map((group) => group.jid));
+    setDraft((current) => ({ ...current, groupJids: current.groupJids.filter((jid) => known.has(jid)) }));
+  }, [draft.groupJids.length, draft.targetType, groups]);
 
   async function handleSyncGroups() {
     if (!draft.instanceId) {
@@ -233,6 +261,49 @@ export function ScheduledDispatchPage() {
     }
   }
 
+  async function handleUploadMedia(file: File) {
+    if (!draft.instanceId) {
+      addToast("Selecione uma instancia antes de enviar a midia.", "error");
+      return;
+    }
+
+    const uploadContentType = resolveUploadContentType(file);
+    if (!uploadContentType) {
+      addToast("Selecione uma imagem ou video valido.", "error");
+      return;
+    }
+
+    setUploadingMedia(true);
+    try {
+      const form = new FormData();
+      form.append("instanceId", draft.instanceId);
+      form.append("contentType", uploadContentType);
+      form.append("file", file);
+      const res = await api.post<UploadMediaResponse>("/scheduled-dispatches/media", form);
+      setDraft((current) => ({
+        ...current,
+        contentType: uploadContentType,
+        mediaUrl: res.data.mediaUrl,
+        mediaFileName: res.data.fileName,
+      }));
+      addToast("Midia enviada com sucesso.", "success");
+    } catch (err) {
+      console.error(err);
+      addToast("Nao foi possivel enviar a midia.", "error");
+    } finally {
+      setUploadingMedia(false);
+    }
+  }
+
+  function handleClearMedia() {
+    setDraft((current) => ({
+      ...current,
+      contentType: "text",
+      mediaUrl: "",
+      mediaFileName: "",
+    }));
+  }
+
   async function handleSubmit() {
     const currentValidation = validateScheduledDispatchDraft(draft);
     if (!currentValidation.canSubmit) {
@@ -245,29 +316,33 @@ export function ScheduledDispatchPage() {
       const res = await api.post<DispatchMutationResponse>("/scheduled-dispatches", {
         instanceId: draft.instanceId,
         targetType: draft.targetType,
-        phone: draft.targetType === "number" ? draft.phone : null,
-        groupJid: draft.targetType === "group" ? draft.groupJid : null,
+        phones: draft.targetType === "number" ? normalizeScheduledDispatchPhones(draft.phonesText) : null,
+        groupJids: draft.targetType === "group" ? draft.groupJids : null,
+        numberDelaySeconds: draft.targetType === "number" ? normalizeScheduledDispatchDelay(draft.numberDelaySeconds) : null,
+        groupDelaySeconds: draft.targetType === "group" ? normalizeScheduledDispatchDelay(draft.groupDelaySeconds) : null,
         contentType: draft.contentType,
         body: draft.body.trim() || null,
         mediaUrl: draft.contentType === "text" ? null : draft.mediaUrl.trim(),
-        buttons: draft.contentType === "video" ? [] : normalizeScheduledDispatchButtons(draft.buttons),
+        buttons: normalizeScheduledDispatchButtons(draft.buttons),
         deliveryMode: draft.deliveryMode,
         scheduledAt: draft.deliveryMode === "scheduled" ? resolveScheduledDispatchIso(draft) : null,
       });
-      setLastCreatedId(res.data.dispatch.id);
+      setLastCreatedIds(res.data.dispatches.map((dispatch) => dispatch.id));
       setDraft((current) => ({
         ...current,
-        phone: current.targetType === "number" ? "" : current.phone,
+        phonesText: current.targetType === "number" ? "" : current.phonesText,
+        contentType: "text",
         body: "",
         mediaUrl: "",
+        mediaFileName: "",
         buttons: [],
         scheduledAt: createInitialScheduledDispatchDraft().scheduledAt,
       }));
       await loadHistory(draft.instanceId);
       addToast(
         draft.deliveryMode === "immediate"
-          ? "Disparo imediato colocado na fila com sucesso."
-          : "Disparo agendado salvo com sucesso.",
+          ? `${res.data.dispatches.length} envio(s) imediato(s) colocado(s) na fila.`
+          : `${res.data.dispatches.length} disparo(s) agendado(s) salvo(s) com sucesso.`,
         "success"
       );
     } catch (err) {
@@ -292,12 +367,35 @@ export function ScheduledDispatchPage() {
     }
   }
 
+  async function handleClearHistory() {
+    if (!draft.instanceId) {
+      addToast("Selecione uma instancia antes de limpar o historico.", "error");
+      return;
+    }
+
+    if (!window.confirm("Remover do historico apenas envios finalizados, com falha ou cancelados?")) {
+      return;
+    }
+
+    setClearingHistory(true);
+    try {
+      const res = await api.delete<ClearHistoryResponse>("/scheduled-dispatches/history", { params: { instanceId: draft.instanceId } });
+      await loadHistory(draft.instanceId);
+      addToast(res.data.deleted > 0 ? `${res.data.deleted} item(ns) removido(s) do historico.` : "Nenhum item terminal para remover.", "success");
+    } catch (err) {
+      console.error(err);
+      addToast("Nao foi possivel limpar o historico.", "error");
+    } finally {
+      setClearingHistory(false);
+    }
+  }
+
   return (
-    <section className="space-y-6">
+    <section className="space-y-4">
       <PageHeader
         eyebrow="Operacao"
         title="Disparos agendados"
-        description="Monte disparos sem template com texto, imagem ou video, escolhendo envio imediato ou agendado no mesmo fluxo."
+        description="Dispare para numeros ou grupos, com midia local e envio agora ou agendado."
         actions={(
           <Button variant="secondary" onClick={() => void handleSyncGroups()} disabled={draft.targetType !== "group" || !draft.instanceId} loading={syncingGroups}>
             Sincronizar grupos
@@ -305,12 +403,22 @@ export function ScheduledDispatchPage() {
         )}
       />
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-        <Panel className="p-5 sm:p-6">
-          <div className="space-y-5">
+      <div className="grid gap-3 sm:grid-cols-2 xl:max-w-md">
+        <Button variant={activeView === "composer" ? "primary" : "secondary"} onClick={() => setActiveView("composer")}>
+          Envios
+        </Button>
+        <Button variant={activeView === "history" ? "primary" : "secondary"} onClick={() => setActiveView("history")}>
+          Historico
+        </Button>
+      </div>
+
+      {activeView === "composer" ? (
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+        <Panel className="p-4 sm:p-5">
+          <div className="space-y-4">
             <div>
               <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Destino</h2>
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Selecione a instancia e o alvo do disparo. Para grupos, a escolha continua restrita ao inventario sincronizado da instancia.</p>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Escolha a instancia e os destinos do disparo.</p>
             </div>
 
             {instancesError ? <InlineAlert tone="danger">{instancesError}</InlineAlert> : null}
@@ -333,26 +441,42 @@ export function ScheduledDispatchPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <Button
                 variant={draft.targetType === "group" ? "primary" : "secondary"}
-                onClick={() => setDraft((current) => ({ ...current, targetType: "group", phone: "" }))}
+                onClick={() => setDraft((current) => ({ ...current, targetType: "group", phonesText: "" }))}
               >
-                Grupo
+                Grupos
               </Button>
               <Button
                 variant={draft.targetType === "number" ? "primary" : "secondary"}
-                onClick={() => setDraft((current) => ({ ...current, targetType: "number", groupJid: "" }))}
+                onClick={() => setDraft((current) => ({ ...current, targetType: "number", groupJids: [] }))}
               >
-                Numero
+                Numeros
               </Button>
             </div>
 
             {draft.targetType === "number" ? (
-              <Input
-                label="Telefone"
-                placeholder="5511999991234"
-                value={draft.phone}
-                onChange={(event) => setDraft((current) => ({ ...current, phone: event.target.value }))}
-                error={validation.phone}
-              />
+              <div className="space-y-3">
+                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300" htmlFor="scheduled-dispatch-phones">
+                  Numeros
+                </label>
+                <textarea
+                  id="scheduled-dispatch-phones"
+                  className={textareaClassName}
+                  placeholder="5511999991234&#10;5511988887777"
+                  value={draft.phonesText}
+                  onChange={(event) => setDraft((current) => ({ ...current, phonesText: event.target.value }))}
+                />
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Use uma linha por numero ou separe por virgula. Repetidos sao removidos automaticamente.</p>
+                {validation.phonesText ? <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{validation.phonesText}</p> : null}
+                {parsedPhones.length > 0 ? <InlineAlert tone="info" className="mt-3">{parsedPhones.length} numero(s) pronto(s) para o disparo.</InlineAlert> : null}
+                <Input
+                  label="Atraso por numero (segundos)"
+                  placeholder="0"
+                  inputMode="numeric"
+                  value={draft.numberDelaySeconds}
+                  onChange={(event) => setDraft((current) => ({ ...current, numberDelaySeconds: event.target.value }))}
+                />
+                {validation.numberDelaySeconds ? <p className="text-sm text-red-600 dark:text-red-400">{validation.numberDelaySeconds}</p> : null}
+              </div>
             ) : (
               <div className="space-y-4">
                 <Input
@@ -362,7 +486,7 @@ export function ScheduledDispatchPage() {
                   onChange={(event) => setGroupSearch(event.target.value)}
                 />
 
-                {validation.groupJid ? <InlineAlert tone="warning">{validation.groupJid}</InlineAlert> : null}
+                {validation.groupJids ? <InlineAlert tone="warning">{validation.groupJids}</InlineAlert> : null}
                 {groupsError ? <InlineAlert tone="danger">{groupsError}</InlineAlert> : null}
                 {loadingGroups ? <InlineAlert tone="info">Carregando grupos da instancia selecionada...</InlineAlert> : null}
                 {!loadingGroups && draft.instanceId && groups.length === 0 && !groupsError ? (
@@ -371,20 +495,24 @@ export function ScheduledDispatchPage() {
                   </InlineAlert>
                 ) : null}
 
-                <div className="max-h-80 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-800">
+                <div className="max-h-64 overflow-y-auto rounded-lg border border-slate-200 dark:border-slate-800">
                   {visibleGroups.length > 0 ? (
                     <ul className="divide-y divide-slate-200 dark:divide-slate-800">
                       {visibleGroups.map((group) => {
-                        const checked = draft.groupJid === group.jid;
+                        const checked = draft.groupJids.includes(group.jid);
                         return (
                           <li key={`${group.instanceId}:${group.jid}`}>
                             <label className={`flex cursor-pointer items-start gap-3 px-4 py-3 transition-colors ${checked ? "bg-emerald-50 dark:bg-emerald-950/30" : "hover:bg-slate-50 dark:hover:bg-slate-900"}`}>
                               <input
-                                type="radio"
-                                name="scheduled-dispatch-group"
+                                type="checkbox"
                                 className="mt-1"
                                 checked={checked}
-                                onChange={() => setDraft((current) => ({ ...current, groupJid: group.jid }))}
+                                onChange={() => setDraft((current) => ({
+                                  ...current,
+                                  groupJids: checked
+                                    ? current.groupJids.filter((jid) => jid !== group.jid)
+                                    : [...current.groupJids, group.jid],
+                                }))}
                               />
                               <span className="min-w-0">
                                 <span className="block text-sm font-semibold text-slate-900 dark:text-slate-100">{group.name?.trim() || group.jid.split("@")[0] || "Grupo sem nome"}</span>
@@ -401,202 +529,222 @@ export function ScheduledDispatchPage() {
                     </div>
                   )}
                 </div>
+                <Input
+                  label="Atraso por grupo (segundos)"
+                  placeholder="0"
+                  inputMode="numeric"
+                  value={draft.groupDelaySeconds}
+                  onChange={(event) => setDraft((current) => ({ ...current, groupDelaySeconds: event.target.value }))}
+                />
+                {validation.groupDelaySeconds ? <p className="text-sm text-red-600 dark:text-red-400">{validation.groupDelaySeconds}</p> : null}
               </div>
             )}
           </div>
         </Panel>
 
-        <Panel className="p-5 sm:p-6">
-          <div className="space-y-5">
+        <Panel className="p-4 sm:p-5">
+          <div className="space-y-4">
             <div>
-              <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Composer</h2>
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Escolha o tipo de conteudo, informe a referencia da midia quando necessario e defina se o job entra para envio imediato ou agendado.</p>
+              <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Envios</h2>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Defina conteudo, midia e quando enviar.</p>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
-              {(["text", "image", "video"] as ScheduledDispatchContentType[]).map((contentType) => (
-                <Button
-                  key={contentType}
-                  variant={draft.contentType === contentType ? "primary" : "secondary"}
-                  onClick={() => setDraft((current) => ({
-                    ...current,
-                    contentType,
-                    mediaUrl: contentType === "text" ? "" : current.mediaUrl,
-                    buttons: contentType === "video" ? clearButtonsForVideo(current.buttons) : current.buttons,
-                  }))}
-                >
-                  {contentTypeLabels[contentType]}
-                </Button>
-              ))}
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              {(["immediate", "scheduled"] as ScheduledDispatchDeliveryMode[]).map((deliveryMode) => (
-                <Button
-                  key={deliveryMode}
-                  variant={draft.deliveryMode === deliveryMode ? "primary" : "secondary"}
-                  onClick={() => setDraft((current) => ({ ...current, deliveryMode }))}
-                >
-                  {deliveryModeLabels[deliveryMode]}
-                </Button>
-              ))}
-            </div>
-
-            {draft.deliveryMode === "immediate" ? (
-              <InlineAlert tone="info">O job sera criado com timestamp atual para processamento imediato pelo worker quando essa etapa for entregue.</InlineAlert>
-            ) : null}
-
-            {draft.deliveryMode === "scheduled" ? (
-              <div>
-                <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300" htmlFor="scheduled-dispatch-date">
-                  Agendar para
-                </label>
-                <input
-                  id="scheduled-dispatch-date"
-                  type="datetime-local"
-                  className={selectClassName}
-                  value={draft.scheduledAt}
-                  onChange={(event) => setDraft((current) => ({ ...current, scheduledAt: event.target.value }))}
-                />
-                {validation.scheduledAt ? <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{validation.scheduledAt}</p> : null}
+            <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/30">
+              <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Midia opcional</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Upload local unico para imagem ou video.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    ref={mediaInputRef}
+                    type="file"
+                    className="hidden"
+                    accept="image/*,video/*"
+                    disabled={!draft.instanceId || uploadingMedia}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) {
+                        void handleUploadMedia(file);
+                        event.target.value = "";
+                      }
+                    }}
+                  />
+                  <Button size="sm" variant="secondary" onClick={() => mediaInputRef.current?.click()} disabled={!draft.instanceId || uploadingMedia} loading={uploadingMedia}>
+                    Adicionar midia
+                  </Button>
+                  {hasUploadedMedia ? (
+                    <Button size="sm" variant="secondary" onClick={handleClearMedia} disabled={uploadingMedia}>
+                      Remover midia
+                    </Button>
+                  ) : null}
+                </div>
               </div>
-            ) : null}
-
-            {draft.contentType !== "text" ? (
-              <div className="space-y-3">
-                <Input
-                  label="Media URL"
-                  placeholder={draft.contentType === "image" ? "https://cdn.example.com/banner.png" : "https://cdn.example.com/video.mp4"}
-                  value={draft.mediaUrl}
-                  onChange={(event) => setDraft((current) => ({ ...current, mediaUrl: event.target.value }))}
-                  error={validation.mediaUrl}
-                />
-                <p className="text-xs text-slate-500 dark:text-slate-400">Use uma URL absoluta http/https para a midia que sera consumida pelo job.</p>
-              </div>
-            ) : null}
+              {draft.mediaFileName ? <p className="text-xs text-slate-500 dark:text-slate-400">Arquivo atual: <span className="font-medium text-slate-700 dark:text-slate-200">{draft.mediaFileName}</span></p> : null}
+              {validation.mediaUrl ? <p className="text-sm text-red-600 dark:text-red-400">{validation.mediaUrl}</p> : null}
+            </div>
 
             {mediaPreviewEnabled && draft.contentType === "image" ? (
               <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950/40">
-                <img src={draft.mediaUrl.trim()} alt="Preview da imagem do disparo" className="max-h-72 w-full object-contain" />
+                <img src={draft.mediaUrl} alt="Preview da imagem do disparo" className="max-h-56 w-full object-contain" />
               </div>
             ) : null}
 
             {mediaPreviewEnabled && draft.contentType === "video" ? (
               <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50 p-2 dark:border-slate-800 dark:bg-slate-950/40">
-                <video src={draft.mediaUrl.trim()} className="max-h-72 w-full rounded-lg" controls />
+                <video src={draft.mediaUrl} className="max-h-56 w-full rounded-lg" controls />
               </div>
             ) : null}
 
             <div>
               <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300" htmlFor="scheduled-dispatch-body">
-                {draft.contentType === "text" ? "Mensagem" : "Legenda (opcional)"}
+                {hasUploadedMedia ? "Legenda (opcional)" : "Mensagem"}
               </label>
               <textarea
                 id="scheduled-dispatch-body"
                 className={textareaClassName}
                 value={draft.body}
                 onChange={(event) => setDraft((current) => ({ ...current, body: event.target.value }))}
-                placeholder={draft.contentType === "text" ? "Escreva a mensagem do disparo" : "Adicione uma legenda opcional para a midia"}
+                placeholder={hasUploadedMedia ? "Adicione uma legenda opcional para a midia" : "Escreva a mensagem do disparo"}
               />
               {validation.body ? <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{validation.body}</p> : null}
             </div>
 
-            {draft.contentType === "video" ? (
-              <InlineAlert tone="warning">Video com botoes URL fica fora do MVP desta etapa. Troque para texto ou imagem para habilitar acoes clicaveis.</InlineAlert>
-            ) : (
-              <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-4 dark:border-slate-800 dark:bg-slate-950/30">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Botoes opcionais</h3>
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Adicione ate {MAX_SCHEDULED_DISPATCH_BUTTONS} URLs controladas pelo painel. O payload cru de provider continua fora de escopo.</p>
-                  </div>
-                  <Button
-                    variant="secondary"
-                    onClick={() => setDraft((current) => current.buttons.length >= MAX_SCHEDULED_DISPATCH_BUTTONS ? current : ({ ...current, buttons: [...current.buttons, createEmptyScheduledDispatchButton()] }))}
-                    disabled={draft.buttons.length >= MAX_SCHEDULED_DISPATCH_BUTTONS}
-                  >
-                    Adicionar botao
-                  </Button>
+            <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50/70 p-3 dark:border-slate-800 dark:bg-slate-950/30">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Botoes URL</h3>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Ate {MAX_SCHEDULED_DISPATCH_BUTTONS} links por envio.</p>
                 </div>
-
-                {draft.buttons.length === 0 ? (
-                  <p className="text-sm text-slate-500 dark:text-slate-400">Nenhum botao configurado. O disparo continua valido sem acoes adicionais.</p>
-                ) : null}
-
-                {draft.buttons.map((button, index) => (
-                  <div key={`scheduled-dispatch-button-${index}`} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950/60">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Botao {index + 1}</span>
-                      <Button
-                        variant="ghost"
-                        onClick={() => setDraft((current) => ({ ...current, buttons: current.buttons.filter((_, currentIndex) => currentIndex !== index) }))}
-                      >
-                        Remover
-                      </Button>
-                    </div>
-                    <Input
-                      label="Texto do botao"
-                      placeholder="Ex.: Abrir oferta"
-                      value={button.text}
-                      onChange={(event) => setDraft((current) => ({
-                        ...current,
-                        buttons: current.buttons.map((entry, currentIndex) => currentIndex === index ? { ...entry, text: event.target.value } : entry),
-                      }))}
-                    />
-                    <Input
-                      label="URL do botao"
-                      placeholder="https://example.com/oferta"
-                      value={button.url}
-                      onChange={(event) => setDraft((current) => ({
-                        ...current,
-                        buttons: current.buttons.map((entry, currentIndex) => currentIndex === index ? { ...entry, url: event.target.value } : entry),
-                      }))}
-                    />
-                  </div>
-                ))}
-
-                {validation.buttons ? <p className="text-sm text-red-600 dark:text-red-400">{validation.buttons}</p> : null}
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => setDraft((current) => current.buttons.length >= MAX_SCHEDULED_DISPATCH_BUTTONS ? current : ({ ...current, buttons: [...current.buttons, createEmptyScheduledDispatchButton()] }))}
+                  disabled={draft.buttons.length >= MAX_SCHEDULED_DISPATCH_BUTTONS}
+                >
+                  Adicionar botao
+                </Button>
               </div>
-            )}
 
-            {selectedGroup ? (
-              <InlineAlert tone="success" title="Grupo selecionado">
-                <span className="font-medium">{selectedGroup.name?.trim() || "Grupo sem nome"}</span>
-                <span className="mt-1 block font-mono text-xs">{selectedGroup.jid}</span>
-              </InlineAlert>
-            ) : null}
+              {draft.buttons.length === 0 ? (
+                <p className="text-sm text-slate-500 dark:text-slate-400">Sem botoes.</p>
+              ) : null}
 
-            {lastCreatedId ? (
-              <InlineAlert tone="info" title="Ultimo job criado">
-                <span className="font-mono text-xs">{lastCreatedId}</span>
-              </InlineAlert>
-            ) : null}
+              {draft.buttons.map((button, index) => (
+                <div key={`scheduled-dispatch-button-${index}`} className="grid gap-3 rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-800 dark:bg-slate-950/60">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">Botao {index + 1}</span>
+                    <Button
+                      variant="ghost"
+                      onClick={() => setDraft((current) => ({ ...current, buttons: current.buttons.filter((_, currentIndex) => currentIndex !== index) }))}
+                    >
+                      Remover
+                    </Button>
+                  </div>
+                  <Input
+                    label="Texto do botao"
+                    placeholder="Ex.: Abrir oferta"
+                    value={button.text}
+                    onChange={(event) => setDraft((current) => ({
+                      ...current,
+                      buttons: current.buttons.map((entry, currentIndex) => currentIndex === index ? { ...entry, text: event.target.value } : entry),
+                    }))}
+                  />
+                  <Input
+                    label="URL do botao"
+                    placeholder="https://example.com/oferta"
+                    value={button.url}
+                    onChange={(event) => setDraft((current) => ({
+                      ...current,
+                      buttons: current.buttons.map((entry, currentIndex) => currentIndex === index ? { ...entry, url: event.target.value } : entry),
+                    }))}
+                  />
+                </div>
+              ))}
 
-            <div className="rounded-lg border border-dashed border-slate-300 px-4 py-3 text-sm text-slate-600 dark:border-slate-700 dark:text-slate-400">
-              Conteudo atual: <span className="font-semibold text-slate-900 dark:text-slate-100">{contentTypeLabels[draft.contentType]}</span>
-              {" · "}
-              Modo: <span className="font-semibold text-slate-900 dark:text-slate-100">{deliveryModeLabels[draft.deliveryMode]}</span>
-              {" · "}
-              Botoes: <span className="font-semibold text-slate-900 dark:text-slate-100">{normalizeScheduledDispatchButtons(draft.buttons).length}</span>
+              {validation.buttons ? <p className="text-sm text-red-600 dark:text-red-400">{validation.buttons}</p> : null}
             </div>
 
-            <Button onClick={() => void handleSubmit()} loading={saving} disabled={!validation.canSubmit} className="w-full sm:w-auto">
-              {draft.deliveryMode === "immediate" ? "Criar envio imediato" : "Salvar disparo agendado"}
-            </Button>
+            {selectedGroups.length > 0 ? (
+              <InlineAlert tone="success" title="Grupos selecionados">
+                {selectedGroups.length} grupo(s) vinculado(s) ao disparo atual.
+              </InlineAlert>
+            ) : null}
+
+            {lastCreatedIds.length > 0 ? (
+              <InlineAlert tone="info" title="Ultimos jobs criados">
+                <span className="font-mono text-xs">{lastCreatedIds.join(", ")}</span>
+              </InlineAlert>
+            ) : null}
+
+            <div className="space-y-3 rounded-xl border border-slate-200 bg-white/90 p-3 dark:border-slate-800 dark:bg-slate-950/50">
+              <div className="grid gap-2 sm:grid-cols-2">
+                {(["immediate", "scheduled"] as ScheduledDispatchDeliveryMode[]).map((deliveryMode) => (
+                  <Button
+                    key={deliveryMode}
+                    size="sm"
+                    variant={draft.deliveryMode === deliveryMode ? "primary" : "secondary"}
+                    onClick={() => setDraft((current) => ({ ...current, deliveryMode }))}
+                  >
+                    {deliveryModeLabels[deliveryMode]}
+                  </Button>
+                ))}
+              </div>
+
+              {draft.deliveryMode === "immediate" ? (
+                <InlineAlert tone="info">O job sera criado com timestamp atual para processamento imediato pelo worker.</InlineAlert>
+              ) : (
+                <div>
+                  <label className="mb-2 block text-sm font-semibold text-slate-700 dark:text-slate-300" htmlFor="scheduled-dispatch-date">
+                    Agendar para
+                  </label>
+                  <input
+                    id="scheduled-dispatch-date"
+                    type="datetime-local"
+                    className={selectClassName}
+                    value={draft.scheduledAt}
+                    onChange={(event) => setDraft((current) => ({ ...current, scheduledAt: event.target.value }))}
+                  />
+                  {validation.scheduledAt ? <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{validation.scheduledAt}</p> : null}
+                </div>
+              )}
+
+              <div className="rounded-lg border border-dashed border-slate-300 px-3 py-2.5 text-sm text-slate-600 dark:border-slate-700 dark:text-slate-400">
+                Conteudo atual: <span className="font-semibold text-slate-900 dark:text-slate-100">{draft.contentType === "text" ? "Sem midia" : contentTypeLabels[draft.contentType]}</span>
+                {" · "}
+                Modo: <span className="font-semibold text-slate-900 dark:text-slate-100">{deliveryModeLabels[draft.deliveryMode]}</span>
+                {" · "}
+                Destinos: <span className="font-semibold text-slate-900 dark:text-slate-100">{draft.targetType === "number" ? parsedPhones.length : draft.groupJids.length}</span>
+                {" · "}
+                Atraso: <span className="font-semibold text-slate-900 dark:text-slate-100">{draft.targetType === "number" ? normalizeScheduledDispatchDelay(draft.numberDelaySeconds) : normalizeScheduledDispatchDelay(draft.groupDelaySeconds)}s</span>
+              </div>
+
+              <Button onClick={() => void handleSubmit()} loading={saving} disabled={!validation.canSubmit || uploadingMedia} className="w-full">
+                {draft.deliveryMode === "immediate" ? "Criar envio imediato" : "Salvar disparo agendado"}
+              </Button>
+            </div>
           </div>
         </Panel>
       </div>
 
-      <Panel className="p-5 sm:p-6">
+      ) : null}
+
+      {activeView === "history" ? (
+      <Panel className="p-4 sm:p-5">
         <div className="space-y-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Historico operacional</h2>
-              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Acompanhe jobs pendentes, em processamento, enviados, falhos ou cancelados. Nao existe retry automatico nesta rodada.</p>
+              <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Consulte status e cancele jobs pendentes.</p>
             </div>
-            <Button variant="secondary" onClick={() => void loadHistory(draft.instanceId)} disabled={!draft.instanceId} loading={loadingHistory}>
-              Atualizar historico
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="secondary" onClick={() => void loadHistory(draft.instanceId)} disabled={!draft.instanceId} loading={loadingHistory}>
+                Atualizar historico
+              </Button>
+              <Button variant="secondary" onClick={() => void handleClearHistory()} disabled={!draft.instanceId} loading={clearingHistory}>
+                Limpar historico
+              </Button>
+            </div>
           </div>
 
           {historyError ? <InlineAlert tone="danger">{historyError}</InlineAlert> : null}
@@ -605,20 +753,20 @@ export function ScheduledDispatchPage() {
             <InlineAlert tone="info">Nenhum disparo encontrado para a instancia selecionada.</InlineAlert>
           ) : null}
 
-          {visibleHistory.length > 0 ? (
+          {pagedHistory.length > 0 ? (
             <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
               <ul className="divide-y divide-slate-200 dark:divide-slate-800">
-                {visibleHistory.map((dispatch) => (
-                  <li key={dispatch.id} className="bg-white px-4 py-4 dark:bg-slate-950/40">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="min-w-0 space-y-2">
+                {pagedHistory.map((dispatch) => (
+                  <li key={dispatch.id} className="bg-white px-3 py-3 dark:bg-slate-950/40">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 space-y-1.5">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusToneClassName[dispatch.status]}`}>{SCHEDULED_DISPATCH_STATUS_LABELS[dispatch.status]}</span>
                           <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{historyContentTypeLabels[dispatch.contentType]}</span>
                           <span className="font-mono text-xs text-slate-500 dark:text-slate-400">{dispatch.id}</span>
                         </div>
 
-                        <div className="grid gap-2 text-sm text-slate-600 dark:text-slate-400 sm:grid-cols-2 xl:grid-cols-4">
+                        <div className="grid gap-2 text-xs text-slate-600 dark:text-slate-400 sm:grid-cols-2 xl:grid-cols-4">
                           <div>
                             <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-500">Destino</span>
                             <span className="block break-all font-mono">{resolveScheduledDispatchTargetLabel(dispatch)}</span>
@@ -638,7 +786,7 @@ export function ScheduledDispatchPage() {
                         </div>
 
                         {dispatch.body ? (
-                          <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700 dark:bg-slate-900 dark:text-slate-300">{dispatch.body}</p>
+                          <p className="rounded-lg bg-slate-50 px-2.5 py-2 text-xs text-slate-700 dark:bg-slate-900 dark:text-slate-300">{dispatch.body}</p>
                         ) : null}
 
                         {dispatch.buttons.length > 0 ? (
@@ -662,7 +810,7 @@ export function ScheduledDispatchPage() {
                         ) : null}
                       </div>
 
-                      <div className="flex shrink-0 items-start gap-2">
+                      <div className="flex shrink-0 items-start gap-2 self-start">
                         {canCancelScheduledDispatch(dispatch.status) ? (
                           <Button
                             variant="secondary"
@@ -680,8 +828,23 @@ export function ScheduledDispatchPage() {
               </ul>
             </div>
           ) : null}
+
+          {visibleHistory.length > HISTORY_PAGE_SIZE ? (
+            <div className="flex flex-col gap-3 border-t border-slate-200 pt-3 text-sm text-slate-600 dark:border-slate-800 dark:text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+              <span>Pagina {historyPage} de {historyTotalPages} · {visibleHistory.length} itens</span>
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" onClick={() => setHistoryPage((current) => Math.max(1, current - 1))} disabled={historyPage === 1}>
+                  Anterior
+                </Button>
+                <Button variant="secondary" onClick={() => setHistoryPage((current) => Math.min(historyTotalPages, current + 1))} disabled={historyPage === historyTotalPages}>
+                  Proxima
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </Panel>
+      ) : null}
     </section>
   );
 }

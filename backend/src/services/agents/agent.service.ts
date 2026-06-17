@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../../database/prisma";
+import { deleteKnowledgeBinary } from "../knowledge/fileStorage.service";
 import { getOrCreatePrimaryInstance, getPrimaryInstance, TELEGRAM_INSTANCE_SLOT } from "../instances/instance.service";
 
 export class AgentEligibilityError extends Error {
@@ -250,16 +251,26 @@ export async function updateAgentWorkspace(
 }
 
 export async function deleteAgent(agentId: string) {
-  return prisma.$transaction(async (tx) => {
-    const agent = await tx.agent.findUnique({
-      where: { id: agentId },
-      include: { instance: true },
-    });
+  const agent = await prisma.agent.findUnique({
+    where: { id: agentId },
+    include: { instance: true },
+  });
 
-    if (!agent) {
-      throw new AgentEligibilityError("Agente não encontrado.", 404);
-    }
+  if (!agent) {
+    throw new AgentEligibilityError("Agente não encontrado.", 404);
+  }
 
+  const files = await prisma.file.findMany({
+    where: { agentId: agent.id },
+    select: { id: true, storagePath: true },
+  });
+
+  for (const file of files) {
+    // react-doctor-disable-next-line react-doctor/async-await-in-loop -- Physical knowledge files must be removed deterministically before deleting their database records.
+    await deleteKnowledgeBinary(file.storagePath);
+  }
+
+  await prisma.$transaction(async (tx) => {
     await tx.file.deleteMany({
       where: { agentId: agent.id },
     });
@@ -273,12 +284,12 @@ export async function deleteAgent(agentId: string) {
         data: { agentName: null },
       }),
     ]);
-
-    return {
-      id: agent.id,
-      name: agent.name,
-      instanceId: agent.instanceId,
-      instanceName: agent.instance.name,
-    };
   });
+
+  return {
+    id: agent.id,
+    name: agent.name,
+    instanceId: agent.instanceId,
+    instanceName: agent.instance.name,
+  };
 }

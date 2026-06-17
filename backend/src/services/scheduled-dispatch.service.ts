@@ -1,5 +1,6 @@
 import { type ScheduledDispatch, type ScheduledDispatchContentType, type ScheduledDispatchStatus, type ScheduledDispatchTargetType } from "@prisma/client";
 import { prisma } from "../database/prisma";
+import { normalizeOperationalPhoneDigits } from "../utils/phoneNormalization";
 
 export type ScheduledDispatchRecord = ScheduledDispatch;
 export type ScheduledDispatchUrlButton = {
@@ -23,12 +24,16 @@ type ScheduledDispatchCreateInput = {
   targetType: "number" | "group";
   phone?: string | null;
   groupJid?: string | null;
+  phones?: string[] | null;
+  groupJids?: string[] | null;
   contentType: "text" | "image" | "video";
   body?: string | null;
   mediaUrl?: string | null;
   buttons?: ScheduledDispatchUrlButton[] | null;
   deliveryMode: "immediate" | "scheduled";
   scheduledAt?: Date | null;
+  numberDelaySeconds?: number | null;
+  groupDelaySeconds?: number | null;
 };
 
 type ScheduledDispatchListInput = {
@@ -65,6 +70,7 @@ export type ScheduledDispatchStore = {
   listDueDispatches(input: { now: Date; limit: number }): Promise<ScheduledDispatchRecord[]>;
   findDispatchById(id: string): Promise<ScheduledDispatchRecord | null>;
   transitionDispatch(input: ScheduledDispatchTransitionInput): Promise<ScheduledDispatchRecord | null>;
+  clearDispatchHistory(input: { instanceId: string; statuses: ScheduledDispatchStatus[] }): Promise<number>;
 };
 
 export class ScheduledDispatchValidationError extends Error {
@@ -104,11 +110,28 @@ function newId(prefix: string) {
 }
 
 function normalizePhone(value: string): string {
-  const digits = value.replace(/\D/g, "");
-  if (digits.length < 8 || digits.length > 15) {
+  const normalized = normalizeOperationalPhoneDigits(value);
+  if (!normalized) {
     throw new ScheduledDispatchValidationError("Telefone invalido.");
   }
-  return digits;
+  return normalized;
+}
+
+function dedupeValues(values: string[]) {
+  const seen = new Set<string>();
+  return values.filter((value) => {
+    if (seen.has(value)) return false;
+    seen.add(value);
+    return true;
+  });
+}
+
+function normalizePhoneList(values?: string[] | null) {
+  return dedupeValues((values ?? []).map((value) => normalizePhone(value)));
+}
+
+function normalizeGroupJidList(values?: string[] | null) {
+  return dedupeValues((values ?? []).map((value) => normalizeGroupJid(value)));
 }
 
 function normalizeGroupJid(value: string): string {
@@ -125,12 +148,24 @@ function normalizeOptionalText(value?: string | null): string | null {
   return trimmed ? trimmed : null;
 }
 
+function normalizeDelaySeconds(value?: number | null, field = "delaySeconds") {
+  if (value == null) return 0;
+  if (!Number.isInteger(value) || value < 0 || value > 86_400) {
+    throw new ScheduledDispatchValidationError(`${field} deve ser um inteiro entre 0 e 86400.`);
+  }
+  return value;
+}
+
 const MAX_SCHEDULED_DISPATCH_BUTTONS = 3;
 const MAX_SCHEDULED_DISPATCH_BUTTON_TEXT_LENGTH = 60;
 
 function normalizeMediaUrl(value?: string | null): string | null {
   const normalized = normalizeOptionalText(value);
   if (!normalized) return null;
+
+  if (normalized.startsWith("/api/scheduled-dispatches/media/")) {
+    return normalized;
+  }
 
   let parsed: URL;
   try {
@@ -362,6 +397,16 @@ export const prismaScheduledDispatchStore: ScheduledDispatchStore = {
   async transitionDispatch(input) {
     return transitionDispatchWithPrisma(input);
   },
+
+  async clearDispatchHistory(input) {
+    const result = await prisma.scheduledDispatch.deleteMany({
+      where: {
+        instanceId: input.instanceId,
+        status: { in: input.statuses },
+      },
+    });
+    return result.count;
+  },
 };
 
 export function createInMemoryScheduledDispatchStore(seed: {
@@ -469,6 +514,17 @@ export function createInMemoryScheduledDispatchStore(seed: {
       dispatches.set(updated.id, updated);
       return updated;
     },
+
+    async clearDispatchHistory(input) {
+      let deleted = 0;
+      for (const [id, dispatch] of dispatches.entries()) {
+        if (dispatch.instanceId !== input.instanceId) continue;
+        if (!input.statuses.includes(dispatch.status)) continue;
+        dispatches.delete(id);
+        deleted += 1;
+      }
+      return deleted;
+    },
   };
 }
 
@@ -480,7 +536,17 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
     if (!instance) throw new ScheduledDispatchInstanceNotFoundError(instanceId);
   }
 
+  function resolveScheduledAt(input: ScheduledDispatchCreateInput) {
+    if (input.scheduledAt instanceof Date) return input.scheduledAt;
+    if (input.deliveryMode === "immediate") return new Date();
+    return new Date(Number.NaN);
+  }
+
   return {
+    async assertInstance(instanceId: string) {
+      await ensureInstance(instanceId);
+    },
+
     async createDispatch(input: ScheduledDispatchCreateInput) {
       await ensureInstance(input.instanceId);
 
@@ -490,11 +556,7 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
       const mediaUrl = normalizeMediaUrl(input.mediaUrl);
       const buttons = normalizeScheduledDispatchButtons(input.buttons);
 
-      const scheduledAt = input.deliveryMode === "immediate"
-        ? new Date()
-        : input.scheduledAt instanceof Date
-          ? input.scheduledAt
-          : new Date(Number.NaN);
+      const scheduledAt = resolveScheduledAt(input);
 
       if (Number.isNaN(scheduledAt.getTime())) {
         throw new ScheduledDispatchValidationError("Data de agendamento invalida.");
@@ -531,10 +593,6 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
         throw new ScheduledDispatchValidationError("Disparo com midia exige mediaUrl.");
       }
 
-      if (contentType === "VIDEO" && buttons.length > 0) {
-        throw new ScheduledDispatchValidationError("Disparo de video nao suporta botoes URL nesta etapa.");
-      }
-
       return toScheduledDispatchView(await store.createDispatch({
         instanceId: input.instanceId,
         targetType,
@@ -547,6 +605,62 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
         scheduledAt,
         status: "SCHEDULED",
       }));
+    },
+
+    async createDispatches(input: ScheduledDispatchCreateInput) {
+      const phones = normalizePhoneList(input.phones ?? (input.phone ? [input.phone] : []));
+      const groupJids = normalizeGroupJidList(input.groupJids ?? (input.groupJid ? [input.groupJid] : []));
+      const baseScheduledAt = resolveScheduledAt(input);
+
+      if (Number.isNaN(baseScheduledAt.getTime())) {
+        throw new ScheduledDispatchValidationError("Data de agendamento invalida.");
+      }
+
+      if (input.targetType === "number") {
+        const numberDelaySeconds = normalizeDelaySeconds(input.numberDelaySeconds, "numberDelaySeconds");
+        if (groupJids.length > 0) {
+          throw new ScheduledDispatchValidationError("Disparo para numero nao aceita groupJids.");
+        }
+        if (phones.length === 0) {
+          throw new ScheduledDispatchValidationError("Informe ao menos um numero valido.");
+        }
+
+        const dispatches: ScheduledDispatchViewRecord[] = [];
+        for (const [index, phone] of phones.entries()) {
+          dispatches.push(await this.createDispatch({
+            ...input,
+            deliveryMode: "scheduled",
+            phone,
+            groupJid: null,
+            phones: null,
+            groupJids: null,
+            scheduledAt: new Date(baseScheduledAt.getTime() + (index * numberDelaySeconds * 1000)),
+          }));
+        }
+        return dispatches;
+      }
+
+      const groupDelaySeconds = normalizeDelaySeconds(input.groupDelaySeconds, "groupDelaySeconds");
+      if (phones.length > 0) {
+        throw new ScheduledDispatchValidationError("Disparo para grupo nao aceita phones.");
+      }
+      if (groupJids.length === 0) {
+        throw new ScheduledDispatchValidationError("Selecione ao menos um grupo valido.");
+      }
+
+      const dispatches: ScheduledDispatchViewRecord[] = [];
+      for (const [index, groupJid] of groupJids.entries()) {
+        dispatches.push(await this.createDispatch({
+          ...input,
+          deliveryMode: "scheduled",
+          phone: null,
+          groupJid,
+          phones: null,
+          groupJids: null,
+          scheduledAt: new Date(baseScheduledAt.getTime() + (index * groupDelaySeconds * 1000)),
+        }));
+      }
+      return dispatches;
     },
 
     async listDispatches(input: ScheduledDispatchListInput) {
@@ -629,6 +743,14 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
         throw new ScheduledDispatchConflictError("Somente disparos pendentes podem ser cancelados.");
       }
       return toScheduledDispatchView(record);
+    },
+
+    async clearHistory(instanceId: string) {
+      await ensureInstance(instanceId);
+      return store.clearDispatchHistory({
+        instanceId,
+        statuses: ["SENT", "FAILED", "CANCELLED"],
+      });
     },
   };
 }

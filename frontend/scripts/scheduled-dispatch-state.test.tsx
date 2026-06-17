@@ -10,6 +10,8 @@ import {
   createInitialScheduledDispatchDraft,
   filterScheduledDispatchGroups,
   MAX_SCHEDULED_DISPATCH_BUTTONS,
+  normalizeScheduledDispatchDelay,
+  normalizeScheduledDispatchPhones,
   resolveScheduledDispatchIso,
   resolveScheduledDispatchTargetLabel,
   SCHEDULED_DISPATCH_STATUS_LABELS,
@@ -40,20 +42,32 @@ test("scheduled dispatch route is exposed in navigation and metadata", () => {
   assert.equal(getAppRouteTitle("/disparos"), "Disparos");
 });
 
-test("instance changes clear previous group selection", () => {
+test("instance changes clear previous group selection and uploaded media", () => {
   const initial = {
     ...createInitialScheduledDispatchDraft(new Date("2026-06-16T09:00:00.000Z")),
     instanceId: "instance-a",
-    groupJid: "120363000001@g.us",
+    groupJids: ["120363000001@g.us"],
+    mediaUrl: "/api/scheduled-dispatches/media/instance-a/media-a/banner.png",
+    mediaFileName: "banner.png",
     body: "Campanha",
   };
   const next = applyInstanceToDraft(initial, "instance-b");
   assert.equal(next.instanceId, "instance-b");
-  assert.equal(next.groupJid, "");
+  assert.deepEqual(next.groupJids, []);
+  assert.equal(next.mediaUrl, "");
+  assert.equal(next.mediaFileName, "");
   assert.equal(next.body, "Campanha");
+  assert.equal(next.numberDelaySeconds, "0");
+  assert.equal(next.groupDelaySeconds, "0");
 });
 
-test("group filtering and submit validation enforce selected group", () => {
+test("phone parsing removes separators and duplicates", () => {
+  assert.deepEqual(normalizeScheduledDispatchPhones("+55 (11) 99999-1234\n5511999991234,1188887777,1198765432"), ["5511999991234", "551188887777", "551198765432"]);
+  assert.equal(normalizeScheduledDispatchDelay("15"), 15);
+  assert.equal(normalizeScheduledDispatchDelay(""), 0);
+});
+
+test("group filtering and submit validation enforce selected groups", () => {
   assert.deepEqual(filterScheduledDispatchGroups(groups, "vendas").map((group) => group.jid), ["120363000001@g.us"]);
   assert.deepEqual(filterScheduledDispatchGroups(groups, "120363000002").map((group) => group.name), ["Financeiro"]);
 
@@ -62,25 +76,26 @@ test("group filtering and submit validation enforce selected group", () => {
     instanceId: "instance-a",
     targetType: "group" as const,
     body: "Mensagem pronta",
-    groupJid: "",
+    groupJids: [],
   };
   const invalidResult = validateScheduledDispatchDraft(invalidDraft);
   assert.equal(invalidResult.canSubmit, false);
-  assert.equal(invalidResult.groupJid, "Selecione um grupo valido.");
+  assert.equal(invalidResult.groupJids, "Selecione ao menos um grupo valido.");
 
   const validResult = validateScheduledDispatchDraft({
     ...invalidDraft,
-    groupJid: "120363000001@g.us",
+    groupJids: ["120363000001@g.us", "120363000002@g.us"],
+    groupDelaySeconds: "12",
   });
   assert.equal(validResult.canSubmit, true);
 });
 
-test("composer validation supports text image video and immediate scheduling rules", () => {
+test("composer validation supports multi-number, local media upload, and immediate scheduling rules", () => {
   const base = {
     ...createInitialScheduledDispatchDraft(new Date("2026-06-16T09:00:00.000Z")),
     instanceId: "instance-a",
     targetType: "number" as const,
-    phone: "5511999991234",
+    phonesText: "5511999991234\n5511888887777",
   };
 
   const textInvalid = validateScheduledDispatchDraft({
@@ -99,13 +114,14 @@ test("composer validation supports text image video and immediate scheduling rul
     mediaUrl: "",
   });
   assert.equal(imageInvalid.canSubmit, false);
-  assert.equal(imageInvalid.mediaUrl, "Informe uma media URL valida com http ou https.");
+  assert.equal(imageInvalid.mediaUrl, "Envie uma imagem local para o disparo.");
 
   const videoValid = validateScheduledDispatchDraft({
     ...base,
     contentType: "video",
     body: "Legenda de video",
-    mediaUrl: "https://cdn.example.com/video.mp4",
+    mediaUrl: "/api/scheduled-dispatches/media/instance-a/media-1/video.mp4",
+    mediaFileName: "video.mp4",
   });
   assert.equal(videoValid.canSubmit, true);
 
@@ -121,21 +137,20 @@ test("composer validation supports text image video and immediate scheduling rul
     ...base,
     contentType: "image",
     body: "Legenda",
-    mediaUrl: "https://cdn.example.com/banner.png",
+    mediaUrl: "/api/scheduled-dispatches/media/instance-a/media-2/banner.png",
     buttons: [{ text: "Abrir", url: "ftp://example.com" }],
   });
   assert.equal(invalidButtonUrl.canSubmit, false);
   assert.equal(invalidButtonUrl.buttons, "Informe uma URL http/https valida no botao 1.");
 
-  const videoWithButtonInvalid = validateScheduledDispatchDraft({
+  const videoWithButtonValid = validateScheduledDispatchDraft({
     ...base,
     contentType: "video",
     body: "Legenda",
-    mediaUrl: "https://cdn.example.com/video.mp4",
+    mediaUrl: "/api/scheduled-dispatches/media/instance-a/media-3/video.mp4",
     buttons: [{ text: "Abrir", url: "https://example.com" }],
   });
-  assert.equal(videoWithButtonInvalid.canSubmit, false);
-  assert.equal(videoWithButtonInvalid.buttons, "Video nao suporta botoes URL nesta etapa.");
+  assert.equal(videoWithButtonValid.canSubmit, true);
 
   const tooManyButtonsInvalid = validateScheduledDispatchDraft({
     ...base,
@@ -160,7 +175,8 @@ test("composer validation supports text image video and immediate scheduling rul
     ...base,
     contentType: "image",
     body: "",
-    mediaUrl: "https://cdn.example.com/banner.png",
+    mediaUrl: "/api/scheduled-dispatches/media/instance-a/media-4/banner.png",
+    mediaFileName: "banner.png",
     deliveryMode: "immediate",
     scheduledAt: "",
   });
@@ -174,31 +190,47 @@ test("composer validation supports text image video and immediate scheduling rul
     deliveryMode: "immediate",
   }, new Date("2026-06-16T10:00:00.000Z"));
   assert.equal(immediateIso, "2026-06-16T10:00:00.000Z");
+
+  const invalidNumberDelay = validateScheduledDispatchDraft({
+    ...base,
+    contentType: "text",
+    body: "Com atraso invalido",
+    numberDelaySeconds: "-1",
+  });
+  assert.equal(invalidNumberDelay.canSubmit, false);
+  assert.equal(invalidNumberDelay.numberDelaySeconds, "Informe um atraso entre 0 e 86400 segundos.");
 });
 
-test("scheduled dispatch page keeps composer states for media and delivery mode", () => {
+test("scheduled dispatch page keeps multi-target composer, group selection, and upload flow", () => {
   const source = fs.readFileSync(path.resolve(import.meta.dirname, "../src/pages/ScheduledDispatchPage.tsx"), "utf8");
   assert.match(source, /api\.get<GroupListResponse>\("\/scheduled-dispatches\/groups", \{ params: \{ instanceId: draft\.instanceId \} \}\)/);
-  assert.match(source, /api\.get<DispatchListResponse>\("\/scheduled-dispatches", \{ params: \{ instanceId \} \}\)/);
   assert.match(source, /api\.post<GroupSyncResponse>\("\/scheduled-dispatches\/groups\/sync", \{ instanceId: draft\.instanceId \}\)/);
-  assert.match(source, /api\.post<DispatchMutationResponse>\(`\/scheduled-dispatches\/\$\{dispatchId\}\/cancel`\)/);
-  assert.match(source, /contentType: draft\.contentType/);
-  assert.match(source, /buttons: draft\.contentType === "video" \? \[\] : normalizeScheduledDispatchButtons\(draft\.buttons\)/);
-  assert.match(source, /deliveryMode: draft\.deliveryMode/);
-  assert.match(source, /draft\.deliveryMode === "scheduled"/);
-  assert.match(source, /draft\.deliveryMode === "immediate"/);
-  assert.match(source, /Media URL/);
-  assert.match(source, /Adicionar botao/);
-  assert.match(source, /Video com botoes URL fica fora do MVP desta etapa/);
-  assert.match(source, /Legenda \(opcional\)/);
+  assert.match(source, /api\.post<UploadMediaResponse>\("\/scheduled-dispatches\/media", form\)/);
+  assert.match(source, /phones: draft\.targetType === "number" \? normalizeScheduledDispatchPhones\(draft\.phonesText\) : null/);
+  assert.match(source, /groupJids: draft\.targetType === "group" \? draft\.groupJids : null/);
+  assert.match(source, /numberDelaySeconds: draft\.targetType === "number" \? normalizeScheduledDispatchDelay\(draft\.numberDelaySeconds\) : null/);
+  assert.match(source, /groupDelaySeconds: draft\.targetType === "group" \? normalizeScheduledDispatchDelay\(draft\.groupDelaySeconds\) : null/);
+  assert.match(source, /type="checkbox"/);
+  assert.match(source, /setActiveView\("composer"\)/);
+  assert.match(source, /setActiveView\("history"\)/);
+  assert.match(source, /Envios/);
+  assert.match(source, /max-h-64 overflow-y-auto/);
+  assert.match(source, /HISTORY_PAGE_SIZE = 100/);
+  assert.match(source, /Pagina \{historyPage\} de \{historyTotalPages\}/);
+  assert.match(source, /Atraso por numero \(segundos\)/);
+  assert.match(source, /Atraso por grupo \(segundos\)/);
+  assert.match(source, /Midia opcional/);
+  assert.match(source, /accept="image\/\*,video\/\*"/);
+  assert.match(source, /Adicionar midia/);
+  assert.match(source, /Remover midia/);
+  assert.match(source, /Botoes URL/);
+  assert.match(source, /Sem botoes\./);
   assert.match(source, /Criar envio imediato/);
   assert.match(source, /Salvar disparo agendado/);
-  assert.match(source, /O job sera criado com timestamp atual/);
   assert.match(source, /Historico operacional/);
-  assert.match(source, /Atualizar historico/);
   assert.match(source, /Cancelar job/);
-  assert.match(source, /Retry automatico fica fora do MVP desta rodada/);
-  assert.match(source, /video src=\{draft\.mediaUrl\.trim\(\)\} className=.*controls/s);
+  assert.match(source, /Limpar historico/);
+  assert.match(source, /video src=\{draft\.mediaUrl\} className=.*controls/s);
   assert.doesNotMatch(source, /eventSlug|renderContext|variaveis automaticas/i);
 });
 
