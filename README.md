@@ -1,4 +1,4 @@
-# NexusZAP - Chatbot com IA v1.0.13
+# NexusZAP - Chatbot com IA v1.0.14
 
 <div align="center">
 

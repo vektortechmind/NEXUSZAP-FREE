@@ -2,6 +2,28 @@
 
 Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
+## [1.0.14] - 2026-06-17
+
+### Added
+
+- Novo modulo de Envios/Campanhas para disparos sem template com envio imediato ou agendado para varios numeros ou varios grupos da instancia.
+- Suporte a selecao dos grupos disponiveis na instancia, upload local unico de imagem ou video com legenda e ate 3 botoes de URL controlados pelo painel.
+- Historico operacional de disparos com paginacao apos 100 registros, limpeza manual e delays configuraveis separados para numeros e grupos.
+
+### Changed
+
+- Tela de disparos foi compactada e unificada para reduzir ruido visual no composer/historico, com selecao de grupos por lista rolavel e acoes de enviar/agendar reposicionadas no fluxo principal.
+- Integracoes passaram a aceitar nome customizado no botao de envio_acesso, mantendo fallback padrao consistente quando o nome nao for informado.
+- Navegacao e rotulos visiveis do painel passaram a usar Agentes de IA em vez de Agente IA/Agente onde aplicavel.
+- Versao do frontend, backend, backend/VERSION, README e changelog atualizada para 1.0.14.
+
+### Fixed
+
+- Fluxo de instalacao agora bloqueia as paginas de setup depois da configuracao inicial para impedir reuso indevido das URLs e repeticao do onboarding.
+- Normalizacao de numeros em disparos reaproveita a mesma referencia operacional ja usada pelo sistema, preservando corretamente o DDI 55 com nono digito.
+- Envio com midia e botoes passou a evitar mensagem duplicada de legenda/botoes, usando um unico fluxo de dispatch quando a combinacao e suportada.
+- Exclusao de instancia/agente agora remove tambem arquivos fisicos de conhecimento associados, evitando lixo residual em storage.
+
 ## [1.0.13] - 2026-06-11
 
 ### Fixed
