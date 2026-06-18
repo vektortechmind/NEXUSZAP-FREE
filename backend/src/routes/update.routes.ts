@@ -3,6 +3,7 @@ import { verifyJwt } from "../security/middlewares";
 import {
   checkForUpdate,
   GITHUB_REPO,
+  getCurrentUpdateJobLogs,
   getCurrentUpdateJob,
   getUpdateStatusPayload,
   startUpdateJob,
@@ -42,6 +43,16 @@ async function updateRoutes(fastify: FastifyInstance) {
     }
   );
 
+  fastify.get<{ Querystring: { cursor?: string } }>(
+    "/update/job/logs",
+    { preHandler: [verifyJwt], config: { rateLimit: { max: 60, timeWindow: "1 minute" } } },
+    async (req: FastifyRequest<{ Querystring: { cursor?: string } }>, reply: FastifyReply) => {
+      const parsedCursor = Number.parseInt(req.query.cursor ?? "0", 10);
+      const cursor = Number.isFinite(parsedCursor) && parsedCursor > 0 ? parsedCursor : 0;
+      return reply.send(getCurrentUpdateJobLogs(cursor));
+    }
+  );
+
   fastify.post(
     "/update/apply",
     { preHandler: [verifyJwt], config: { rateLimit: { max: 10, timeWindow: "1 minute" } } },
@@ -66,4 +77,3 @@ async function updateRoutes(fastify: FastifyInstance) {
 }
 
 export default updateRoutes;
-

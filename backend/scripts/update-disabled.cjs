@@ -98,6 +98,22 @@ async function waitForJob(app, headers) {
   throw new Error("Timed out while waiting for update job to finish");
 }
 
+async function waitForLogLines(app, headers, cursor = 0) {
+  const timeoutAt = Date.now() + 8000;
+  while (Date.now() < timeoutAt) {
+    const response = await app.inject({ method: "GET", url: `/api/update/job/logs?cursor=${cursor}`, headers });
+    assert.equal(response.statusCode, 200, response.body);
+    const body = JSON.parse(response.body);
+    assert.ok(Array.isArray(body.lines), "logs incrementais devem retornar array de linhas");
+    assert.equal(typeof body.cursor, "number", "logs incrementais devem retornar cursor numerico");
+    assert.equal(typeof body.hasMore, "boolean", "logs incrementais devem retornar hasMore booleano");
+    assert.equal(typeof body.reset, "boolean", "logs incrementais devem retornar reset booleano");
+    if (body.lines.length > 0) return body;
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  throw new Error("Timed out while waiting for incremental update logs");
+}
+
 function cleanupUpdateArtifacts(backendRoot) {
   const updatesDir = path.resolve(backendRoot, "..", "updates");
   fs.rmSync(updatesDir, { recursive: true, force: true });
@@ -111,6 +127,8 @@ function assertStaticGuards(backendRoot, frontendRoot) {
 
   assert.ok(routeSource.includes("fastify.post("), "rota de apply deve existir");
   assert.ok(routeSource.includes('"/update/apply"'), "rota /update/apply deve existir");
+  assert.ok(routeSource.includes('"/update/job/logs"'), "rota /update/job/logs deve existir");
+  assert.ok(routeSource.includes("getCurrentUpdateJobLogs"), "rota de logs deve usar service dedicado");
   assert.ok(routeSource.includes("async (_req: FastifyRequest, reply: FastifyReply)"), "rota nao deve depender de payload arbitrario");
   assert.ok(!routeSource.includes("req.body"), "rota nao deve aceitar comando via body");
 
@@ -122,9 +140,15 @@ function assertStaticGuards(backendRoot, frontendRoot) {
   assert.ok(serviceSource.includes("dockerComposeServiceContainerId"), "service deve validar saude por servico Docker Compose apos restart");
   assert.ok(serviceSource.includes('"ps",') && serviceSource.includes('"-q",'), "service deve consultar container id via docker compose ps -q");
   assert.ok(serviceSource.includes("Consulta de release indisponível durante atualização"), "status deve acompanhar job local se consulta externa/banco falhar durante update");
+  assert.ok(serviceSource.includes("readUpdateJobLogs"), "service deve expor leitura incremental de logs");
+  assert.ok(serviceSource.includes("redactUpdateLogLine"), "service deve mascarar segredos antes de expor logs");
 
   assert.ok(runnerSource.includes('path.basename(scriptPath) !== "update.sh"'), "runner deve restringir execucao ao update.sh");
   assert.ok(frontendSource.includes("Atualizar"), "UI deve expor o botao de execucao");
+  assert.ok(frontendSource.includes('"/update/job/logs"'), "UI deve consumir endpoint incremental de logs");
+  assert.ok(frontendSource.includes("logLines"), "UI deve manter logs acumulados separados do snapshot do job");
+  assert.ok(frontendSource.includes("logCursorRef"), "UI deve controlar cursor incremental sem duplicar linhas");
+  assert.ok(!frontendSource.includes('job.logTail.join("\\n")'), "UI nao deve depender apenas de logTail para renderizar logs");
   assert.ok(frontendSource.includes("connectionIssue"), "UI deve representar reconexao durante update");
   assert.ok(frontendSource.includes("Backend reiniciando durante a atualização"), "UI deve explicar indisponibilidade temporaria durante restart");
 }
@@ -165,6 +189,13 @@ function assertStaticGuards(backendRoot, frontendRoot) {
     assert.equal(statusPayload.hasUpdate, true, statusBefore.body);
     assert.equal(statusPayload.job, null, "nao deve existir job antes do disparo");
 
+    const emptyLogs = await app.inject({ method: "GET", url: "/api/update/job/logs?cursor=10", headers: authHeaders });
+    assert.equal(emptyLogs.statusCode, 200, emptyLogs.body);
+    const emptyLogsBody = JSON.parse(emptyLogs.body);
+    assert.deepEqual(emptyLogsBody.lines, [], "logs ausentes devem retornar lista vazia");
+    assert.equal(emptyLogsBody.cursor, 0, "logs ausentes devem resetar cursor para zero");
+    assert.equal(emptyLogsBody.reset, true, "logs ausentes com cursor antigo devem sinalizar reset");
+
     const apply = await app.inject({
       method: "POST",
       url: "/api/update/apply",
@@ -189,11 +220,25 @@ function assertStaticGuards(backendRoot, frontendRoot) {
     assert.ok(concurrentBody.job, "resposta de conflito deve incluir job atual");
     assert.ok(["queued", "running"].includes(concurrentBody.job.status), "job concorrente deve estar ativo");
 
+    const firstLogs = await waitForLogLines(app, authHeaders, 0);
+    assert.ok(firstLogs.cursor > 0, "primeira leitura incremental deve avancar cursor");
+    assert.ok(firstLogs.lines.some((line) => line.includes("Starting update job")), "logs incrementais devem registrar inicio do job");
+    assert.ok(firstLogs.lines.every((line) => !line.includes(process.env.JWT_SECRET)), "logs incrementais nao devem expor JWT_SECRET conhecido");
+
+    const repeatedLogs = await app.inject({ method: "GET", url: `/api/update/job/logs?cursor=${firstLogs.cursor}`, headers: authHeaders });
+    assert.equal(repeatedLogs.statusCode, 200, repeatedLogs.body);
+    const repeatedLogsBody = JSON.parse(repeatedLogs.body);
+    assert.ok(repeatedLogsBody.cursor >= firstLogs.cursor, "cursor incremental nao deve retroceder");
+    assert.ok(!repeatedLogsBody.lines.some((line) => line.includes("Starting update job")), "segunda leitura no cursor avancado nao deve duplicar linhas ja lidas");
+
     const finishedJob = await waitForJob(app, authHeaders);
     assert.equal(finishedJob.status, "success", JSON.stringify(finishedJob));
     assert.ok(Array.isArray(finishedJob.logTail) && finishedJob.logTail.length > 0, "job final deve expor logs");
     assert.ok(finishedJob.logTail.some((line) => line.includes("Starting update job")), "logs devem registrar inicio do job");
     assert.ok(finishedJob.logTail.some((line) => line.includes("Fake update completed successfully.")), "logs devem registrar resultado final");
+
+    const finalLogs = await waitForLogLines(app, authHeaders, firstLogs.cursor);
+    assert.ok(finalLogs.lines.some((line) => line.includes("Fake update completed successfully.")), "logs incrementais devem recuperar resultado final apos cursor");
 
     const statusAfter = await app.inject({ method: "GET", url: "/api/update/status", headers: authHeaders });
     assert.equal(statusAfter.statusCode, 200, statusAfter.body);

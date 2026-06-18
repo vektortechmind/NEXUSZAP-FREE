@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { isAxiosError } from "axios";
 import { api } from "../lib/axios";
 import { AlertCircle, Check, ExternalLink, Maximize2, RefreshCw, Shield, TerminalSquare, X } from "lucide-react";
@@ -34,6 +34,13 @@ type UpdateJob = {
   active: boolean;
 };
 
+type UpdateJobLogs = {
+  lines: string[];
+  cursor: number;
+  hasMore: boolean;
+  reset: boolean;
+};
+
 export function UpdateSection() {
   const [status, setStatus] = useState<UpdateStatus | null>(null);
   const [jobSnapshot, setJobSnapshot] = useState<UpdateJob | null>(null);
@@ -42,14 +49,49 @@ export function UpdateSection() {
   const [error, setError] = useState<string | null>(null);
   const [connectionIssue, setConnectionIssue] = useState(false);
   const [logsModalOpen, setLogsModalOpen] = useState(false);
+  const [logLines, setLogLines] = useState<string[]>([]);
+  const [logJobId, setLogJobId] = useState<string | null>(null);
+  const [logCursor, setLogCursor] = useState(0);
+  const logCursorRef = useRef(0);
+  const compactLogRef = useRef<HTMLPreElement | null>(null);
+  const modalLogRef = useRef<HTMLPreElement | null>(null);
+  const followLogsRef = useRef(true);
   const jobSnapshotActive = Boolean(jobSnapshot?.active);
+
+  const resetLogs = useCallback((jobId: string | null) => {
+    setLogJobId(jobId);
+    setLogLines([]);
+    setLogCursor(0);
+    logCursorRef.current = 0;
+  }, []);
 
   const loadJobSnapshot = useCallback(async () => {
     const res = await api.get<{ job: UpdateJob | null }>("/update/job");
+    if ((res.data.job?.id ?? null) !== logJobId) {
+      resetLogs(res.data.job?.id ?? null);
+    }
     setJobSnapshot(res.data.job);
     setStatus((current) => current ? { ...current, job: res.data.job } : current);
     setRunning(Boolean(res.data.job?.active));
     return res.data.job;
+  }, [logJobId, resetLogs]);
+
+  const loadJobLogs = useCallback(async () => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const res = await api.get<UpdateJobLogs>("/update/job/logs", { params: { cursor: logCursorRef.current } });
+      const payload = res.data;
+      logCursorRef.current = payload.cursor;
+      setLogCursor(payload.cursor);
+      setConnectionIssue(false);
+
+      if (payload.reset) {
+        setLogLines(payload.lines.slice(-2000));
+      } else if (payload.lines.length) {
+        setLogLines((current) => [...current, ...payload.lines].slice(-2000));
+      }
+
+      if (!payload.hasMore) break;
+    }
   }, []);
 
   const checkUpdate = useCallback(async () => {
@@ -58,9 +100,15 @@ export function UpdateSection() {
     setConnectionIssue(false);
     try {
       const res = await api.get<UpdateStatus>("/update/status");
+      if ((res.data.job?.id ?? null) !== logJobId) {
+        resetLogs(res.data.job?.id ?? null);
+      }
       setStatus(res.data);
       setJobSnapshot(res.data.job);
       setRunning(Boolean(res.data.job?.active));
+      if (res.data.job) {
+        void loadJobLogs();
+      }
     } catch (err) {
       try {
         const job = await loadJobSnapshot();
@@ -81,7 +129,7 @@ export function UpdateSection() {
     } finally {
       setLoading(false);
     }
-  }, [jobSnapshotActive, loadJobSnapshot, running]);
+  }, [jobSnapshotActive, loadJobLogs, loadJobSnapshot, logJobId, resetLogs, running]);
 
   const applyUpdate = useCallback(async () => {
     if (!status?.hasUpdate) return;
@@ -94,8 +142,10 @@ export function UpdateSection() {
     setConnectionIssue(false);
     try {
       const res = await api.post<{ success: boolean; message: string; job: UpdateJob }>("/update/apply");
+      resetLogs(res.data.job.id);
       setJobSnapshot(res.data.job);
       setStatus((current) => current ? { ...current, job: res.data.job } : current);
+      void loadJobLogs();
     } catch (err) {
       const message = isAxiosError(err)
         ? (err.response?.data as { error?: string } | undefined)?.error ?? "Não foi possível iniciar a atualização"
@@ -104,12 +154,15 @@ export function UpdateSection() {
       setRunning(false);
       console.error(err);
     }
-  }, [status]);
+  }, [loadJobLogs, resetLogs, status]);
 
   const refreshJob = useCallback(async () => {
     try {
       const job = await loadJobSnapshot();
       setConnectionIssue(false);
+      if (job) {
+        await loadJobLogs();
+      }
       if (job?.status === "failed") {
         setError(job.error || "Atualização falhou. Verifique os logs recentes do job.");
       }
@@ -120,10 +173,12 @@ export function UpdateSection() {
       }
       console.error(err);
     }
-  }, [jobSnapshotActive, loadJobSnapshot, running]);
+  }, [jobSnapshotActive, loadJobLogs, loadJobSnapshot, running]);
 
   const job = status?.job ?? jobSnapshot;
-  const logText = job?.logTail.length ? job.logTail.join("\n") : "Sem logs disponíveis ainda.";
+  const fallbackLogLines = job?.logTail ?? [];
+  const visibleLogLines = logLines.length ? logLines : fallbackLogLines;
+  const logText = visibleLogLines.length ? visibleLogLines.join("\n") : "Sem logs disponíveis ainda.";
   const updateInProgress = Boolean(job?.active || running);
   const jobTone = job?.status === "success" ? "success" : job?.status === "failed" ? "danger" : "warning";
   const jobLabel = job?.status === "queued"
@@ -137,12 +192,24 @@ export function UpdateSection() {
           : null;
 
   useEffect(() => {
-    if (!running) return;
+    if (!updateInProgress) return;
     const timer = window.setTimeout(() => {
       void refreshJob();
-    }, 2500);
+    }, 1500);
     return () => window.clearTimeout(timer);
-  }, [refreshJob, running, job?.status]);
+  }, [refreshJob, updateInProgress, job?.status, logCursor]);
+
+  useEffect(() => {
+    const compact = compactLogRef.current;
+    if (compact) {
+      compact.scrollTop = compact.scrollHeight;
+    }
+
+    const modal = modalLogRef.current;
+    if (modal && followLogsRef.current) {
+      modal.scrollTop = modal.scrollHeight;
+    }
+  }, [logText, logsModalOpen]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -289,7 +356,7 @@ export function UpdateSection() {
                       Ampliar
                     </Button>
                   </div>
-                  <pre className="mt-2 max-h-36 overflow-y-auto rounded-lg bg-white p-3 text-[11px] leading-relaxed text-slate-700 dark:bg-slate-900 dark:text-slate-300">{logText}</pre>
+                  <pre ref={compactLogRef} className="mt-2 max-h-36 overflow-y-auto rounded-lg bg-white p-3 text-[11px] leading-relaxed text-slate-700 dark:bg-slate-900 dark:text-slate-300">{logText}</pre>
                 </details>
               </div>
             )}
@@ -311,7 +378,14 @@ export function UpdateSection() {
               </button>
             </div>
             <div className="min-h-0 flex-1 bg-white p-4 dark:bg-slate-950">
-              <pre className="max-h-[72vh] min-h-[24rem] overflow-auto rounded-lg border border-slate-200 bg-slate-950 p-4 font-mono text-xs leading-6 text-slate-100 shadow-inner dark:border-slate-800 sm:text-sm">{logText}</pre>
+              <pre
+                ref={modalLogRef}
+                onScroll={(event) => {
+                  const el = event.currentTarget;
+                  followLogsRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+                }}
+                className="max-h-[72vh] min-h-[24rem] overflow-auto rounded-lg border border-slate-200 bg-slate-950 p-4 font-mono text-xs leading-6 text-slate-100 shadow-inner dark:border-slate-800 sm:text-sm"
+              >{logText}</pre>
             </div>
           </Panel>
         </div>

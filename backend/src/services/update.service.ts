@@ -1,4 +1,4 @@
-import { openSync, closeSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import { openSync, closeSync, existsSync, mkdirSync, readFileSync, readSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { prisma } from "../database/prisma";
@@ -32,6 +32,13 @@ type StoredUpdateJob = {
 export type UpdateJobView = Omit<StoredUpdateJob, "logPath"> & {
   logTail: string[];
   active: boolean;
+};
+
+export type UpdateJobLogsView = {
+  lines: string[];
+  cursor: number;
+  hasMore: boolean;
+  reset: boolean;
 };
 
 export type UpdateInfo = {
@@ -273,14 +280,69 @@ function readStoredJob(): StoredUpdateJob | null {
   }
 }
 
+function redactUpdateLogLine(line: string) {
+  return line
+    .replace(/(DATABASE_URL\s*=\s*)([^\s]+)/gi, "$1[REDACTED]")
+    .replace(/(JWT_SECRET\s*=\s*)([^\s]+)/gi, "$1[REDACTED]")
+    .replace(/(ENCRYPTION_KEY\s*=\s*)([^\s]+)/gi, "$1[REDACTED]")
+    .replace(/(GITHUB_TOKEN\s*=\s*)([^\s]+)/gi, "$1[REDACTED]")
+    .replace(/(Authorization:\s*Bearer\s+)([^\s]+)/gi, "$1[REDACTED]")
+    .replace(/(gh[pousr]_[A-Za-z0-9_]{20,})/g, "[REDACTED_GITHUB_TOKEN]");
+}
+
+export function readUpdateJobLogs(input: { cursor?: number; maxBytes?: number; maxLines?: number } = {}): UpdateJobLogsView {
+  ensureUpdateStorage();
+
+  const requestedCursor = Number.isFinite(input.cursor) ? Math.max(0, Math.floor(input.cursor ?? 0)) : 0;
+  const maxBytes = Math.max(1024, Math.min(input.maxBytes ?? 128 * 1024, 512 * 1024));
+  const maxLines = Math.max(1, Math.min(input.maxLines ?? 500, 2000));
+
+  if (!existsSync(UPDATE_JOB_LOG_FILE)) {
+    return { lines: [], cursor: 0, hasMore: false, reset: requestedCursor > 0 };
+  }
+
+  const fileSize = statSync(UPDATE_JOB_LOG_FILE).size;
+  const reset = requestedCursor > fileSize;
+  const startCursor = reset ? 0 : requestedCursor;
+
+  if (startCursor === fileSize) {
+    return { lines: [], cursor: fileSize, hasMore: false, reset };
+  }
+
+  const bytesToRead = Math.min(maxBytes, fileSize - startCursor);
+  const buffer = Buffer.alloc(bytesToRead);
+  const fd = openSync(UPDATE_JOB_LOG_FILE, "r");
+  let bytesRead = 0;
+
+  try {
+    bytesRead = readSync(fd, buffer, 0, bytesToRead, startCursor);
+  } finally {
+    closeSync(fd);
+  }
+
+  const nextCursor = startCursor + bytesRead;
+  const content = buffer.subarray(0, bytesRead).toString("utf8");
+  const lines = content.split(/\r?\n/).flatMap((line) => {
+    const trimmed = redactUpdateLogLine(line.trimEnd());
+    return trimmed ? [trimmed] : [];
+  }).slice(-maxLines);
+
+  return {
+    lines,
+    cursor: nextCursor,
+    hasMore: nextCursor < fileSize,
+    reset,
+  };
+}
+
 function readLogTail(limit = 40): string[] {
   ensureUpdateStorage();
   if (!existsSync(UPDATE_JOB_LOG_FILE)) return [];
-  const content = readFileSync(UPDATE_JOB_LOG_FILE, "utf8");
-  return content.split(/\r?\n/).flatMap((line) => {
-    const trimmed = line.trimEnd();
-    return trimmed ? [trimmed] : [];
-  }).slice(-limit);
+
+  const fileSize = statSync(UPDATE_JOB_LOG_FILE).size;
+  const maxBytes = Math.min(512 * 1024, fileSize);
+  const cursor = Math.max(0, fileSize - maxBytes);
+  return readUpdateJobLogs({ cursor, maxBytes, maxLines: limit }).lines.slice(-limit);
 }
 
 function isActiveJob(status: UpdateJobStatus) {
@@ -308,6 +370,10 @@ function toJobView(job: StoredUpdateJob | null): UpdateJobView | null {
 
 export function getCurrentUpdateJob(): UpdateJobView | null {
   return toJobView(readStoredJob());
+}
+
+export function getCurrentUpdateJobLogs(cursor?: number): UpdateJobLogsView {
+  return readUpdateJobLogs({ cursor });
 }
 
 function createJobId() {
