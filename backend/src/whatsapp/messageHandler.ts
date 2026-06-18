@@ -354,12 +354,16 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
     const hasSupportedInboundContent = Boolean(textMsg.trim() || audioMessage);
     if (!hasSupportedInboundContent) return;
 
+    const aiPausedForConversation = await chatService.isConversationAiPaused({ instanceId, jid: remoteJid });
+
     await recordMessageEvent({
       instanceId,
       channel: "WHATSAPP",
       direction: "INBOUND",
-      usedAi: instance.aiWhatsappEnabled,
+      usedAi: instance.aiWhatsappEnabled && !aiPausedForConversation,
     });
+
+    if (aiPausedForConversation) return;
 
     if (!instance.aiWhatsappEnabled) return;
 

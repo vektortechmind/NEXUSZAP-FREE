@@ -8,6 +8,7 @@ import { APP_NAV_GROUPS, getAppRouteTitle } from "../src/features/navigation/app
 import { ConversationList } from "../src/features/chat/ConversationList.tsx";
 import { MessageBubble } from "../src/features/chat/MessageBubble.tsx";
 import { ChatInput } from "../src/features/chat/ChatInput.tsx";
+import { ChatHeader } from "../src/features/chat/ChatHeader.tsx";
 import { MessageContextMenu } from "../src/features/chat/MessageContextMenu.tsx";
 import { MediaViewer } from "../src/features/chat/MediaViewer.tsx";
 import { QUICK_REACTIONS } from "../src/features/chat/chatReactions.ts";
@@ -88,6 +89,8 @@ const conversations: ChatConversation[] = [
     name: "Cliente Alpha",
     profilePicUrl: "https://img.example.com/a.jpg",
     isGroup: false,
+    aiPaused: false,
+    aiPausedAt: null,
     lastMessageAt: "2026-06-09T12:00:00.000Z",
     unreadCount: 3,
     createdAt: "2026-06-09T11:00:00.000Z",
@@ -101,6 +104,8 @@ const conversations: ChatConversation[] = [
     name: "Beta Suporte",
     profilePicUrl: null,
     isGroup: false,
+    aiPaused: false,
+    aiPausedAt: null,
     lastMessageAt: "2026-06-09T10:00:00.000Z",
     unreadCount: 1,
     createdAt: "2026-06-09T09:00:00.000Z",
@@ -114,6 +119,8 @@ const conversations: ChatConversation[] = [
     name: "Grupo Vendas",
     profilePicUrl: null,
     isGroup: true,
+    aiPaused: false,
+    aiPausedAt: null,
     lastMessageAt: "2026-06-09T13:00:00.000Z",
     unreadCount: 0,
     createdAt: "2026-06-09T12:30:00.000Z",
@@ -378,6 +385,25 @@ test("clear conversation menu warns that cleanup is panel-only", () => {
   assert.doesNotMatch(source, /Limpar painel/);
 });
 
+test("chat header exposes manual takeover and AI return states", () => {
+  const source = fs.readFileSync(path.resolve(import.meta.dirname, "../src/features/chat/ChatHeader.tsx"), "utf8");
+  const pausedHtml = renderToStaticMarkup(
+    <ChatHeader
+      conversation={{ ...conversations[0], aiPaused: true, aiPausedAt: "2026-06-18T19:30:00.000Z" }}
+      instances={[{ id: "instance-a", name: "Vendas" }]}
+      connectionState="connected"
+      isTyping={false}
+      onBack={() => undefined}
+      onClear={() => undefined}
+      onToggleAiPaused={() => undefined}
+    />,
+  );
+  assert.match(source, /Assumir conversa/);
+  assert.match(source, /Voltar IA/);
+  assert.match(source, /onToggleAiPaused/);
+  assert.match(pausedHtml, /Atendimento humano/);
+});
+
 test("message context menu position stays inside viewport", () => {
   const normal = getViewportAwareMenuPosition({ position: { x: 40, y: 40 }, menuWidth: 176, menuHeight: 160, viewportWidth: 800, viewportHeight: 600 });
   const bottom = getViewportAwareMenuPosition({ position: { x: 40, y: 580 }, menuWidth: 176, menuHeight: 160, viewportWidth: 800, viewportHeight: 600 });
@@ -556,6 +582,8 @@ test("chat media upload uses multipart endpoint", () => {
   assert.equal(source.indexOf('form.append("instanceId"') < source.indexOf('form.append("file"'), true);
   assert.equal(source.indexOf('form.append("messageType"') < source.indexOf('form.append("file"'), true);
   assert.match(source, /\/chat\/send\/media/);
+  assert.match(source, /setConversationAiPaused/);
+  assert.match(source, /\/chat\/conversations\/\$\{encodeURIComponent\(input\.jid\)\}\/ai-pause/);
 });
 
 test("chat page handles read rollback and clear batch", () => {
@@ -569,6 +597,9 @@ test("chat page handles read rollback and clear batch", () => {
   assert.match(source, /setSelectedKey\(null\)/);
   assert.match(source, /clearConversationFromList/);
   assert.match(source, /onClearConversation/);
+  assert.match(source, /toggleSelectedConversationAi/);
+  assert.match(source, /setConversationAiPaused/);
+  assert.match(source, /onToggleAiPaused/);
   assert.doesNotMatch(source, /Limpar mensagens apenas do painel/);
   assert.match(source, /sendMediaMessage/);
   assert.match(source, /selectedKey === key && conversation\.unreadCount > 0/);

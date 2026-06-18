@@ -9,16 +9,19 @@ Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 - Templates globais de disparos agendados para salvar conteudo reutilizavel e aplicar em qualquer instancia do painel.
 - Nova area de midias de templates com armazenamento dedicado e endpoints autenticados para criar, atualizar, listar e remover modelos de disparo.
 - Controles no composer de Envios para aplicar, salvar, substituir e excluir templates sem alterar a estrutura de instancias existentes.
+- Controle manual por conversa no chat para `Assumir conversa` e `Voltar IA`, pausando a resposta automatica da IA apenas no contato selecionado.
 
 ### Changed
 
 - Disparos agendados preservam snapshot do conteudo aplicado no momento do agendamento, incluindo midia e botoes vindos de template.
 - Worker de disparos passou a resolver URLs de midia de templates durante o envio, mantendo compatibilidade com o fluxo existente de anexos locais.
+- Conversas assumidas por atendimento humano continuam recebendo e exibindo mensagens em tempo real, mas bloqueiam transcricao, typing, memoria e chamada ao provider de IA ate a reativacao.
 - Versao do frontend, backend, `backend/VERSION`, README e changelog atualizada para `1.0.16`.
 
 ### Fixed
 
 - Cobertura de backend e frontend reforcada para validar o contrato de templates globais em disparos agendados e evitar regressao no envio com midia reaproveitada.
+- Cobertura de chat ampliada para validar pausa/retomada da IA por conversa, serializacao realtime e indicador visual `Atendimento humano`.
 
 ## [1.0.15] - 2026-06-18
 

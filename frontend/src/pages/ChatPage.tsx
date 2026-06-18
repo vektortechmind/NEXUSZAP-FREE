@@ -80,6 +80,7 @@ export function ChatPage() {
     deleteMessage,
     clearConversation,
     markConversationRead,
+    setConversationAiPaused,
     unreadTotal,
   } = useConversations(selectedInstanceId, search, conversationFilter);
 
@@ -401,6 +402,23 @@ export function ChatPage() {
     await executeClearConversation(conversation);
   }, [executeClearConversation]);
 
+  const toggleSelectedConversationAi = useCallback(async () => {
+    if (!selectedConversation) return;
+    const paused = !selectedConversation.aiPaused;
+    try {
+      const updated = await setConversationAiPaused({
+        instanceId: selectedConversation.instanceId,
+        jid: selectedConversation.jid,
+        paused,
+      });
+      setConversations((current) => upsertConversation(current, updated));
+      addToast(paused ? "Atendimento humano assumido." : "IA reativada na conversa.", "success");
+    } catch (err) {
+      console.error(err);
+      addToast("Nao foi possivel alterar o atendimento da conversa.", "error");
+    }
+  }, [addToast, selectedConversation, setConversationAiPaused, setConversations]);
+
   const selectedTyping = selectedConversation ? Boolean(typing[conversationKey(selectedConversation)]) : false;
 
   return (
@@ -433,6 +451,7 @@ export function ChatPage() {
             isTyping={selectedTyping}
             onBack={() => setMobileThreadOpen(false)}
             onClear={() => void clearSelectedConversation()}
+            onToggleAiPaused={selectedConversation?.isGroup ? undefined : () => void toggleSelectedConversationAi()}
           />
           <MessageThread
             conversation={selectedConversation}

@@ -21,6 +21,8 @@ export type ChatConversation = {
   name: string | null;
   profilePicUrl: string | null;
   isGroup: boolean;
+  aiPaused: boolean;
+  aiPausedAt: Date | null;
   lastMessageAt: Date;
   unreadCount: number;
   createdAt: Date;
@@ -99,6 +101,8 @@ export type ChatStore = {
   softDeleteMessage(input: { messageId: string }): Promise<ChatMessage>;
   listMessagesForConversation(input: { instanceId: string; jid: string }): Promise<ChatMessage[]>;
   softDeleteConversationMessages(input: { instanceId: string; jid: string }): Promise<ChatMessage[]>;
+  getConversationAiState(input: { instanceId: string; jid: string }): Promise<{ aiPaused: boolean; aiPausedAt: Date | null } | null>;
+  setConversationAiPaused(input: { instanceId: string; jid: string; paused: boolean }): Promise<ChatConversationSummary | null>;
   resetUnreadCount(input: { instanceId: string; jid: string }): Promise<ChatConversationSummary | null>;
   deleteConversation(input: { instanceId: string; jid: string }): Promise<void>;
 };
@@ -432,6 +436,35 @@ export const prismaChatStore: ChatStore = {
     return messages.map((message) => ({ ...message, isDeleted: true, body: null }));
   },
 
+  async getConversationAiState(input) {
+    const jid = normalizeChatJid(input.jid);
+    return prisma.conversation.findUnique({
+      where: { instanceId_jid: { instanceId: input.instanceId, jid } },
+      select: { aiPaused: true, aiPausedAt: true },
+    });
+  },
+
+  async setConversationAiPaused(input) {
+    const jid = normalizeChatJid(input.jid);
+    const conversation = await prisma.conversation.update({
+      where: { instanceId_jid: { instanceId: input.instanceId, jid } },
+      data: {
+        aiPaused: input.paused,
+        aiPausedAt: input.paused ? new Date() : null,
+      },
+      include: {
+        messages: {
+          where: { isDeleted: false },
+          orderBy: { createdAt: "desc" },
+          take: 1,
+        },
+      },
+    }).catch(() => null);
+    if (!conversation) return null;
+    const { messages, ...row } = conversation;
+    return { ...row, lastMessage: messages[0] ?? null };
+  },
+
   async resetUnreadCount(input) {
     const jid = normalizeChatJid(input.jid);
     const conversation = await prisma.conversation.update({
@@ -536,6 +569,8 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
             name: input.name ?? null,
             profilePicUrl: input.profilePicUrl ?? null,
             isGroup: input.isGroup ?? isGroupJid(jid),
+            aiPaused: false,
+            aiPausedAt: null,
             lastMessageAt: now,
             unreadCount: 0,
             createdAt: now,
@@ -579,6 +614,8 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
             name: input.contactName ?? null,
             profilePicUrl: input.profilePicUrl ?? null,
             isGroup: group,
+            aiPaused: false,
+            aiPausedAt: null,
             lastMessageAt: now,
             unreadCount: input.fromMe ? 0 : 1,
             createdAt: now,
@@ -673,6 +710,25 @@ export function createInMemoryChatStore(seed: { instances?: Array<{ id: string }
       const updated = rows.map((message) => ({ ...message, body: null, isDeleted: true }));
       updated.forEach((message) => messages.set(message.id, message));
       return updated;
+    },
+    async getConversationAiState(input) {
+      const jid = normalizeChatJid(input.jid);
+      const existing = conversations.get(conversationKey(input.instanceId, jid));
+      return existing ? { aiPaused: existing.aiPaused, aiPausedAt: existing.aiPausedAt } : null;
+    },
+    async setConversationAiPaused(input) {
+      const jid = normalizeChatJid(input.jid);
+      const key = conversationKey(input.instanceId, jid);
+      const existing = conversations.get(key);
+      if (!existing) return null;
+      const updated = {
+        ...existing,
+        aiPaused: input.paused,
+        aiPausedAt: input.paused ? new Date() : null,
+        updatedAt: new Date(),
+      };
+      conversations.set(key, updated);
+      return { ...updated, lastMessage: latestMessageForConversation(updated.id) };
     },
     async resetUnreadCount(input) {
       const jid = normalizeChatJid(input.jid);
@@ -1018,6 +1074,22 @@ export function createChatService(deps: {
       await baileys.markRead({ instanceId: input.instanceId, jid });
       const conversation = await store.resetUnreadCount({ instanceId: input.instanceId, jid });
       if (conversation) chatRealtime.emitConversationUpdate({ instanceId: input.instanceId, conversation });
+      return conversation;
+    },
+
+    async isConversationAiPaused(input: { instanceId: string; jid: string }) {
+      await ensureInstance(input.instanceId);
+      const jid = normalizeChatJid(input.jid);
+      const state = await store.getConversationAiState({ instanceId: input.instanceId, jid });
+      return Boolean(state?.aiPaused);
+    },
+
+    async setConversationAiPaused(input: { instanceId: string; jid: string; paused: boolean }) {
+      await ensureInstance(input.instanceId);
+      const jid = normalizeChatJid(input.jid);
+      const conversation = await store.setConversationAiPaused({ instanceId: input.instanceId, jid, paused: input.paused });
+      if (!conversation) throw new ChatValidationError("Conversa nao encontrada.", 404);
+      chatRealtime.emitConversationUpdate({ instanceId: input.instanceId, conversation });
       return conversation;
     },
 

@@ -7,6 +7,7 @@ import type { ChatConversation, ChatInstanceOption, ChatMessage } from "./types"
 type ConversationsResponse = { conversations: ChatConversation[] };
 type MessagesResponse = { messages: ChatMessage[]; nextCursor: string | null };
 type ReactionResponse = { success: boolean; message: ChatMessage | null };
+type ConversationAiPauseResponse = { success: boolean; conversation: ChatConversation };
 type DeleteMode = "for_everyone";
 type SendMediaType = "IMAGE" | "VIDEO" | "AUDIO" | "DOCUMENT";
 export type ChatFilter = "all" | "unread" | "groups";
@@ -151,6 +152,14 @@ export function useConversations(selectedInstanceId: string, search: string, fil
     return res.data.conversation;
   }, []);
 
+  const setConversationAiPaused = useCallback(async (input: { instanceId: string; jid: string; paused: boolean }) => {
+    const res = await api.post<ConversationAiPauseResponse>(`/chat/conversations/${encodeURIComponent(input.jid)}/ai-pause`, {
+      instanceId: input.instanceId,
+      paused: input.paused,
+    });
+    return res.data.conversation;
+  }, []);
+
   return {
     conversations,
     setConversations,
@@ -168,6 +177,7 @@ export function useConversations(selectedInstanceId: string, search: string, fil
     deleteMessage,
     clearConversation,
     markConversationRead,
+    setConversationAiPaused,
     unreadTotal: getUnreadTotal(conversations),
   };
 }

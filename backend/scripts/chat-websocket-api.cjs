@@ -159,7 +159,16 @@ async function createHarness() {
   const conversationUpdate = await conversationUpdatePromise;
   assert.equal(conversationUpdate.lastMessage.body, "Oi realtime");
   assert.equal(conversationUpdate.unreadCount, 1);
+  assert.equal(conversationUpdate.aiPaused, false);
+  assert.equal(conversationUpdate.aiPausedAt, null);
   await blockedPromise;
+
+  const pauseUpdatePromise = waitFor(socketA, "conversation:update");
+  await service.setConversationAiPaused({ instanceId: "instance-a", jid: "5511999990000@s.whatsapp.net", paused: true });
+  const pauseUpdate = await pauseUpdatePromise;
+  assert.equal(pauseUpdate.aiPaused, true);
+  assert.ok(pauseUpdate.aiPausedAt);
+  assert.equal(pauseUpdate.lastMessage.body, "Oi realtime");
 
   const sentPromise = waitFor(socketA, "message:sent");
   await service.sendTextMessage({ instanceId: "instance-a", jid: "5511999990000@s.whatsapp.net", body: "Resposta realtime" });

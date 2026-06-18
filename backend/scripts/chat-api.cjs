@@ -209,6 +209,51 @@ function createApp({ store, baileys, events }) {
   assert.equal(filteredConversations[0].lastMessage.body, "Outra conversa");
   assert.equal(filteredConversations[0].profilePicUrl, null);
   assert.equal(filteredConversations[0].unreadCount, 1);
+  assert.equal(filteredConversations[0].aiPaused, false);
+  assert.equal(filteredConversations[0].aiPausedAt, null);
+
+  const pauseEvents = [];
+  chatRealtime.setEmitter({
+    emitToInstance(instanceId, event, payload) {
+      pauseEvents.push({ instanceId, event, payload });
+    },
+  });
+  const pauseResponse = await app.inject({
+    method: "POST",
+    url: `/api/chat/conversations/${encodeURIComponent("5511888880000@s.whatsapp.net")}/ai-pause`,
+    payload: { instanceId: "instance-a", paused: true },
+  });
+  assert.equal(pauseResponse.statusCode, 200, pauseResponse.body);
+  const pausedConversation = JSON.parse(pauseResponse.body).conversation;
+  assert.equal(pausedConversation.aiPaused, true);
+  assert.ok(pausedConversation.aiPausedAt);
+  assert.equal(pauseEvents.some((item) => item.event === "conversation:update" && item.payload.aiPaused === true), true);
+  assert.equal(await service.isConversationAiPaused({ instanceId: "instance-a", jid: "5511888880000@s.whatsapp.net" }), true);
+
+  const invalidPauseResponse = await app.inject({
+    method: "POST",
+    url: `/api/chat/conversations/${encodeURIComponent("5511888880000@s.whatsapp.net")}/ai-pause`,
+    payload: { instanceId: "instance-a" },
+  });
+  assert.equal(invalidPauseResponse.statusCode, 400, invalidPauseResponse.body);
+
+  const missingPauseResponse = await app.inject({
+    method: "POST",
+    url: `/api/chat/conversations/${encodeURIComponent("5511000000000@s.whatsapp.net")}/ai-pause`,
+    payload: { instanceId: "instance-a", paused: true },
+  });
+  assert.equal(missingPauseResponse.statusCode, 404, missingPauseResponse.body);
+
+  const resumeResponse = await app.inject({
+    method: "POST",
+    url: `/api/chat/conversations/${encodeURIComponent("5511888880000@s.whatsapp.net")}/ai-pause`,
+    payload: { instanceId: "instance-a", paused: false },
+  });
+  assert.equal(resumeResponse.statusCode, 200, resumeResponse.body);
+  const resumedConversation = JSON.parse(resumeResponse.body).conversation;
+  assert.equal(resumedConversation.aiPaused, false);
+  assert.equal(resumedConversation.aiPausedAt, null);
+  chatRealtime.setEmitter(null);
 
   const profilePictureResponse = await app.inject({
     method: "GET",

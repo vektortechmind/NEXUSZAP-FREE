@@ -83,6 +83,11 @@ const clearConversationBodySchema = z.object({
   instanceId: z.string().trim().min(1).max(191),
 });
 
+const conversationAiPauseBodySchema = z.object({
+  instanceId: z.string().trim().min(1).max(191),
+  paused: z.boolean(),
+}).strict();
+
 function serializeDate<T extends Record<string, unknown>>(row: T): T {
   return Object.fromEntries(
     Object.entries(row).map(([key, value]) => [key, value instanceof Date ? value.toISOString() : value])
@@ -322,6 +327,17 @@ export function createChatRoutes(deps: ChatRoutesDeps = {}) {
         const body = z.object({ instanceId: z.string().trim().min(1).max(191) }).parse(request.body);
         const conversation = await service.markConversationRead({ ...body, jid: params.jid });
         return reply.status(200).send({ success: true, conversation: conversation ? serializeConversation(conversation) : null });
+      } catch (err) {
+        return sendKnownError(reply, err);
+      }
+    });
+
+    fastify.post("/conversations/:jid/ai-pause", async (request, reply) => {
+      try {
+        const params = messagesParamsSchema.parse(request.params);
+        const body = conversationAiPauseBodySchema.parse(request.body);
+        const conversation = await service.setConversationAiPaused({ ...body, jid: params.jid });
+        return reply.status(200).send({ success: true, conversation: serializeConversation(conversation) });
       } catch (err) {
         return sendKnownError(reply, err);
       }

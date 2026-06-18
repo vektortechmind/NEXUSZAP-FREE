@@ -79,6 +79,10 @@ function createBaileysMock() {
   assert.match(handlerSource, /markMessageDeleted/);
   assert.match(handlerSource, /editMessageFromProvider/);
   assert.match(handlerSource, /downloadMediaFromMessage/);
+  assert.match(handlerSource, /isConversationAiPaused/);
+  const aiPauseGuardIndex = handlerSource.indexOf("if (aiPausedForConversation) return");
+  assert.equal(aiPauseGuardIndex < handlerSource.indexOf("isAudioTranscriptionEnabled(instanceId)"), true, "pausa por conversa deve bloquear antes de transcrever audio");
+  assert.equal(aiPauseGuardIndex < handlerSource.indexOf("askChat(instanceId"), true, "pausa por conversa deve bloquear antes de chamar IA");
 
   const store = createInMemoryChatStore({ instances: [{ id: "instance-a" }] });
   const service = createChatService({ store, baileys: createBaileysMock() });

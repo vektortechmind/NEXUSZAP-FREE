@@ -37,6 +37,8 @@ export type ChatConversation = {
   name: string | null;
   profilePicUrl: string | null;
   isGroup: boolean;
+  aiPaused: boolean;
+  aiPausedAt: string | null;
   lastMessageAt: string;
   unreadCount: number;
   createdAt: string;

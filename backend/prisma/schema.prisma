@@ -171,6 +171,8 @@ model Conversation {
   name           String?
   profilePicUrl  String?
   isGroup        Boolean   @default(false)
+  aiPaused       Boolean   @default(false)
+  aiPausedAt     DateTime?
   lastMessageAt  DateTime
   unreadCount    Int       @default(0)
   createdAt      DateTime  @default(now())

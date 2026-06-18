@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowLeft, MoreVertical, Wifi, WifiOff } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bot, MoreVertical, UserCheck, Wifi, WifiOff } from "lucide-react";
 import { useState } from "react";
 import type { ChatConnectionState, ChatConversation, ChatInstanceOption } from "./types";
 import { getContactDisplayName } from "./useConversations";
@@ -10,6 +10,7 @@ type ChatHeaderProps = {
   isTyping: boolean;
   onBack: () => void;
   onClear?: () => void;
+  onToggleAiPaused?: () => void;
 };
 
 function Avatar({ conversation }: { conversation: ChatConversation }) {
@@ -28,14 +29,19 @@ function connectionLabel(state: ChatConnectionState) {
   return "Offline";
 }
 
-export function ChatHeader({ conversation, instances, connectionState, isTyping, onBack, onClear }: ChatHeaderProps) {
+export function ChatHeader({ conversation, instances, connectionState, isTyping, onBack, onClear, onToggleAiPaused }: ChatHeaderProps) {
   const instanceName = conversation ? instances.find((instance) => instance.id === conversation.instanceId)?.name ?? conversation.instanceId : null;
   const connected = connectionState === "connected";
   const [menuOpen, setMenuOpen] = useState(false);
+  const hasConversationActions = Boolean(conversation && (onClear || onToggleAiPaused));
   const handleClear = () => {
     setMenuOpen(false);
     const confirmed = window.confirm("Limpar conversa somente no painel? As mensagens continuam no WhatsApp.");
     if (confirmed) onClear?.();
+  };
+  const handleToggleAiPaused = () => {
+    setMenuOpen(false);
+    onToggleAiPaused?.();
   };
 
   return (
@@ -53,8 +59,13 @@ export function ChatHeader({ conversation, instances, connectionState, isTyping,
           <Avatar conversation={conversation} />
           <div className="min-w-0">
             <h2 className="truncate text-sm font-semibold text-slate-950 dark:text-slate-50">{getContactDisplayName(conversation)}</h2>
-            <p className="truncate text-xs text-slate-500 dark:text-slate-400">
-              {isTyping ? "digitando..." : `${instanceName} - ${conversation.jid}`}
+            <p className="flex min-w-0 items-center gap-2 truncate text-xs text-slate-500 dark:text-slate-400">
+              <span className="truncate">{isTyping ? "digitando..." : `${instanceName} - ${conversation.jid}`}</span>
+              {conversation.aiPaused ? (
+                <span className="inline-flex shrink-0 items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:border-amber-900/70 dark:bg-amber-950/35 dark:text-amber-300">
+                  Atendimento humano
+                </span>
+              ) : null}
             </p>
           </div>
         </div>
@@ -69,7 +80,7 @@ export function ChatHeader({ conversation, instances, connectionState, isTyping,
           {connected ? <Wifi size={13} aria-hidden="true" /> : <WifiOff size={13} aria-hidden="true" />}
           {connectionLabel(connectionState)}
         </div>
-        {conversation && onClear ? (
+        {hasConversationActions ? (
           <button
             type="button"
             onClick={() => setMenuOpen((current) => !current)}
@@ -81,10 +92,18 @@ export function ChatHeader({ conversation, instances, connectionState, isTyping,
         ) : null}
         {menuOpen ? (
           <div className="absolute right-0 top-11 z-40 min-w-56 rounded-md border border-slate-200 bg-white py-1 text-sm shadow-xl shadow-slate-900/15 dark:border-slate-700 dark:bg-slate-900">
-            <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left text-amber-800 hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/30" onClick={handleClear}>
-              <AlertTriangle size={15} aria-hidden="true" />
-              Limpar conversa!
-            </button>
+            {conversation && onToggleAiPaused ? (
+              <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left text-slate-700 hover:bg-slate-50 dark:text-slate-200 dark:hover:bg-slate-800" onClick={handleToggleAiPaused}>
+                {conversation.aiPaused ? <Bot size={15} aria-hidden="true" /> : <UserCheck size={15} aria-hidden="true" />}
+                {conversation.aiPaused ? "Voltar IA" : "Assumir conversa"}
+              </button>
+            ) : null}
+            {onClear ? (
+              <button type="button" className="flex w-full items-center gap-2 px-3 py-2 text-left text-amber-800 hover:bg-amber-50 dark:text-amber-200 dark:hover:bg-amber-950/30" onClick={handleClear}>
+                <AlertTriangle size={15} aria-hidden="true" />
+                Limpar conversa!
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>
