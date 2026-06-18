@@ -96,6 +96,10 @@ export type ScheduledDispatchDraftValidation = {
   canSubmit: boolean;
 };
 
+export type ScheduledDispatchDraftValidationOptions = {
+  hasConnectedInstance?: boolean;
+};
+
 export const MAX_SCHEDULED_DISPATCH_BUTTONS = 3;
 export const MAX_SCHEDULED_DISPATCH_BUTTON_TEXT_LENGTH = 60;
 
@@ -277,11 +281,14 @@ function isSafeButtonUrl(value: string) {
   }
 }
 
-export function validateScheduledDispatchDraft(draft: ScheduledDispatchDraft): ScheduledDispatchDraftValidation {
+export function validateScheduledDispatchDraft(draft: ScheduledDispatchDraft, options: ScheduledDispatchDraftValidationOptions = {}): ScheduledDispatchDraftValidation {
   const result: ScheduledDispatchDraftValidation = { canSubmit: true };
   const buttons = normalizeScheduledDispatchButtons(draft.buttons);
 
-  if (!draft.instanceId.trim()) {
+  if (options.hasConnectedInstance === false) {
+    result.instanceId = "Conecte uma instancia WhatsApp antes de criar disparos.";
+    result.canSubmit = false;
+  } else if (!draft.instanceId.trim()) {
     result.instanceId = "Selecione uma instancia.";
     result.canSubmit = false;
   }

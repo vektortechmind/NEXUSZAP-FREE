@@ -41,6 +41,15 @@ type GroupListResponse = { groups: ScheduledDispatchGroup[] };
 type GroupSyncResponse = { synced: number; groups: ScheduledDispatchGroup[] };
 type DispatchListResponse = { dispatches: ScheduledDispatchHistoryItem[] };
 type DispatchMutationResponse = { dispatch: ScheduledDispatchHistoryItem | null; dispatches: ScheduledDispatchHistoryItem[] };
+type CancelCampaignResponse = {
+  campaignId: string;
+  cancelledCount: number;
+  scheduledRemainingCount: number;
+  processingCount: number;
+  sentCount: number;
+  failedCount: number;
+  alreadyCancelledCount: number;
+};
 type UploadMediaResponse = { mediaId: string; fileName: string; mimeType: string; mediaUrl: string };
 type ClearHistoryResponse = { deleted: number };
 type TemplateListResponse = { templates: ScheduledDispatchTemplate[] };
@@ -186,6 +195,7 @@ export function ScheduledDispatchPage() {
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
+  const [cancellingCampaignId, setCancellingCampaignId] = useState<string | null>(null);
   const [clearingHistory, setClearingHistory] = useState(false);
   const [templates, setTemplates] = useState<ScheduledDispatchTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
@@ -195,7 +205,7 @@ export function ScheduledDispatchPage() {
   const [deletingTemplate, setDeletingTemplate] = useState(false);
   const [uploadingTemplateMedia, setUploadingTemplateMedia] = useState(false);
 
-  const validation = useMemo(() => validateScheduledDispatchDraft(draft), [draft]);
+  const validation = useMemo(() => validateScheduledDispatchDraft(draft, { hasConnectedInstance: instances.length > 0 }), [draft, instances.length]);
   const visibleGroups = useMemo(() => filterScheduledDispatchGroups(groups, deferredGroupSearch), [deferredGroupSearch, groups]);
   const selectedGroups = useMemo(() => groups.filter((group) => draft.groupJids.includes(group.jid)), [draft.groupJids, groups]);
   const parsedPhones = useMemo(() => normalizeScheduledDispatchPhones(draft.phonesText), [draft.phonesText]);
@@ -230,11 +240,14 @@ export function ScheduledDispatchPage() {
       try {
         const res = await api.get<InstanceStatus[]>("/agent/instances");
         if (ignore) return;
-        const nextInstances = res.data.map((instance) => ({ id: instance.id, name: instance.name }));
+        const nextInstances = res.data
+          .filter((instance) => instance.status === "CONNECTED")
+          .map((instance) => ({ id: instance.id, name: instance.name }));
         setInstances(nextInstances);
         setInstancesError(null);
         setDraft((current) => {
-          if (current.instanceId || nextInstances.length === 0) return current;
+          if (current.instanceId && nextInstances.some((instance) => instance.id === current.instanceId)) return current;
+          if (nextInstances.length === 0) return applyInstanceToDraft(current, "");
           return applyInstanceToDraft(current, nextInstances[0].id);
         });
       } catch (err) {
@@ -541,7 +554,7 @@ export function ScheduledDispatchPage() {
   }
 
   async function handleSubmit() {
-    const currentValidation = validateScheduledDispatchDraft(draft);
+    const currentValidation = validateScheduledDispatchDraft(draft, { hasConnectedInstance: instances.length > 0 });
     if (!currentValidation.canSubmit) {
       addToast("Revise os campos obrigatorios antes de salvar.", "error");
       return;
@@ -612,6 +625,26 @@ export function ScheduledDispatchPage() {
     }
   }
 
+  async function handleCancelCampaign(summary: CampaignHistorySummary) {
+    if (summary.scheduled <= 0) return;
+    if (!window.confirm("Cancelar todos os disparos pendentes desta campanha?")) {
+      return;
+    }
+
+    setCancellingCampaignId(summary.campaignId);
+    try {
+      const res = await api.post<CancelCampaignResponse>(`/scheduled-dispatches/campaigns/${summary.campaignId}/cancel`);
+      setHistoryPage(1);
+      await loadHistory(draft.instanceId);
+      addToast(`${res.data.cancelledCount} disparo(s) pendente(s) cancelado(s).`, "success");
+    } catch (err) {
+      console.error(err);
+      addToast("Nao foi possivel cancelar a campanha.", "error");
+    } finally {
+      setCancellingCampaignId(null);
+    }
+  }
+
   async function handleClearHistory() {
     if (!draft.instanceId) {
       addToast("Selecione uma instancia antes de limpar o historico.", "error");
@@ -668,6 +701,9 @@ export function ScheduledDispatchPage() {
             </div>
 
             {instancesError ? <InlineAlert tone="danger">{instancesError}</InlineAlert> : null}
+            {!loadingInstances && !instancesError && instances.length === 0 ? (
+              <InlineAlert tone="warning">Conecte uma instancia WhatsApp antes de criar disparos.</InlineAlert>
+            ) : null}
 
             <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
               Instancia
@@ -685,6 +721,7 @@ export function ScheduledDispatchPage() {
                   <option key={instance.id} value={instance.id}>{instance.name}</option>
                 ))}
               </select>
+              {validation.instanceId ? <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{validation.instanceId}</p> : null}
             </label>
 
             <div className="grid gap-3 sm:grid-cols-2">
@@ -1124,6 +1161,19 @@ export function ScheduledDispatchPage() {
                     <span>Processando <strong className="block text-slate-900 dark:text-slate-100">{summary.processing}</strong></span>
                   </div>
                   <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">Janela: {formatDateTime(summary.firstScheduledAt)} ate {formatDateTime(summary.lastScheduledAt)}</p>
+                  {summary.scheduled > 0 ? (
+                    <div className="mt-3 flex justify-end">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => void handleCancelCampaign(summary)}
+                        loading={cancellingCampaignId === summary.campaignId}
+                        disabled={cancellingCampaignId !== null && cancellingCampaignId !== summary.campaignId}
+                      >
+                        Cancelar campanha
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
               ))}
             </div>

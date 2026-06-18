@@ -42,7 +42,7 @@ function multipartBody(fields, file) {
 
 function createApp() {
   const store = createInMemoryScheduledDispatchStore({
-    instances: [{ id: "instance-a" }, { id: "instance-b" }],
+    instances: [{ id: "instance-a" }, { id: "instance-b" }, { id: "instance-offline", status: "DISCONNECTED" }],
     groups: [
       {
         instanceId: "instance-a",
@@ -79,11 +79,11 @@ function createApp() {
   app.register(multipart, { limits: { fileSize: 60 * 1024 * 1024 } });
   app.register(createScheduledDispatchTemplateRoutes({ service: templateService, preValidationHook: async () => {} }), { prefix: "/api/scheduled-dispatch-templates" });
   app.register(createScheduledDispatchRoutes({ service, groupSyncService, preValidationHook: async () => {} }), { prefix: "/api/scheduled-dispatches" });
-  return { app };
+  return { app, store };
 }
 
 (async () => {
-  const { app } = createApp();
+  const { app, store } = createApp();
   await app.ready();
 
   const listGroupsResponse = await app.inject({ method: "GET", url: "/api/scheduled-dispatches/groups?instanceId=instance-a" });
@@ -197,6 +197,22 @@ function createApp() {
   assert.equal(createdText[0].campaign.totalDestinations, 3);
   assert.equal(createdText[0].campaign.pauseEveryCount, 0);
 
+  const disconnectedInstanceResponse = await app.inject({
+    method: "POST",
+    url: "/api/scheduled-dispatches",
+    payload: {
+      instanceId: "instance-offline",
+      targetType: "number",
+      phones: ["5511999991111"],
+      contentType: "text",
+      body: "Nao deve criar em instancia offline",
+      deliveryMode: "scheduled",
+      scheduledAt: "2026-06-20T12:00:00.000Z",
+    },
+  });
+  assert.equal(disconnectedInstanceResponse.statusCode, 409, disconnectedInstanceResponse.body);
+  assert.equal(JSON.parse(disconnectedInstanceResponse.body).code, "SCHEDULED_DISPATCH_INSTANCE_NOT_CONNECTED");
+
   const createPausedNumbersResponse = await app.inject({
     method: "POST",
     url: "/api/scheduled-dispatches",
@@ -291,6 +307,51 @@ function createApp() {
   assert.equal(clearHistoryResponse.statusCode, 200, clearHistoryResponse.body);
   assert.equal(JSON.parse(clearHistoryResponse.body).deleted, 1);
 
+  const createCampaignToCancelResponse = await app.inject({
+    method: "POST",
+    url: "/api/scheduled-dispatches",
+    payload: {
+      instanceId: "instance-a",
+      targetType: "number",
+      phones: ["551100000011", "551100000012", "551100000013", "551100000014", "551100000015"],
+      contentType: "text",
+      body: "Campanha para cancelar",
+      deliveryMode: "scheduled",
+      scheduledAt: "2026-06-22T10:00:00.000Z",
+    },
+  });
+  assert.equal(createCampaignToCancelResponse.statusCode, 201, createCampaignToCancelResponse.body);
+  const campaignToCancel = JSON.parse(createCampaignToCancelResponse.body).dispatches;
+  const [sentJob, failedJob, processingJob, alreadyCancelledJob, scheduledJob] = campaignToCancel.map((dispatch) => store.dispatches.get(dispatch.id));
+  store.dispatches.set(sentJob.id, { ...sentJob, status: "SENT", processedAt: new Date("2026-06-22T10:01:00.000Z") });
+  store.dispatches.set(failedJob.id, { ...failedJob, status: "FAILED", failureCode: "PROVIDER_ERROR", providerError: "Falha externa", processedAt: new Date("2026-06-22T10:02:00.000Z") });
+  store.dispatches.set(processingJob.id, { ...processingJob, status: "PROCESSING" });
+  store.dispatches.set(alreadyCancelledJob.id, { ...alreadyCancelledJob, status: "CANCELLED", processedAt: new Date("2026-06-22T10:03:00.000Z") });
+
+  const cancelCampaignResponse = await app.inject({ method: "POST", url: `/api/scheduled-dispatches/campaigns/${campaignToCancel[0].campaignId}/cancel` });
+  assert.equal(cancelCampaignResponse.statusCode, 200, cancelCampaignResponse.body);
+  const cancelCampaignSummary = JSON.parse(cancelCampaignResponse.body);
+  assert.deepEqual(cancelCampaignSummary, {
+    campaignId: campaignToCancel[0].campaignId,
+    cancelledCount: 1,
+    scheduledRemainingCount: 0,
+    processingCount: 1,
+    sentCount: 1,
+    failedCount: 1,
+    alreadyCancelledCount: 1,
+  });
+  assert.equal(store.dispatches.get(sentJob.id).status, "SENT");
+  assert.equal(store.dispatches.get(failedJob.id).status, "FAILED");
+  assert.equal(store.dispatches.get(processingJob.id).status, "PROCESSING");
+  assert.equal(store.dispatches.get(alreadyCancelledJob.id).status, "CANCELLED");
+  assert.equal(store.dispatches.get(scheduledJob.id).status, "CANCELLED");
+  assert.equal(store.dispatches.get(scheduledJob.id).failureCode, "CAMPAIGN_CANCELLED");
+  assert.equal(store.dispatches.get(scheduledJob.id).providerError, "Campanha cancelada pelo operador.");
+
+  const missingCampaignCancelResponse = await app.inject({ method: "POST", url: "/api/scheduled-dispatches/campaigns/missing-campaign/cancel" });
+  assert.equal(missingCampaignCancelResponse.statusCode, 404, missingCampaignCancelResponse.body);
+  assert.equal(JSON.parse(missingCampaignCancelResponse.body).code, "SCHEDULED_DISPATCH_CAMPAIGN_NOT_FOUND");
+
   const invalidMediaMissingResponse = await app.inject({
     method: "POST",
     url: "/api/scheduled-dispatches",
@@ -360,7 +421,7 @@ function createApp() {
   const listAllResponse = await app.inject({ method: "GET", url: "/api/scheduled-dispatches" });
   assert.equal(listAllResponse.statusCode, 200, listAllResponse.body);
   const allDispatches = JSON.parse(listAllResponse.body).dispatches;
-  assert.equal(allDispatches.length, 11);
+  assert.equal(allDispatches.length, 16);
 
   await app.close();
   console.log("scheduled-dispatch-api: OK");

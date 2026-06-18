@@ -4,6 +4,7 @@ import { normalizeOperationalPhoneDigits } from "../utils/phoneNormalization";
 
 export type ScheduledDispatchCampaignRecord = ScheduledDispatchCampaign;
 export type ScheduledDispatchRecord = ScheduledDispatch & { campaign?: ScheduledDispatchCampaignRecord | null };
+export type ScheduledDispatchInstanceRecord = { id: string; status: string };
 export type ScheduledDispatchUrlButton = {
   text: string;
   url: string;
@@ -55,8 +56,18 @@ type ScheduledDispatchTransitionInput = {
   processedAt?: Date | null;
 };
 
+export type ScheduledDispatchCampaignCancelSummary = {
+  campaignId: string;
+  cancelledCount: number;
+  scheduledRemainingCount: number;
+  processingCount: number;
+  sentCount: number;
+  failedCount: number;
+  alreadyCancelledCount: number;
+};
+
 export type ScheduledDispatchStore = {
-  findInstance(instanceId: string): Promise<{ id: string } | null>;
+  findInstance(instanceId: string): Promise<ScheduledDispatchInstanceRecord | null>;
   listGroupTargets(input: { instanceId: string; search?: string }): Promise<ScheduledDispatchGroupTarget[]>;
   findGroupTarget(input: { instanceId: string; jid: string }): Promise<ScheduledDispatchGroupTarget | null>;
   createCampaign(input: {
@@ -85,6 +96,7 @@ export type ScheduledDispatchStore = {
   listDueDispatches(input: { now: Date; limit: number }): Promise<ScheduledDispatchRecord[]>;
   findDispatchById(id: string): Promise<ScheduledDispatchRecord | null>;
   transitionDispatch(input: ScheduledDispatchTransitionInput): Promise<ScheduledDispatchRecord | null>;
+  cancelScheduledDispatchesByCampaign(input: { campaignId: string; processedAt: Date }): Promise<ScheduledDispatchCampaignCancelSummary | null>;
   clearDispatchHistory(input: { instanceId: string; statuses: ScheduledDispatchStatus[] }): Promise<number>;
 };
 
@@ -101,6 +113,23 @@ export class ScheduledDispatchInstanceNotFoundError extends Error {
 
   constructor(instanceId: string) {
     super(`Instancia ${instanceId} nao encontrada.`);
+  }
+}
+
+export class ScheduledDispatchInstanceNotConnectedError extends Error {
+  code = "SCHEDULED_DISPATCH_INSTANCE_NOT_CONNECTED";
+  statusCode = 409;
+
+  constructor(instanceId: string, status: string) {
+    super(`Instancia ${instanceId} nao esta conectada para criar disparos. Status atual: ${status}.`);
+  }
+}
+
+export class ScheduledDispatchCampaignNotFoundError extends Error {
+  code = "SCHEDULED_DISPATCH_CAMPAIGN_NOT_FOUND";
+
+  constructor(campaignId: string) {
+    super(`Campanha ${campaignId} nao encontrada.`);
   }
 }
 
@@ -353,7 +382,7 @@ async function transitionDispatchWithPrisma(input: ScheduledDispatchTransitionIn
 
 export const prismaScheduledDispatchStore: ScheduledDispatchStore = {
   async findInstance(instanceId) {
-    return prisma.instance.findUnique({ where: { id: instanceId }, select: { id: true } });
+    return prisma.instance.findUnique({ where: { id: instanceId }, select: { id: true, status: true } });
   },
 
   async listGroupTargets(input) {
@@ -460,6 +489,44 @@ export const prismaScheduledDispatchStore: ScheduledDispatchStore = {
     return transitionDispatchWithPrisma(input);
   },
 
+  async cancelScheduledDispatchesByCampaign(input) {
+    return prisma.$transaction(async (tx) => {
+      const campaign = await tx.scheduledDispatchCampaign.findUnique({ where: { id: input.campaignId }, select: { id: true } });
+      if (!campaign) return null;
+
+      const updated = await tx.scheduledDispatch.updateMany({
+        where: {
+          campaignId: input.campaignId,
+          status: "SCHEDULED",
+        },
+        data: {
+          status: "CANCELLED",
+          processedAt: input.processedAt,
+          updatedAt: input.processedAt,
+          failureCode: "CAMPAIGN_CANCELLED",
+          providerError: "Campanha cancelada pelo operador.",
+        },
+      });
+
+      const counts = await tx.scheduledDispatch.groupBy({
+        by: ["status"],
+        where: { campaignId: input.campaignId },
+        _count: { _all: true },
+      });
+      const byStatus = new Map(counts.map((entry) => [entry.status, entry._count._all]));
+
+      return {
+        campaignId: input.campaignId,
+        cancelledCount: updated.count,
+        scheduledRemainingCount: byStatus.get("SCHEDULED") ?? 0,
+        processingCount: byStatus.get("PROCESSING") ?? 0,
+        sentCount: byStatus.get("SENT") ?? 0,
+        failedCount: byStatus.get("FAILED") ?? 0,
+        alreadyCancelledCount: Math.max((byStatus.get("CANCELLED") ?? 0) - updated.count, 0),
+      };
+    });
+  },
+
   async clearDispatchHistory(input) {
     const result = await prisma.scheduledDispatch.deleteMany({
       where: {
@@ -472,13 +539,13 @@ export const prismaScheduledDispatchStore: ScheduledDispatchStore = {
 };
 
 export function createInMemoryScheduledDispatchStore(seed: {
-  instances?: Array<{ id: string }>;
+  instances?: Array<{ id: string; status?: string }>;
   groups?: Array<{ instanceId: string; jid: string; name?: string | null; lastMessageAt?: Date; updatedAt?: Date }>;
 } = {}): ScheduledDispatchStore & {
   dispatches: Map<string, ScheduledDispatchRecord>;
   campaigns: Map<string, ScheduledDispatchCampaignRecord>;
 } {
-  const instances = new Map((seed.instances ?? []).map((instance) => [instance.id, instance]));
+  const instances = new Map((seed.instances ?? []).map((instance) => [instance.id, { id: instance.id, status: instance.status ?? "CONNECTED" }]));
   const dispatches = new Map<string, ScheduledDispatchRecord>();
   const campaigns = new Map<string, ScheduledDispatchCampaignRecord>();
   const groups = new Map<string, ScheduledDispatchGroupTarget>(
@@ -600,6 +667,41 @@ export function createInMemoryScheduledDispatchStore(seed: {
       return updated;
     },
 
+    async cancelScheduledDispatchesByCampaign(input) {
+      if (!campaigns.has(input.campaignId)) return null;
+
+      let cancelledCount = 0;
+      const statusCounts = new Map<ScheduledDispatchStatus, number>();
+      for (const [id, dispatch] of dispatches.entries()) {
+        if (dispatch.campaignId !== input.campaignId) continue;
+
+        let next = dispatch;
+        if (dispatch.status === "SCHEDULED") {
+          next = {
+            ...dispatch,
+            status: "CANCELLED",
+            processedAt: input.processedAt,
+            failureCode: "CAMPAIGN_CANCELLED",
+            providerError: "Campanha cancelada pelo operador.",
+            updatedAt: input.processedAt,
+          };
+          dispatches.set(id, next);
+          cancelledCount += 1;
+        }
+        statusCounts.set(next.status, (statusCounts.get(next.status) ?? 0) + 1);
+      }
+
+      return {
+        campaignId: input.campaignId,
+        cancelledCount,
+        scheduledRemainingCount: statusCounts.get("SCHEDULED") ?? 0,
+        processingCount: statusCounts.get("PROCESSING") ?? 0,
+        sentCount: statusCounts.get("SENT") ?? 0,
+        failedCount: statusCounts.get("FAILED") ?? 0,
+        alreadyCancelledCount: Math.max((statusCounts.get("CANCELLED") ?? 0) - cancelledCount, 0),
+      };
+    },
+
     async clearDispatchHistory(input) {
       let deleted = 0;
       for (const [id, dispatch] of dispatches.entries()) {
@@ -619,6 +721,15 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
   async function ensureInstance(instanceId: string) {
     const instance = await store.findInstance(instanceId);
     if (!instance) throw new ScheduledDispatchInstanceNotFoundError(instanceId);
+    return instance;
+  }
+
+  async function ensureConnectedInstance(instanceId: string) {
+    const instance = await ensureInstance(instanceId);
+    if (instance.status !== "CONNECTED") {
+      throw new ScheduledDispatchInstanceNotConnectedError(instanceId, instance.status);
+    }
+    return instance;
   }
 
   function resolveScheduledAt(input: ScheduledDispatchCreateInput) {
@@ -633,7 +744,7 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
     },
 
     async createDispatch(input: ScheduledDispatchCreateInput) {
-      await ensureInstance(input.instanceId);
+      await ensureConnectedInstance(input.instanceId);
 
       const targetType = mapTargetType(input.targetType);
       const contentType = mapContentType(input.contentType);
@@ -694,6 +805,8 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
     },
 
     async createDispatches(input: ScheduledDispatchCreateInput) {
+      await ensureConnectedInstance(input.instanceId);
+
       const phones = normalizePhoneList(input.phones ?? (input.phone ? [input.phone] : []));
       const groupJids = normalizeGroupJidList(input.groupJids ?? (input.groupJid ? [input.groupJid] : []));
       const baseScheduledAt = resolveScheduledAt(input);
@@ -865,6 +978,15 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
         throw new ScheduledDispatchConflictError("Somente disparos pendentes podem ser cancelados.");
       }
       return toScheduledDispatchView(record);
+    },
+
+    async cancelCampaign(input: { campaignId: string }) {
+      const summary = await store.cancelScheduledDispatchesByCampaign({
+        campaignId: input.campaignId,
+        processedAt: new Date(),
+      });
+      if (!summary) throw new ScheduledDispatchCampaignNotFoundError(input.campaignId);
+      return summary;
     },
 
     async clearHistory(instanceId: string) {

@@ -13,7 +13,9 @@ import {
 import {
   createScheduledDispatchService,
   scheduledDispatchService,
+  ScheduledDispatchCampaignNotFoundError,
   ScheduledDispatchConflictError,
+  ScheduledDispatchInstanceNotConnectedError,
   ScheduledDispatchInstanceNotFoundError,
   ScheduledDispatchNotFoundError,
   ScheduledDispatchValidationError,
@@ -76,6 +78,10 @@ const dispatchParamsSchema = z.object({
   id: z.string().trim().min(1).max(191),
 });
 
+const campaignParamsSchema = z.object({
+  campaignId: z.string().trim().min(1).max(191),
+});
+
 const mediaParamsSchema = z.object({
   instanceId: z.string().trim().min(1).max(191),
   mediaId: z.string().trim().min(1).max(191),
@@ -117,6 +123,12 @@ function sendKnownError(reply: FastifyReply, err: unknown) {
     return reply.status(err.statusCode).send({ error: err.message, code: err.code });
   }
   if (err instanceof ScheduledDispatchInstanceNotFoundError) {
+    return reply.status(404).send({ error: err.message, code: err.code });
+  }
+  if (err instanceof ScheduledDispatchInstanceNotConnectedError) {
+    return reply.status(err.statusCode).send({ error: err.message, code: err.code });
+  }
+  if (err instanceof ScheduledDispatchCampaignNotFoundError) {
     return reply.status(404).send({ error: err.message, code: err.code });
   }
   if (err instanceof ScheduledDispatchNotFoundError) {
@@ -174,6 +186,16 @@ export function createScheduledDispatchRoutes(deps: ScheduledDispatchRoutesDeps 
         const body = syncGroupsBodySchema.parse(request.body);
         const groups = await groupSyncService.syncGroups(body);
         return reply.status(200).send({ synced: groups.length, groups: groups.map(serializeGroupTarget) });
+      } catch (err) {
+        return sendKnownError(reply, err);
+      }
+    });
+
+    fastify.post("/campaigns/:campaignId/cancel", async (request, reply) => {
+      try {
+        const params = campaignParamsSchema.parse(request.params);
+        const summary = await service.cancelCampaign({ campaignId: params.campaignId });
+        return reply.send(summary);
       } catch (err) {
         return sendKnownError(reply, err);
       }

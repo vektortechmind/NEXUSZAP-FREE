@@ -298,6 +298,8 @@ test("scheduled dispatch page keeps multi-target composer, group selection, and 
   assert.match(source, /api\.get<GroupListResponse>\("\/scheduled-dispatches\/groups", \{ params: \{ instanceId: draft\.instanceId \} \}\)/);
   assert.match(source, /api\.post<GroupSyncResponse>\("\/scheduled-dispatches\/groups\/sync", \{ instanceId: draft\.instanceId \}\)/);
   assert.match(source, /api\.post<UploadMediaResponse>\("\/scheduled-dispatches\/media", form\)/);
+  assert.match(source, /instance\.status === "CONNECTED"/);
+  assert.match(source, /Conecte uma instancia WhatsApp antes de criar disparos\./);
   assert.match(source, /api\.get<TemplateListResponse>\("\/scheduled-dispatch-templates"\)/);
   assert.match(source, /api\.post<UploadMediaResponse>\("\/scheduled-dispatch-templates\/media", form\)/);
   assert.match(source, /api\.post<TemplateMutationResponse>\("\/scheduled-dispatch-templates", payload\)/);
@@ -332,6 +334,9 @@ test("scheduled dispatch page keeps multi-target composer, group selection, and 
   assert.match(source, /Pausar por \(s\)/);
   assert.match(source, /Termino estimado/);
   assert.match(source, /buildCampaignSummaries/);
+  assert.match(source, /api\.post<CancelCampaignResponse>\(`\/scheduled-dispatches\/campaigns\/\$\{summary\.campaignId\}\/cancel`\)/);
+  assert.match(source, /Cancelar todos os disparos pendentes desta campanha\?/);
+  assert.match(source, /Cancelar campanha/);
   assert.match(source, /Campanha \{dispatch\.campaignId\.slice\(0, 8\)\}/);
   assert.match(source, /Midia opcional/);
   assert.match(source, /accept="image\/\*,video\/\*"/);
