@@ -6,6 +6,18 @@ export type ScheduledDispatchUrlButton = {
   url: string;
 };
 
+export type ScheduledDispatchTemplate = {
+  id: string;
+  name: string;
+  contentType: "TEXT" | "IMAGE" | "VIDEO";
+  body: string | null;
+  mediaUrl: string | null;
+  mediaFileName: string | null;
+  buttons: ScheduledDispatchUrlButton[];
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ScheduledDispatchStatus = "SCHEDULED" | "PROCESSING" | "SENT" | "FAILED" | "CANCELLED";
 
 export type ScheduledDispatchHistoryItem = {
@@ -128,7 +140,40 @@ export function formatDateTimeLocal(value: Date) {
 
 export function isSafeMediaUrl(value: string) {
   const trimmed = value.trim();
-  return trimmed.startsWith("/api/scheduled-dispatches/media/");
+  return trimmed.startsWith("/api/scheduled-dispatches/media/")
+    || trimmed.startsWith("/api/scheduled-dispatch-templates/media/");
+}
+
+export function isTemplateMediaUrl(value: string) {
+  return value.trim().startsWith("/api/scheduled-dispatch-templates/media/");
+}
+
+export function mapTemplateContentType(contentType: ScheduledDispatchTemplate["contentType"]): ScheduledDispatchContentType {
+  if (contentType === "IMAGE") return "image";
+  if (contentType === "VIDEO") return "video";
+  return "text";
+}
+
+export function applyTemplateToDraft(draft: ScheduledDispatchDraft, template: ScheduledDispatchTemplate): ScheduledDispatchDraft {
+  return {
+    ...draft,
+    contentType: mapTemplateContentType(template.contentType),
+    body: template.body ?? "",
+    mediaUrl: template.mediaUrl ?? "",
+    mediaFileName: template.mediaFileName ?? "",
+    buttons: template.buttons.map((button) => ({ ...button })),
+  };
+}
+
+export function buildScheduledDispatchTemplatePayload(draft: ScheduledDispatchDraft, name: string) {
+  return {
+    name: name.trim(),
+    contentType: draft.contentType,
+    body: draft.body.trim() || null,
+    mediaUrl: draft.contentType === "text" ? null : draft.mediaUrl.trim(),
+    mediaFileName: draft.contentType === "text" ? null : draft.mediaFileName.trim() || null,
+    buttons: normalizeScheduledDispatchButtons(draft.buttons),
+  };
 }
 
 export function normalizeScheduledDispatchButtons(buttons: ScheduledDispatchUrlButton[]) {

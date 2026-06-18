@@ -206,7 +206,7 @@ function normalizeMediaUrl(value?: string | null): string | null {
   const normalized = normalizeOptionalText(value);
   if (!normalized) return null;
 
-  if (normalized.startsWith("/api/scheduled-dispatches/media/")) {
+  if (normalized.startsWith("/api/scheduled-dispatches/media/") || normalized.startsWith("/api/scheduled-dispatch-templates/media/")) {
     return normalized;
   }
 

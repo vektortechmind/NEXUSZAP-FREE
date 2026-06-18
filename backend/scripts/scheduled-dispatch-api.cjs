@@ -15,10 +15,15 @@ const backendRoot = path.resolve(__dirname, "..");
 execSync("npm run build", { cwd: backendRoot, stdio: "inherit" });
 
 const { createScheduledDispatchRoutes } = require("../dist/routes/scheduled-dispatch.routes.js");
+const { createScheduledDispatchTemplateRoutes } = require("../dist/routes/scheduled-dispatch-template.routes.js");
 const {
   createInMemoryScheduledDispatchStore,
   createScheduledDispatchService,
 } = require("../dist/services/scheduled-dispatch.service.js");
+const {
+  createInMemoryScheduledDispatchTemplateStore,
+  createScheduledDispatchTemplateService,
+} = require("../dist/services/scheduled-dispatch-template.service.js");
 
 function multipartBody(fields, file) {
   const boundary = `----codex-${Date.now().toString(16)}`;
@@ -56,6 +61,8 @@ function createApp() {
     ],
   });
   const service = createScheduledDispatchService({ store });
+  const templateStore = createInMemoryScheduledDispatchTemplateStore();
+  const templateService = createScheduledDispatchTemplateService({ store: templateStore });
   const groupSyncService = {
     async syncGroups({ instanceId }) {
       return [
@@ -70,6 +77,7 @@ function createApp() {
   };
   const app = Fastify();
   app.register(multipart, { limits: { fileSize: 60 * 1024 * 1024 } });
+  app.register(createScheduledDispatchTemplateRoutes({ service: templateService, preValidationHook: async () => {} }), { prefix: "/api/scheduled-dispatch-templates" });
   app.register(createScheduledDispatchRoutes({ service, groupSyncService, preValidationHook: async () => {} }), { prefix: "/api/scheduled-dispatches" });
   return { app };
 }
@@ -91,6 +99,75 @@ function createApp() {
   assert.equal(uploadResponse.statusCode, 201, uploadResponse.body);
   const uploadedMedia = JSON.parse(uploadResponse.body);
   assert.match(uploadedMedia.mediaUrl, /\/api\/scheduled-dispatches\/media\/instance-a\//);
+
+  const templateUpload = multipartBody(
+    { contentType: "image" },
+    { filename: "template-banner.png", contentType: "image/png", buffer: Buffer.from("fake-template-image") },
+  );
+  const templateUploadResponse = await app.inject({ method: "POST", url: "/api/scheduled-dispatch-templates/media", payload: templateUpload.payload, headers: templateUpload.headers });
+  assert.equal(templateUploadResponse.statusCode, 201, templateUploadResponse.body);
+  const uploadedTemplateMedia = JSON.parse(templateUploadResponse.body);
+  assert.match(uploadedTemplateMedia.mediaUrl, /\/api\/scheduled-dispatch-templates\/media\//);
+
+  const createTemplateResponse = await app.inject({
+    method: "POST",
+    url: "/api/scheduled-dispatch-templates",
+    payload: {
+      name: "Oferta Global",
+      contentType: "image",
+      body: "Legenda global",
+      mediaUrl: uploadedTemplateMedia.mediaUrl,
+      mediaFileName: uploadedTemplateMedia.fileName,
+      buttons: [{ text: "Abrir oferta", url: "https://example.com/global" }],
+    },
+  });
+  assert.equal(createTemplateResponse.statusCode, 201, createTemplateResponse.body);
+  const createdTemplate = JSON.parse(createTemplateResponse.body).template;
+  assert.equal(createdTemplate.name, "Oferta Global");
+  assert.equal(createdTemplate.contentType, "IMAGE");
+  assert.deepEqual(createdTemplate.buttons, [{ text: "Abrir oferta", url: "https://example.com/global" }]);
+
+  const listTemplatesResponse = await app.inject({ method: "GET", url: "/api/scheduled-dispatch-templates" });
+  assert.equal(listTemplatesResponse.statusCode, 200, listTemplatesResponse.body);
+  assert.equal(JSON.parse(listTemplatesResponse.body).templates.length, 1);
+
+  const updateTemplateResponse = await app.inject({
+    method: "PATCH",
+    url: `/api/scheduled-dispatch-templates/${createdTemplate.id}`,
+    payload: {
+      name: "Oferta Global Atualizada",
+      contentType: "text",
+      body: "Texto global",
+      mediaUrl: null,
+      buttons: [{ text: "Abrir", url: "https://example.com/texto" }],
+    },
+  });
+  assert.equal(updateTemplateResponse.statusCode, 200, updateTemplateResponse.body);
+  assert.equal(JSON.parse(updateTemplateResponse.body).template.contentType, "TEXT");
+
+  const invalidTemplateMediaResponse = await app.inject({
+    method: "POST",
+    url: "/api/scheduled-dispatch-templates",
+    payload: {
+      name: "Midia errada",
+      contentType: "image",
+      body: "Nao deve aceitar",
+      mediaUrl: uploadedMedia.mediaUrl,
+    },
+  });
+  assert.equal(invalidTemplateMediaResponse.statusCode, 400, invalidTemplateMediaResponse.body);
+
+  const invalidTemplateTextResponse = await app.inject({
+    method: "POST",
+    url: "/api/scheduled-dispatch-templates",
+    payload: {
+      name: "Texto com midia",
+      contentType: "text",
+      body: "Nao deve aceitar midia",
+      mediaUrl: uploadedTemplateMedia.mediaUrl,
+    },
+  });
+  assert.equal(invalidTemplateTextResponse.statusCode, 400, invalidTemplateTextResponse.body);
 
   const createTextResponse = await app.inject({
     method: "POST",
@@ -176,6 +253,32 @@ function createApp() {
   assert.equal(createdImage[1].scheduledAt, "2026-06-21T15:32:30.000Z");
   assert.equal(createdImage[0].campaignId, createdImage[1].campaignId);
 
+  const createTemplateMediaDispatchResponse = await app.inject({
+    method: "POST",
+    url: "/api/scheduled-dispatches",
+    payload: {
+      instanceId: "instance-b",
+      targetType: "number",
+      phones: ["5511777770000"],
+      contentType: "image",
+      body: "Snapshot de template global",
+      mediaUrl: uploadedTemplateMedia.mediaUrl,
+      buttons: [{ text: "Abrir", url: "https://example.com/global" }],
+      deliveryMode: "scheduled",
+      scheduledAt: "2026-06-21T16:30:00.000Z",
+    },
+  });
+  assert.equal(createTemplateMediaDispatchResponse.statusCode, 201, createTemplateMediaDispatchResponse.body);
+  const templateMediaDispatch = JSON.parse(createTemplateMediaDispatchResponse.body).dispatches[0];
+  assert.equal(templateMediaDispatch.instanceId, "instance-b");
+  assert.equal(templateMediaDispatch.mediaUrl, uploadedTemplateMedia.mediaUrl);
+
+  const deleteTemplateResponse = await app.inject({ method: "DELETE", url: `/api/scheduled-dispatch-templates/${createdTemplate.id}` });
+  assert.equal(deleteTemplateResponse.statusCode, 200, deleteTemplateResponse.body);
+  const detailAfterTemplateDelete = await app.inject({ method: "GET", url: `/api/scheduled-dispatches/${templateMediaDispatch.id}` });
+  assert.equal(detailAfterTemplateDelete.statusCode, 200, detailAfterTemplateDelete.body);
+  assert.equal(JSON.parse(detailAfterTemplateDelete.body).dispatch.mediaUrl, uploadedTemplateMedia.mediaUrl);
+
   const detailResponse = await app.inject({ method: "GET", url: `/api/scheduled-dispatches/${createdImage[1].id}` });
   assert.equal(detailResponse.statusCode, 200, detailResponse.body);
   assert.equal(JSON.parse(detailResponse.body).dispatch.id, createdImage[1].id);
@@ -257,7 +360,7 @@ function createApp() {
   const listAllResponse = await app.inject({ method: "GET", url: "/api/scheduled-dispatches" });
   assert.equal(listAllResponse.statusCode, 200, listAllResponse.body);
   const allDispatches = JSON.parse(listAllResponse.body).dispatches;
-  assert.equal(allDispatches.length, 10);
+  assert.equal(allDispatches.length, 11);
 
   await app.close();
   console.log("scheduled-dispatch-api: OK");

@@ -10,12 +10,15 @@ import { api } from "../lib/axios";
 import type { InstanceStatus } from "../features/instances/types";
 import {
   applyInstanceToDraft,
+  applyTemplateToDraft,
+  buildScheduledDispatchTemplatePayload,
   calculateScheduledDispatchPreview,
   canCancelScheduledDispatch,
   createEmptyScheduledDispatchButton,
   createInitialScheduledDispatchDraft,
   filterScheduledDispatchGroups,
   isSafeMediaUrl,
+  isTemplateMediaUrl,
   MAX_SCHEDULED_DISPATCH_BUTTONS,
   normalizeScheduledDispatchDelay,
   normalizeScheduledDispatchPauseEveryCount,
@@ -30,6 +33,7 @@ import {
   type ScheduledDispatchGroup,
   type ScheduledDispatchHistoryItem,
   type ScheduledDispatchStatus,
+  type ScheduledDispatchTemplate,
   validateScheduledDispatchDraft,
 } from "../features/scheduled-dispatch/state";
 
@@ -39,6 +43,8 @@ type DispatchListResponse = { dispatches: ScheduledDispatchHistoryItem[] };
 type DispatchMutationResponse = { dispatch: ScheduledDispatchHistoryItem | null; dispatches: ScheduledDispatchHistoryItem[] };
 type UploadMediaResponse = { mediaId: string; fileName: string; mimeType: string; mediaUrl: string };
 type ClearHistoryResponse = { deleted: number };
+type TemplateListResponse = { templates: ScheduledDispatchTemplate[] };
+type TemplateMutationResponse = { template: ScheduledDispatchTemplate };
 
 function resolveScheduledDispatchSubmitError(error: unknown) {
   if (!isAxiosError(error)) return "Nao foi possivel salvar o disparo.";
@@ -160,6 +166,7 @@ function buildCampaignSummaries(dispatches: ScheduledDispatchHistoryItem[]): Cam
 export function ScheduledDispatchPage() {
   const { addToast } = useToast();
   const mediaInputRef = useRef<HTMLInputElement | null>(null);
+  const templateMediaInputRef = useRef<HTMLInputElement | null>(null);
   const [activeView, setActiveView] = useState<"composer" | "history">("composer");
   const [historyPage, setHistoryPage] = useState(1);
   const [instances, setInstances] = useState<InstanceOption[]>([]);
@@ -180,6 +187,13 @@ export function ScheduledDispatchPage() {
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [clearingHistory, setClearingHistory] = useState(false);
+  const [templates, setTemplates] = useState<ScheduledDispatchTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [templateName, setTemplateName] = useState("");
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [deletingTemplate, setDeletingTemplate] = useState(false);
+  const [uploadingTemplateMedia, setUploadingTemplateMedia] = useState(false);
 
   const validation = useMemo(() => validateScheduledDispatchDraft(draft), [draft]);
   const visibleGroups = useMemo(() => filterScheduledDispatchGroups(groups, deferredGroupSearch), [deferredGroupSearch, groups]);
@@ -198,6 +212,7 @@ export function ScheduledDispatchPage() {
   }), [activeDelaySeconds, destinationCount, draft.deliveryMode, draft.scheduledAt, pauseDurationSeconds, pauseEveryCount]);
   const mediaPreviewEnabled = draft.contentType !== "text" && isSafeMediaUrl(draft.mediaUrl);
   const hasUploadedMedia = draft.contentType !== "text" && Boolean(draft.mediaUrl.trim());
+  const selectedTemplate = useMemo(() => templates.find((template) => template.id === selectedTemplateId) ?? null, [selectedTemplateId, templates]);
   const visibleHistory = useMemo(() => sortDispatchHistory(history), [history]);
   const campaignSummaries = useMemo(() => buildCampaignSummaries(visibleHistory), [visibleHistory]);
   const historyTotalPages = Math.max(1, Math.ceil(visibleHistory.length / HISTORY_PAGE_SIZE));
@@ -232,6 +247,45 @@ export function ScheduledDispatchPage() {
     }
 
     void loadInstances();
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
+  async function loadTemplates() {
+    setLoadingTemplates(true);
+    try {
+      const res = await api.get<TemplateListResponse>("/scheduled-dispatch-templates");
+      setTemplates(res.data.templates);
+      setSelectedTemplateId((current) => current && res.data.templates.some((template) => template.id === current) ? current : "");
+    } catch (err) {
+      console.error(err);
+      addToast("Nao foi possivel carregar os templates.", "error");
+    } finally {
+      setLoadingTemplates(false);
+    }
+  }
+
+  useEffect(() => {
+    let ignore = false;
+
+    async function syncTemplates() {
+      await Promise.resolve();
+      if (!ignore) setLoadingTemplates(true);
+      try {
+        const res = await api.get<TemplateListResponse>("/scheduled-dispatch-templates");
+        if (ignore) return;
+        setTemplates(res.data.templates);
+        setSelectedTemplateId((current) => current && res.data.templates.some((template) => template.id === current) ? current : "");
+      } catch (err) {
+        console.error(err);
+        if (!ignore) setTemplates([]);
+      } finally {
+        if (!ignore) setLoadingTemplates(false);
+      }
+    }
+
+    void syncTemplates();
     return () => {
       ignore = true;
     };
@@ -387,6 +441,34 @@ export function ScheduledDispatchPage() {
     }
   }
 
+  async function handleUploadTemplateMedia(file: File) {
+    const uploadContentType = resolveUploadContentType(file);
+    if (!uploadContentType) {
+      addToast("Selecione uma imagem ou video valido.", "error");
+      return;
+    }
+
+    setUploadingTemplateMedia(true);
+    try {
+      const form = new FormData();
+      form.append("contentType", uploadContentType);
+      form.append("file", file);
+      const res = await api.post<UploadMediaResponse>("/scheduled-dispatch-templates/media", form);
+      setDraft((current) => ({
+        ...current,
+        contentType: uploadContentType,
+        mediaUrl: res.data.mediaUrl,
+        mediaFileName: res.data.fileName,
+      }));
+      addToast("Midia de template enviada com sucesso.", "success");
+    } catch (err) {
+      console.error(err);
+      addToast("Nao foi possivel enviar a midia do template.", "error");
+    } finally {
+      setUploadingTemplateMedia(false);
+    }
+  }
+
   function handleClearMedia() {
     setDraft((current) => ({
       ...current,
@@ -394,6 +476,68 @@ export function ScheduledDispatchPage() {
       mediaUrl: "",
       mediaFileName: "",
     }));
+  }
+
+  function handleApplyTemplate() {
+    if (!selectedTemplate) {
+      addToast("Selecione um template para aplicar.", "error");
+      return;
+    }
+    setDraft((current) => applyTemplateToDraft(current, selectedTemplate));
+    setTemplateName(selectedTemplate.name);
+    addToast("Template aplicado ao conteudo do disparo.", "success");
+  }
+
+  async function handleSaveTemplate(mode: "create" | "update") {
+    const name = templateName.trim();
+    if (!name) {
+      addToast("Informe um nome para o template.", "error");
+      return;
+    }
+    if (draft.contentType !== "text" && !isTemplateMediaUrl(draft.mediaUrl)) {
+      addToast("Para salvar template com midia, envie a midia pela area de templates.", "error");
+      return;
+    }
+
+    setSavingTemplate(true);
+    try {
+      const payload = buildScheduledDispatchTemplatePayload(draft, name);
+      const res = mode === "update" && selectedTemplateId
+        ? await api.patch<TemplateMutationResponse>(`/scheduled-dispatch-templates/${selectedTemplateId}`, payload)
+        : await api.post<TemplateMutationResponse>("/scheduled-dispatch-templates", payload);
+      await loadTemplates();
+      setSelectedTemplateId(res.data.template.id);
+      setTemplateName(res.data.template.name);
+      addToast(mode === "update" ? "Template atualizado." : "Template salvo.", "success");
+    } catch (err) {
+      console.error(err);
+      const data = isAxiosError(err) ? err.response?.data as { error?: string } | undefined : undefined;
+      addToast(data?.error ?? "Nao foi possivel salvar o template.", "error");
+    } finally {
+      setSavingTemplate(false);
+    }
+  }
+
+  async function handleDeleteTemplate() {
+    if (!selectedTemplateId) {
+      addToast("Selecione um template para excluir.", "error");
+      return;
+    }
+    if (!window.confirm("Excluir este template? Disparos ja criados nao serao alterados.")) return;
+
+    setDeletingTemplate(true);
+    try {
+      await api.delete(`/scheduled-dispatch-templates/${selectedTemplateId}`);
+      setSelectedTemplateId("");
+      setTemplateName("");
+      await loadTemplates();
+      addToast("Template excluido.", "success");
+    } catch (err) {
+      console.error(err);
+      addToast("Nao foi possivel excluir o template.", "error");
+    } finally {
+      setDeletingTemplate(false);
+    }
   }
 
   async function handleSubmit() {
@@ -636,6 +780,81 @@ export function ScheduledDispatchPage() {
             <div>
               <h2 className="text-lg font-semibold text-slate-950 dark:text-slate-50">Envios</h2>
               <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Defina conteudo, midia e quando enviar.</p>
+            </div>
+
+            <div className="space-y-3 rounded-xl border border-slate-200 bg-white/90 p-3 dark:border-slate-800 dark:bg-slate-950/50">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Templates globais</h3>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Reutilize conteudo em qualquer instancia sem alterar destinos ou agenda.</p>
+              </div>
+
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300">
+                  Template
+                  <select
+                    className={`${selectClassName} mt-2`}
+                    value={selectedTemplateId}
+                    onChange={(event) => {
+                      const template = templates.find((item) => item.id === event.target.value) ?? null;
+                      setSelectedTemplateId(event.target.value);
+                      setTemplateName(template?.name ?? "");
+                    }}
+                    disabled={loadingTemplates || templates.length === 0}
+                  >
+                    <option value="">{templates.length === 0 ? "Nenhum template salvo" : "Selecione um template"}</option>
+                    {templates.map((template) => (
+                      <option key={template.id} value={template.id}>{template.name}</option>
+                    ))}
+                  </select>
+                </label>
+                <Input
+                  label="Nome do template"
+                  placeholder="Ex.: Oferta principal"
+                  value={templateName}
+                  onChange={(event) => setTemplateName(event.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant="secondary" onClick={() => void loadTemplates()} loading={loadingTemplates}>
+                  Atualizar templates
+                </Button>
+                <Button size="sm" variant="secondary" onClick={handleApplyTemplate} disabled={!selectedTemplate}>
+                  Aplicar template
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => void handleSaveTemplate("create")} loading={savingTemplate}>
+                  Salvar como template
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => void handleSaveTemplate("update")} disabled={!selectedTemplateId} loading={savingTemplate}>
+                  Atualizar template
+                </Button>
+                <Button size="sm" variant="secondary" onClick={() => void handleDeleteTemplate()} disabled={!selectedTemplateId} loading={deletingTemplate}>
+                  Excluir template
+                </Button>
+              </div>
+
+              <div className="flex flex-col gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2.5 dark:border-slate-700 sm:flex-row sm:items-center sm:justify-between">
+                <p className="text-xs text-slate-500 dark:text-slate-400">Para salvar template com imagem ou video, envie a midia global aqui.</p>
+                <div className="flex flex-wrap gap-2">
+                  <input
+                    ref={templateMediaInputRef}
+                    type="file"
+                    className="hidden"
+                    accept="image/*,video/*"
+                    disabled={uploadingTemplateMedia}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) {
+                        void handleUploadTemplateMedia(file);
+                        event.target.value = "";
+                      }
+                    }}
+                  />
+                  <Button size="sm" variant="secondary" onClick={() => templateMediaInputRef.current?.click()} loading={uploadingTemplateMedia}>
+                    Midia de template
+                  </Button>
+                </div>
+              </div>
             </div>
 
             <div className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/30">

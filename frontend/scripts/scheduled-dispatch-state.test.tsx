@@ -5,11 +5,15 @@ import path from "node:path";
 import { APP_NAV_GROUPS, getAppRouteTitle } from "../src/features/navigation/appNavigation.ts";
 import {
   applyInstanceToDraft,
+  applyTemplateToDraft,
+  buildScheduledDispatchTemplatePayload,
   calculateScheduledDispatchPreview,
   canCancelScheduledDispatch,
   createEmptyScheduledDispatchButton,
   createInitialScheduledDispatchDraft,
   filterScheduledDispatchGroups,
+  isSafeMediaUrl,
+  isTemplateMediaUrl,
   MAX_SCHEDULED_DISPATCH_BUTTONS,
   normalizeScheduledDispatchDelay,
   normalizeScheduledDispatchPauseEveryCount,
@@ -19,6 +23,7 @@ import {
   SCHEDULED_DISPATCH_STATUS_LABELS,
   validateScheduledDispatchDraft,
   type ScheduledDispatchGroup,
+  type ScheduledDispatchTemplate,
 } from "../src/features/scheduled-dispatch/state.ts";
 
 const groups: ScheduledDispatchGroup[] = [
@@ -82,6 +87,66 @@ test("programmed pause preview estimates block pauses without initial pause", ()
   });
   assert.equal(preview.estimatedPauseCount, 2);
   assert.equal(preview.estimatedFinishAt.toISOString(), "2026-06-20T13:02:40.000Z");
+});
+
+test("global scheduled dispatch templates apply only content fields", () => {
+  const draft = {
+    ...createInitialScheduledDispatchDraft(new Date("2026-06-16T09:00:00.000Z")),
+    instanceId: "instance-a",
+    targetType: "number" as const,
+    phonesText: "5511999991234",
+    numberDelaySeconds: "30",
+    pauseEveryCount: "5",
+    pauseDurationSeconds: "120",
+    deliveryMode: "scheduled" as const,
+    scheduledAt: "2026-06-20T13:00",
+  };
+  const template: ScheduledDispatchTemplate = {
+    id: "template-a",
+    name: "Oferta Global",
+    contentType: "IMAGE",
+    body: "Legenda global",
+    mediaUrl: "/api/scheduled-dispatch-templates/media/media-a/banner.png",
+    mediaFileName: "banner.png",
+    buttons: [{ text: "Abrir", url: "https://example.com" }],
+    createdAt: "2026-06-16T09:00:00.000Z",
+    updatedAt: "2026-06-16T09:00:00.000Z",
+  };
+
+  const next = applyTemplateToDraft(draft, template);
+  assert.equal(next.instanceId, "instance-a");
+  assert.equal(next.targetType, "number");
+  assert.equal(next.phonesText, "5511999991234");
+  assert.equal(next.numberDelaySeconds, "30");
+  assert.equal(next.pauseEveryCount, "5");
+  assert.equal(next.pauseDurationSeconds, "120");
+  assert.equal(next.scheduledAt, "2026-06-20T13:00");
+  assert.equal(next.contentType, "image");
+  assert.equal(next.body, "Legenda global");
+  assert.equal(next.mediaUrl, "/api/scheduled-dispatch-templates/media/media-a/banner.png");
+  assert.deepEqual(next.buttons, [{ text: "Abrir", url: "https://example.com" }]);
+  assert.equal(isTemplateMediaUrl(next.mediaUrl), true);
+  assert.equal(isSafeMediaUrl(next.mediaUrl), true);
+});
+
+test("scheduled dispatch template payload serializes current content snapshot", () => {
+  const draft = {
+    ...createInitialScheduledDispatchDraft(new Date("2026-06-16T09:00:00.000Z")),
+    contentType: "text" as const,
+    body: "  Mensagem recorrente  ",
+    mediaUrl: "/api/scheduled-dispatch-templates/media/media-a/banner.png",
+    mediaFileName: "banner.png",
+    buttons: [{ text: " Abrir ", url: " https://example.com/oferta " }],
+  };
+
+  assert.deepEqual(buildScheduledDispatchTemplatePayload(draft, " Template A "), {
+    name: "Template A",
+    contentType: "text",
+    body: "Mensagem recorrente",
+    mediaUrl: null,
+    mediaFileName: null,
+    buttons: [{ text: "Abrir", url: "https://example.com/oferta" }],
+  });
 });
 
 test("group filtering and submit validation enforce selected groups", () => {
@@ -233,6 +298,13 @@ test("scheduled dispatch page keeps multi-target composer, group selection, and 
   assert.match(source, /api\.get<GroupListResponse>\("\/scheduled-dispatches\/groups", \{ params: \{ instanceId: draft\.instanceId \} \}\)/);
   assert.match(source, /api\.post<GroupSyncResponse>\("\/scheduled-dispatches\/groups\/sync", \{ instanceId: draft\.instanceId \}\)/);
   assert.match(source, /api\.post<UploadMediaResponse>\("\/scheduled-dispatches\/media", form\)/);
+  assert.match(source, /api\.get<TemplateListResponse>\("\/scheduled-dispatch-templates"\)/);
+  assert.match(source, /api\.post<UploadMediaResponse>\("\/scheduled-dispatch-templates\/media", form\)/);
+  assert.match(source, /api\.post<TemplateMutationResponse>\("\/scheduled-dispatch-templates", payload\)/);
+  assert.match(source, /api\.patch<TemplateMutationResponse>\(`\/scheduled-dispatch-templates\/\$\{selectedTemplateId\}`, payload\)/);
+  assert.match(source, /api\.delete\(`\/scheduled-dispatch-templates\/\$\{selectedTemplateId\}`\)/);
+  assert.match(source, /applyTemplateToDraft/);
+  assert.match(source, /buildScheduledDispatchTemplatePayload/);
   assert.match(source, /phones: draft\.targetType === "number" \? normalizeScheduledDispatchPhones\(draft\.phonesText\) : null/);
   assert.match(source, /groupJids: draft\.targetType === "group" \? draft\.groupJids : null/);
   assert.match(source, /numberDelaySeconds: draft\.targetType === "number" \? normalizeScheduledDispatchDelay\(draft\.numberDelaySeconds\) : null/);
@@ -250,6 +322,10 @@ test("scheduled dispatch page keeps multi-target composer, group selection, and 
   assert.match(source, /HISTORY_PAGE_SIZE = 100/);
   assert.match(source, /Pagina \{currentHistoryPage\} de \{historyTotalPages\}/);
   assert.match(source, /Ritmo de envio/);
+  assert.match(source, /Templates globais/);
+  assert.match(source, /Aplicar template/);
+  assert.match(source, /Salvar como template/);
+  assert.match(source, /Midia de template/);
   assert.match(source, /Delay por numero \(s\)/);
   assert.match(source, /Delay por grupo \(s\)/);
   assert.match(source, /Pausar a cada/);

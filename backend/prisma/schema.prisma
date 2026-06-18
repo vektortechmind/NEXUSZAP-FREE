@@ -376,3 +376,18 @@ model ScheduledDispatch {
   @@index([campaignId])
   @@index([status, scheduledAt])
 }
+
+model ScheduledDispatchTemplate {
+  id            String                       @id @default(uuid())
+  name          String
+  contentType   ScheduledDispatchContentType
+  body          String?
+  mediaUrl      String?
+  mediaFileName String?
+  buttonsJson   String?
+  createdAt     DateTime                     @default(now())
+  updatedAt     DateTime                     @default(now()) @updatedAt
+
+  @@index([name])
+  @@index([createdAt])
+}

@@ -11,6 +11,11 @@ import {
   parseScheduledDispatchMediaUrl,
   readScheduledDispatchMedia,
 } from "./scheduled-dispatch.mediaStorage";
+import {
+  isScheduledDispatchTemplateMediaUrl,
+  parseScheduledDispatchTemplateMediaUrl,
+  readScheduledDispatchTemplateMedia,
+} from "./scheduled-dispatch-template.mediaStorage";
 import { downloadIntegrationImageAsset } from "./integrations/integrationDispatchRuntime.service";
 import { InstanceManager } from "../whatsapp/InstanceManager";
 import { sendCtaUrlInteractiveMessage, sendNativeInteractiveMessage, type NativeInteractiveRelaySocket } from "../whatsapp/interactiveSender";
@@ -66,6 +71,19 @@ async function resolveDispatchMedia(
       throw new Error("Media local do disparo invalida.");
     }
     const media = await readScheduledDispatchMedia(parsed);
+    return {
+      buffer: media.buffer,
+      mimeType: media.mimeType,
+      fileName: media.fileName,
+    };
+  }
+
+  if (isScheduledDispatchTemplateMediaUrl(dispatch.mediaUrl)) {
+    const parsed = parseScheduledDispatchTemplateMediaUrl(dispatch.mediaUrl);
+    if (!parsed) {
+      throw new Error("Media local do template de disparo invalida.");
+    }
+    const media = await readScheduledDispatchTemplateMedia(parsed);
     return {
       buffer: media.buffer,
       mimeType: media.mimeType,
