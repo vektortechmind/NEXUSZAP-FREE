@@ -24,6 +24,7 @@ import {
   normalizeScheduledDispatchPauseEveryCount,
   normalizeScheduledDispatchButtons,
   normalizeScheduledDispatchPhones,
+  resolveScheduledDispatchDelayRange,
   resolveScheduledDispatchIso,
   resolveScheduledDispatchTargetLabel,
   SCHEDULED_DISPATCH_STATUS_LABELS,
@@ -210,16 +211,22 @@ export function ScheduledDispatchPage() {
   const selectedGroups = useMemo(() => groups.filter((group) => draft.groupJids.includes(group.jid)), [draft.groupJids, groups]);
   const parsedPhones = useMemo(() => normalizeScheduledDispatchPhones(draft.phonesText), [draft.phonesText]);
   const destinationCount = draft.targetType === "number" ? parsedPhones.length : draft.groupJids.length;
-  const activeDelaySeconds = draft.targetType === "number" ? normalizeScheduledDispatchDelay(draft.numberDelaySeconds) : normalizeScheduledDispatchDelay(draft.groupDelaySeconds);
+  const activeDelayRange = draft.targetType === "number"
+    ? resolveScheduledDispatchDelayRange({ fixedSeconds: draft.numberDelaySeconds, minSeconds: draft.numberDelayMinSeconds, maxSeconds: draft.numberDelayMaxSeconds })
+    : resolveScheduledDispatchDelayRange({ fixedSeconds: draft.groupDelaySeconds, minSeconds: draft.groupDelayMinSeconds, maxSeconds: draft.groupDelayMaxSeconds });
+  const activeDelayMinSeconds = Number.isNaN(activeDelayRange.minSeconds) ? 0 : activeDelayRange.minSeconds;
+  const activeDelayMaxSeconds = Number.isNaN(activeDelayRange.maxSeconds) ? activeDelayMinSeconds : activeDelayRange.maxSeconds;
+  const activeDelayLabel = activeDelayMinSeconds === activeDelayMaxSeconds ? `${activeDelayMinSeconds}s` : `${activeDelayMinSeconds}-${activeDelayMaxSeconds}s`;
   const pauseEveryCount = normalizeScheduledDispatchPauseEveryCount(draft.pauseEveryCount);
   const pauseDurationSeconds = normalizeScheduledDispatchDelay(draft.pauseDurationSeconds);
   const rhythmPreview = useMemo(() => calculateScheduledDispatchPreview({
     totalDestinations: destinationCount,
     baseScheduledAt: draft.deliveryMode === "scheduled" && !Number.isNaN(new Date(draft.scheduledAt).getTime()) ? new Date(draft.scheduledAt) : new Date(),
-    delaySeconds: Number.isNaN(activeDelaySeconds) ? 0 : activeDelaySeconds,
+    delayMinSeconds: activeDelayMinSeconds,
+    delayMaxSeconds: activeDelayMaxSeconds,
     pauseEveryCount: Number.isNaN(pauseEveryCount) ? 0 : pauseEveryCount,
     pauseDurationSeconds: Number.isNaN(pauseDurationSeconds) ? 0 : pauseDurationSeconds,
-  }), [activeDelaySeconds, destinationCount, draft.deliveryMode, draft.scheduledAt, pauseDurationSeconds, pauseEveryCount]);
+  }), [activeDelayMaxSeconds, activeDelayMinSeconds, destinationCount, draft.deliveryMode, draft.scheduledAt, pauseDurationSeconds, pauseEveryCount]);
   const mediaPreviewEnabled = draft.contentType !== "text" && isSafeMediaUrl(draft.mediaUrl);
   const hasUploadedMedia = draft.contentType !== "text" && Boolean(draft.mediaUrl.trim());
   const selectedTemplate = useMemo(() => templates.find((template) => template.id === selectedTemplateId) ?? null, [selectedTemplateId, templates]);
@@ -567,8 +574,12 @@ export function ScheduledDispatchPage() {
         targetType: draft.targetType,
         phones: draft.targetType === "number" ? normalizeScheduledDispatchPhones(draft.phonesText) : null,
         groupJids: draft.targetType === "group" ? draft.groupJids : null,
-        numberDelaySeconds: draft.targetType === "number" ? normalizeScheduledDispatchDelay(draft.numberDelaySeconds) : null,
-        groupDelaySeconds: draft.targetType === "group" ? normalizeScheduledDispatchDelay(draft.groupDelaySeconds) : null,
+        numberDelaySeconds: draft.targetType === "number" ? normalizeScheduledDispatchDelay(draft.numberDelayMinSeconds) : null,
+        numberDelayMinSeconds: draft.targetType === "number" ? normalizeScheduledDispatchDelay(draft.numberDelayMinSeconds) : null,
+        numberDelayMaxSeconds: draft.targetType === "number" ? normalizeScheduledDispatchDelay(draft.numberDelayMaxSeconds) : null,
+        groupDelaySeconds: draft.targetType === "group" ? normalizeScheduledDispatchDelay(draft.groupDelayMinSeconds) : null,
+        groupDelayMinSeconds: draft.targetType === "group" ? normalizeScheduledDispatchDelay(draft.groupDelayMinSeconds) : null,
+        groupDelayMaxSeconds: draft.targetType === "group" ? normalizeScheduledDispatchDelay(draft.groupDelayMaxSeconds) : null,
         pauseEveryCount: normalizeScheduledDispatchPauseEveryCount(draft.pauseEveryCount),
         pauseDurationSeconds: normalizeScheduledDispatchDelay(draft.pauseDurationSeconds),
         contentType: draft.contentType,
@@ -1015,15 +1026,24 @@ export function ScheduledDispatchPage() {
                 <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Ritmo de envio</h3>
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Configure intervalo entre destinos e pausas automaticas por bloco.</p>
               </div>
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                 <Input
-                  label={draft.targetType === "number" ? "Delay por numero (s)" : "Delay por grupo (s)"}
+                  label={draft.targetType === "number" ? "Delay aleatorio de numero (s)" : "Delay aleatorio de grupo (s)"}
                   placeholder="0"
                   inputMode="numeric"
-                  value={draft.targetType === "number" ? draft.numberDelaySeconds : draft.groupDelaySeconds}
+                  value={draft.targetType === "number" ? draft.numberDelayMinSeconds : draft.groupDelayMinSeconds}
                   onChange={(event) => setDraft((current) => draft.targetType === "number"
-                    ? { ...current, numberDelaySeconds: event.target.value }
-                    : { ...current, groupDelaySeconds: event.target.value })}
+                    ? { ...current, numberDelayMinSeconds: event.target.value }
+                    : { ...current, groupDelayMinSeconds: event.target.value })}
+                />
+                <Input
+                  label={draft.targetType === "number" ? "Delay aleatorio ate numero (s)" : "Delay aleatorio ate grupo (s)"}
+                  placeholder="0"
+                  inputMode="numeric"
+                  value={draft.targetType === "number" ? draft.numberDelayMaxSeconds : draft.groupDelayMaxSeconds}
+                  onChange={(event) => setDraft((current) => draft.targetType === "number"
+                    ? { ...current, numberDelayMaxSeconds: event.target.value }
+                    : { ...current, groupDelayMaxSeconds: event.target.value })}
                 />
                 <Input
                   label="Pausar a cada"
@@ -1046,9 +1066,11 @@ export function ScheduledDispatchPage() {
               {validation.pauseDurationSeconds ? <p className="text-sm text-red-600 dark:text-red-400">{validation.pauseDurationSeconds}</p> : null}
               <div className="grid gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2.5 text-xs text-slate-600 dark:border-slate-700 dark:text-slate-400 sm:grid-cols-2 xl:grid-cols-4">
                 <span>Total: <strong className="text-slate-900 dark:text-slate-100">{rhythmPreview.totalDestinations}</strong></span>
-                <span>Delay: <strong className="text-slate-900 dark:text-slate-100">{rhythmPreview.delaySeconds}s</strong></span>
+                <span>Delay: <strong className="text-slate-900 dark:text-slate-100">{activeDelayLabel}</strong></span>
                 <span>Pausas: <strong className="text-slate-900 dark:text-slate-100">{rhythmPreview.estimatedPauseCount}</strong></span>
-                <span>Termino estimado: <strong className="text-slate-900 dark:text-slate-100">{formatDateTime(rhythmPreview.estimatedFinishAt.toISOString())}</strong></span>
+                <span>Termino estimado: <strong className="text-slate-900 dark:text-slate-100">{rhythmPreview.estimatedMinFinishAt.getTime() === rhythmPreview.estimatedMaxFinishAt.getTime()
+                  ? formatDateTime(rhythmPreview.estimatedMaxFinishAt.toISOString())
+                  : `${formatDateTime(rhythmPreview.estimatedMinFinishAt.toISOString())} ate ${formatDateTime(rhythmPreview.estimatedMaxFinishAt.toISOString())}`}</strong></span>
               </div>
             </div>
 
@@ -1103,7 +1125,7 @@ export function ScheduledDispatchPage() {
                 {" · "}
                 Destinos: <span className="font-semibold text-slate-900 dark:text-slate-100">{destinationCount}</span>
                 {" · "}
-                Atraso: <span className="font-semibold text-slate-900 dark:text-slate-100">{Number.isNaN(activeDelaySeconds) ? 0 : activeDelaySeconds}s</span>
+                Atraso: <span className="font-semibold text-slate-900 dark:text-slate-100">{activeDelayLabel}</span>
                 {" · "}
                 Pausas: <span className="font-semibold text-slate-900 dark:text-slate-100">{rhythmPreview.estimatedPauseCount}</span>
               </div>

@@ -40,7 +40,7 @@ function multipartBody(fields, file) {
   };
 }
 
-function createApp() {
+function createApp(options = {}) {
   const store = createInMemoryScheduledDispatchStore({
     instances: [{ id: "instance-a" }, { id: "instance-b" }, { id: "instance-offline", status: "DISCONNECTED" }],
     groups: [
@@ -60,7 +60,7 @@ function createApp() {
       },
     ],
   });
-  const service = createScheduledDispatchService({ store });
+  const service = createScheduledDispatchService({ store, randomInt: options.randomInt });
   const templateStore = createInMemoryScheduledDispatchTemplateStore();
   const templateService = createScheduledDispatchTemplateService({ store: templateStore });
   const groupSyncService = {
@@ -83,7 +83,15 @@ function createApp() {
 }
 
 (async () => {
-  const { app, store } = createApp();
+  const randomDelays = [84, 89, 81, 87];
+  const { app, store } = createApp({
+    randomInt(min, max) {
+      if (min === max) return min;
+      const next = randomDelays.shift();
+      assert.equal(typeof next, "number", "random delay sequence exhausted");
+      return next;
+    },
+  });
   await app.ready();
 
   const listGroupsResponse = await app.inject({ method: "GET", url: "/api/scheduled-dispatches/groups?instanceId=instance-a" });
@@ -241,6 +249,52 @@ function createApp() {
   assert.equal(pausedNumbers[0].campaignId, pausedNumbers[4].campaignId);
   assert.equal(pausedNumbers[0].campaign.pauseEveryCount, 2);
   assert.equal(pausedNumbers[0].campaign.pauseDurationSeconds, 60);
+
+  const createRandomDelayNumbersResponse = await app.inject({
+    method: "POST",
+    url: "/api/scheduled-dispatches",
+    payload: {
+      instanceId: "instance-a",
+      targetType: "number",
+      phones: ["551100000101", "551100000102", "551100000103", "551100000104", "551100000105"],
+      contentType: "text",
+      body: "Campanha com delay aleatorio",
+      deliveryMode: "scheduled",
+      scheduledAt: "2026-06-20T14:00:00.000Z",
+      numberDelayMinSeconds: 80,
+      numberDelayMaxSeconds: 90,
+      pauseEveryCount: 2,
+      pauseDurationSeconds: 60,
+    },
+  });
+  assert.equal(createRandomDelayNumbersResponse.statusCode, 201, createRandomDelayNumbersResponse.body);
+  const randomDelayNumbers = JSON.parse(createRandomDelayNumbersResponse.body).dispatches;
+  assert.deepEqual(randomDelayNumbers.map((dispatch) => dispatch.scheduledAt), [
+    "2026-06-20T14:00:00.000Z",
+    "2026-06-20T14:01:24.000Z",
+    "2026-06-20T14:03:53.000Z",
+    "2026-06-20T14:05:14.000Z",
+    "2026-06-20T14:07:41.000Z",
+  ]);
+  assert.equal(randomDelayNumbers[0].campaign.delaySeconds, 80);
+
+  const createInvalidDelayRangeResponse = await app.inject({
+    method: "POST",
+    url: "/api/scheduled-dispatches",
+    payload: {
+      instanceId: "instance-a",
+      targetType: "number",
+      phones: ["551100000201", "551100000202"],
+      contentType: "text",
+      body: "Faixa invalida",
+      deliveryMode: "scheduled",
+      scheduledAt: "2026-06-20T15:00:00.000Z",
+      numberDelayMinSeconds: 90,
+      numberDelayMaxSeconds: 80,
+    },
+  });
+  assert.equal(createInvalidDelayRangeResponse.statusCode, 400, createInvalidDelayRangeResponse.body);
+  assert.equal(JSON.parse(createInvalidDelayRangeResponse.body).code, "SCHEDULED_DISPATCH_VALIDATION_ERROR");
 
   const createImageResponse = await app.inject({
     method: "POST",
@@ -421,7 +475,7 @@ function createApp() {
   const listAllResponse = await app.inject({ method: "GET", url: "/api/scheduled-dispatches" });
   assert.equal(listAllResponse.statusCode, 200, listAllResponse.body);
   const allDispatches = JSON.parse(listAllResponse.body).dispatches;
-  assert.equal(allDispatches.length, 16);
+  assert.equal(allDispatches.length, 21);
 
   await app.close();
   console.log("scheduled-dispatch-api: OK");

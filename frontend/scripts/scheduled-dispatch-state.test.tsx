@@ -18,6 +18,7 @@ import {
   normalizeScheduledDispatchDelay,
   normalizeScheduledDispatchPauseEveryCount,
   normalizeScheduledDispatchPhones,
+  resolveScheduledDispatchDelayRange,
   resolveScheduledDispatchIso,
   resolveScheduledDispatchTargetLabel,
   SCHEDULED_DISPATCH_STATUS_LABELS,
@@ -65,7 +66,11 @@ test("instance changes clear previous group selection and uploaded media", () =>
   assert.equal(next.mediaFileName, "");
   assert.equal(next.body, "Campanha");
   assert.equal(next.numberDelaySeconds, "0");
+  assert.equal(next.numberDelayMinSeconds, "0");
+  assert.equal(next.numberDelayMaxSeconds, "0");
   assert.equal(next.groupDelaySeconds, "0");
+  assert.equal(next.groupDelayMinSeconds, "0");
+  assert.equal(next.groupDelayMaxSeconds, "0");
   assert.equal(next.pauseEveryCount, "0");
   assert.equal(next.pauseDurationSeconds, "0");
 });
@@ -74,6 +79,8 @@ test("phone parsing removes separators and duplicates", () => {
   assert.deepEqual(normalizeScheduledDispatchPhones("+55 (11) 99999-1234\n5511999991234,1188887777,1198765432"), ["5511999991234", "551188887777", "551198765432"]);
   assert.equal(normalizeScheduledDispatchDelay("15"), 15);
   assert.equal(normalizeScheduledDispatchDelay(""), 0);
+  assert.deepEqual(resolveScheduledDispatchDelayRange({ fixedSeconds: "15", minSeconds: "", maxSeconds: "" }), { fixedSeconds: 15, minSeconds: 15, maxSeconds: 15 });
+  assert.deepEqual(resolveScheduledDispatchDelayRange({ fixedSeconds: "0", minSeconds: "80", maxSeconds: "90" }), { fixedSeconds: 0, minSeconds: 80, maxSeconds: 90 });
   assert.equal(normalizeScheduledDispatchPauseEveryCount("3"), 3);
 });
 
@@ -81,12 +88,15 @@ test("programmed pause preview estimates block pauses without initial pause", ()
   const preview = calculateScheduledDispatchPreview({
     totalDestinations: 5,
     baseScheduledAt: new Date("2026-06-20T13:00:00.000Z"),
-    delaySeconds: 10,
+    delayMinSeconds: 10,
+    delayMaxSeconds: 20,
     pauseEveryCount: 2,
     pauseDurationSeconds: 60,
   });
   assert.equal(preview.estimatedPauseCount, 2);
-  assert.equal(preview.estimatedFinishAt.toISOString(), "2026-06-20T13:02:40.000Z");
+  assert.equal(preview.estimatedMinFinishAt.toISOString(), "2026-06-20T13:02:40.000Z");
+  assert.equal(preview.estimatedMaxFinishAt.toISOString(), "2026-06-20T13:03:20.000Z");
+  assert.equal(preview.estimatedFinishAt.toISOString(), "2026-06-20T13:03:20.000Z");
 });
 
 test("global scheduled dispatch templates apply only content fields", () => {
@@ -277,10 +287,20 @@ test("composer validation supports multi-number, local media upload, and immedia
     ...base,
     contentType: "text",
     body: "Com atraso invalido",
-    numberDelaySeconds: "-1",
+    numberDelayMinSeconds: "-1",
   });
   assert.equal(invalidNumberDelay.canSubmit, false);
-  assert.equal(invalidNumberDelay.numberDelaySeconds, "Informe um atraso entre 0 e 86400 segundos.");
+  assert.equal(invalidNumberDelay.numberDelaySeconds, "Informe uma faixa de atraso entre 0 e 86400 segundos.");
+
+  const invalidDelayRange = validateScheduledDispatchDraft({
+    ...base,
+    contentType: "text",
+    body: "Com faixa invalida",
+    numberDelayMinSeconds: "90",
+    numberDelayMaxSeconds: "80",
+  });
+  assert.equal(invalidDelayRange.canSubmit, false);
+  assert.equal(invalidDelayRange.numberDelaySeconds, "O atraso maximo deve ser maior ou igual ao minimo.");
 
   const invalidPause = validateScheduledDispatchDraft({
     ...base,
@@ -309,8 +329,12 @@ test("scheduled dispatch page keeps multi-target composer, group selection, and 
   assert.match(source, /buildScheduledDispatchTemplatePayload/);
   assert.match(source, /phones: draft\.targetType === "number" \? normalizeScheduledDispatchPhones\(draft\.phonesText\) : null/);
   assert.match(source, /groupJids: draft\.targetType === "group" \? draft\.groupJids : null/);
-  assert.match(source, /numberDelaySeconds: draft\.targetType === "number" \? normalizeScheduledDispatchDelay\(draft\.numberDelaySeconds\) : null/);
-  assert.match(source, /groupDelaySeconds: draft\.targetType === "group" \? normalizeScheduledDispatchDelay\(draft\.groupDelaySeconds\) : null/);
+  assert.match(source, /numberDelaySeconds: draft\.targetType === "number" \? normalizeScheduledDispatchDelay\(draft\.numberDelayMinSeconds\) : null/);
+  assert.match(source, /numberDelayMinSeconds: draft\.targetType === "number" \? normalizeScheduledDispatchDelay\(draft\.numberDelayMinSeconds\) : null/);
+  assert.match(source, /numberDelayMaxSeconds: draft\.targetType === "number" \? normalizeScheduledDispatchDelay\(draft\.numberDelayMaxSeconds\) : null/);
+  assert.match(source, /groupDelaySeconds: draft\.targetType === "group" \? normalizeScheduledDispatchDelay\(draft\.groupDelayMinSeconds\) : null/);
+  assert.match(source, /groupDelayMinSeconds: draft\.targetType === "group" \? normalizeScheduledDispatchDelay\(draft\.groupDelayMinSeconds\) : null/);
+  assert.match(source, /groupDelayMaxSeconds: draft\.targetType === "group" \? normalizeScheduledDispatchDelay\(draft\.groupDelayMaxSeconds\) : null/);
   assert.match(source, /pauseEveryCount: normalizeScheduledDispatchPauseEveryCount\(draft\.pauseEveryCount\)/);
   assert.match(source, /pauseDurationSeconds: normalizeScheduledDispatchDelay\(draft\.pauseDurationSeconds\)/);
   assert.match(source, /resolveScheduledDispatchSubmitError\(err\)/);
@@ -328,8 +352,10 @@ test("scheduled dispatch page keeps multi-target composer, group selection, and 
   assert.match(source, /Aplicar template/);
   assert.match(source, /Salvar como template/);
   assert.match(source, /Midia de template/);
-  assert.match(source, /Delay por numero \(s\)/);
-  assert.match(source, /Delay por grupo \(s\)/);
+  assert.match(source, /Delay aleatorio de numero \(s\)/);
+  assert.match(source, /Delay aleatorio ate numero \(s\)/);
+  assert.match(source, /Delay aleatorio de grupo \(s\)/);
+  assert.match(source, /Delay aleatorio ate grupo \(s\)/);
   assert.match(source, /Pausar a cada/);
   assert.match(source, /Pausar por \(s\)/);
   assert.match(source, /Termino estimado/);

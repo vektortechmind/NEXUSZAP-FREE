@@ -37,7 +37,11 @@ type ScheduledDispatchCreateInput = {
   deliveryMode: "immediate" | "scheduled";
   scheduledAt?: Date | null;
   numberDelaySeconds?: number | null;
+  numberDelayMinSeconds?: number | null;
+  numberDelayMaxSeconds?: number | null;
   groupDelaySeconds?: number | null;
+  groupDelayMinSeconds?: number | null;
+  groupDelayMaxSeconds?: number | null;
   pauseEveryCount?: number | null;
   pauseDurationSeconds?: number | null;
 };
@@ -200,6 +204,27 @@ function normalizeDelaySeconds(value?: number | null, field = "delaySeconds") {
   return value;
 }
 
+function normalizeDelayRange(input: {
+  fixed?: number | null;
+  min?: number | null;
+  max?: number | null;
+  fixedField: string;
+  minField: string;
+  maxField: string;
+}) {
+  const fixed = normalizeDelaySeconds(input.fixed, input.fixedField);
+  const hasRange = input.min != null || input.max != null;
+  if (!hasRange) return { minSeconds: fixed, maxSeconds: fixed };
+
+  const minSeconds = normalizeDelaySeconds(input.min ?? fixed, input.minField);
+  const maxSeconds = normalizeDelaySeconds(input.max ?? minSeconds, input.maxField);
+  if (maxSeconds < minSeconds) {
+    throw new ScheduledDispatchValidationError(`${input.maxField} deve ser maior ou igual a ${input.minField}.`);
+  }
+
+  return { minSeconds, maxSeconds };
+}
+
 function normalizePauseEveryCount(value?: number | null) {
   if (value == null) return 0;
   if (!Number.isInteger(value) || value < 0 || value > 10_000) {
@@ -226,6 +251,43 @@ export function calculateScheduledDispatchAt(input: {
     : 0;
   const offsetSeconds = (input.index * input.delaySeconds) + (pauseBlocks * pauseDurationSeconds);
   return new Date(input.baseScheduledAt.getTime() + (offsetSeconds * 1000));
+}
+
+function randomIntInclusive(min: number, max: number) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+export function calculateScheduledDispatchSchedule(input: {
+  baseScheduledAt: Date;
+  totalDestinations: number;
+  delayMinSeconds: number;
+  delayMaxSeconds: number;
+  pauseEveryCount?: number | null;
+  pauseDurationSeconds?: number | null;
+  randomInt?: (min: number, max: number) => number;
+}) {
+  const totalDestinations = Math.max(0, input.totalDestinations);
+  const pauseEveryCount = input.pauseEveryCount && input.pauseEveryCount > 0 ? input.pauseEveryCount : 0;
+  const pauseDurationSeconds = input.pauseDurationSeconds && input.pauseDurationSeconds > 0 ? input.pauseDurationSeconds : 0;
+  const randomInt = input.randomInt ?? randomIntInclusive;
+  const scheduledAt: Date[] = [];
+  let offsetSeconds = 0;
+
+  for (let index = 0; index < totalDestinations; index += 1) {
+    if (index > 0) {
+      const delaySeconds = randomInt(input.delayMinSeconds, input.delayMaxSeconds);
+      if (!Number.isInteger(delaySeconds) || delaySeconds < input.delayMinSeconds || delaySeconds > input.delayMaxSeconds) {
+        throw new ScheduledDispatchValidationError("Delay sorteado fora da faixa configurada.");
+      }
+      offsetSeconds += delaySeconds;
+      if (pauseEveryCount > 0 && pauseDurationSeconds > 0 && index % pauseEveryCount === 0) {
+        offsetSeconds += pauseDurationSeconds;
+      }
+    }
+    scheduledAt.push(new Date(input.baseScheduledAt.getTime() + (offsetSeconds * 1000)));
+  }
+
+  return scheduledAt;
 }
 
 const MAX_SCHEDULED_DISPATCH_BUTTONS = 3;
@@ -715,8 +777,9 @@ export function createInMemoryScheduledDispatchStore(seed: {
   };
 }
 
-export function createScheduledDispatchService(deps: { store?: ScheduledDispatchStore } = {}) {
+export function createScheduledDispatchService(deps: { store?: ScheduledDispatchStore; randomInt?: (min: number, max: number) => number } = {}) {
   const store = deps.store ?? prismaScheduledDispatchStore;
+  const randomInt = deps.randomInt ?? randomIntInclusive;
 
   async function ensureInstance(instanceId: string) {
     const instance = await store.findInstance(instanceId);
@@ -818,7 +881,14 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
       }
 
       if (input.targetType === "number") {
-        const numberDelaySeconds = normalizeDelaySeconds(input.numberDelaySeconds, "numberDelaySeconds");
+        const numberDelayRange = normalizeDelayRange({
+          fixed: input.numberDelaySeconds,
+          min: input.numberDelayMinSeconds,
+          max: input.numberDelayMaxSeconds,
+          fixedField: "numberDelaySeconds",
+          minField: "numberDelayMinSeconds",
+          maxField: "numberDelayMaxSeconds",
+        });
         if (groupJids.length > 0) {
           throw new ScheduledDispatchValidationError("Disparo para numero nao aceita groupJids.");
         }
@@ -831,9 +901,19 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
           targetType: "NUMBER",
           totalDestinations: phones.length,
           baseScheduledAt,
-          delaySeconds: numberDelaySeconds,
+          delaySeconds: numberDelayRange.minSeconds,
           pauseEveryCount,
           pauseDurationSeconds,
+        });
+
+        const schedule = calculateScheduledDispatchSchedule({
+          baseScheduledAt,
+          totalDestinations: phones.length,
+          delayMinSeconds: numberDelayRange.minSeconds,
+          delayMaxSeconds: numberDelayRange.maxSeconds,
+          pauseEveryCount,
+          pauseDurationSeconds,
+          randomInt,
         });
 
         const dispatches: ScheduledDispatchViewRecord[] = [];
@@ -846,19 +926,20 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
             groupJid: null,
             phones: null,
             groupJids: null,
-            scheduledAt: calculateScheduledDispatchAt({
-              baseScheduledAt,
-              index,
-              delaySeconds: numberDelaySeconds,
-              pauseEveryCount,
-              pauseDurationSeconds,
-            }),
+            scheduledAt: schedule[index],
           }));
         }
         return dispatches;
       }
 
-      const groupDelaySeconds = normalizeDelaySeconds(input.groupDelaySeconds, "groupDelaySeconds");
+      const groupDelayRange = normalizeDelayRange({
+        fixed: input.groupDelaySeconds,
+        min: input.groupDelayMinSeconds,
+        max: input.groupDelayMaxSeconds,
+        fixedField: "groupDelaySeconds",
+        minField: "groupDelayMinSeconds",
+        maxField: "groupDelayMaxSeconds",
+      });
       if (phones.length > 0) {
         throw new ScheduledDispatchValidationError("Disparo para grupo nao aceita phones.");
       }
@@ -871,9 +952,19 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
         targetType: "GROUP",
         totalDestinations: groupJids.length,
         baseScheduledAt,
-        delaySeconds: groupDelaySeconds,
+        delaySeconds: groupDelayRange.minSeconds,
         pauseEveryCount,
         pauseDurationSeconds,
+      });
+
+      const schedule = calculateScheduledDispatchSchedule({
+        baseScheduledAt,
+        totalDestinations: groupJids.length,
+        delayMinSeconds: groupDelayRange.minSeconds,
+        delayMaxSeconds: groupDelayRange.maxSeconds,
+        pauseEveryCount,
+        pauseDurationSeconds,
+        randomInt,
       });
 
       const dispatches: ScheduledDispatchViewRecord[] = [];
@@ -886,13 +977,7 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
           groupJid,
           phones: null,
           groupJids: null,
-          scheduledAt: calculateScheduledDispatchAt({
-            baseScheduledAt,
-            index,
-            delaySeconds: groupDelaySeconds,
-            pauseEveryCount,
-            pauseDurationSeconds,
-          }),
+          scheduledAt: schedule[index],
         }));
       }
       return dispatches;

@@ -52,7 +52,11 @@ const createDispatchBodySchema = z.object({
   deliveryMode: z.enum(["immediate", "scheduled"]),
   scheduledAt: z.string().datetime().optional().nullable(),
   numberDelaySeconds: z.coerce.number().int().min(0).max(86400).optional().nullable(),
+  numberDelayMinSeconds: z.coerce.number().int().min(0).max(86400).optional().nullable(),
+  numberDelayMaxSeconds: z.coerce.number().int().min(0).max(86400).optional().nullable(),
   groupDelaySeconds: z.coerce.number().int().min(0).max(86400).optional().nullable(),
+  groupDelayMinSeconds: z.coerce.number().int().min(0).max(86400).optional().nullable(),
+  groupDelayMaxSeconds: z.coerce.number().int().min(0).max(86400).optional().nullable(),
   pauseEveryCount: z.coerce.number().int().min(0).max(10000).optional().nullable(),
   pauseDurationSeconds: z.coerce.number().int().min(0).max(86400).optional().nullable(),
 }).strict();
@@ -303,7 +307,11 @@ export function createScheduledDispatchRoutes(deps: ScheduledDispatchRoutesDeps 
           deliveryMode: body.deliveryMode,
           scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
           numberDelaySeconds: body.numberDelaySeconds ?? null,
+          numberDelayMinSeconds: body.numberDelayMinSeconds ?? null,
+          numberDelayMaxSeconds: body.numberDelayMaxSeconds ?? null,
           groupDelaySeconds: body.groupDelaySeconds ?? null,
+          groupDelayMinSeconds: body.groupDelayMinSeconds ?? null,
+          groupDelayMaxSeconds: body.groupDelayMaxSeconds ?? null,
           pauseEveryCount: body.pauseEveryCount ?? null,
           pauseDurationSeconds: body.pauseDurationSeconds ?? null,
         });

@@ -69,7 +69,11 @@ export type ScheduledDispatchDraft = {
   phonesText: string;
   groupJids: string[];
   numberDelaySeconds: string;
+  numberDelayMinSeconds: string;
+  numberDelayMaxSeconds: string;
   groupDelaySeconds: string;
+  groupDelayMinSeconds: string;
+  groupDelayMaxSeconds: string;
   pauseEveryCount: string;
   pauseDurationSeconds: string;
   contentType: ScheduledDispatchContentType;
@@ -124,7 +128,11 @@ export function createInitialScheduledDispatchDraft(now = new Date()): Scheduled
     phonesText: "",
     groupJids: [],
     numberDelaySeconds: "0",
+    numberDelayMinSeconds: "0",
+    numberDelayMaxSeconds: "0",
     groupDelaySeconds: "0",
+    groupDelayMinSeconds: "0",
+    groupDelayMaxSeconds: "0",
     pauseEveryCount: "0",
     pauseDurationSeconds: "0",
     contentType: "text",
@@ -235,6 +243,17 @@ export function normalizeScheduledDispatchDelay(value: string) {
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : Number.NaN;
 }
 
+export function resolveScheduledDispatchDelayRange(input: {
+  fixedSeconds: string;
+  minSeconds: string;
+  maxSeconds: string;
+}) {
+  const fixedSeconds = normalizeScheduledDispatchDelay(input.fixedSeconds);
+  const minSeconds = normalizeScheduledDispatchDelay(input.minSeconds || input.fixedSeconds);
+  const maxSeconds = normalizeScheduledDispatchDelay(input.maxSeconds || input.minSeconds || input.fixedSeconds);
+  return { fixedSeconds, minSeconds, maxSeconds };
+}
+
 export function normalizeScheduledDispatchPauseEveryCount(value: string) {
   const trimmed = value.trim();
   if (!trimmed) return 0;
@@ -245,23 +264,32 @@ export function normalizeScheduledDispatchPauseEveryCount(value: string) {
 export function calculateScheduledDispatchPreview(input: {
   totalDestinations: number;
   baseScheduledAt: Date;
-  delaySeconds: number;
+  delaySeconds?: number;
+  delayMinSeconds?: number;
+  delayMaxSeconds?: number;
   pauseEveryCount: number;
   pauseDurationSeconds: number;
 }) {
+  const delayMinSeconds = input.delayMinSeconds ?? input.delaySeconds ?? 0;
+  const delayMaxSeconds = input.delayMaxSeconds ?? input.delaySeconds ?? delayMinSeconds;
   const pauseEnabled = input.pauseEveryCount > 0 && input.pauseDurationSeconds > 0;
   const estimatedPauseCount = pauseEnabled && input.totalDestinations > 0
     ? Math.floor((input.totalDestinations - 1) / input.pauseEveryCount)
     : 0;
   const lastIndex = Math.max(0, input.totalDestinations - 1);
-  const offsetSeconds = (lastIndex * input.delaySeconds) + (estimatedPauseCount * input.pauseDurationSeconds);
+  const minOffsetSeconds = (lastIndex * delayMinSeconds) + (estimatedPauseCount * input.pauseDurationSeconds);
+  const maxOffsetSeconds = (lastIndex * delayMaxSeconds) + (estimatedPauseCount * input.pauseDurationSeconds);
   return {
     totalDestinations: input.totalDestinations,
-    delaySeconds: input.delaySeconds,
+    delaySeconds: delayMinSeconds,
+    delayMinSeconds,
+    delayMaxSeconds,
     pauseEveryCount: input.pauseEveryCount,
     pauseDurationSeconds: input.pauseDurationSeconds,
     estimatedPauseCount,
-    estimatedFinishAt: new Date(input.baseScheduledAt.getTime() + (offsetSeconds * 1000)),
+    estimatedMinFinishAt: new Date(input.baseScheduledAt.getTime() + (minOffsetSeconds * 1000)),
+    estimatedMaxFinishAt: new Date(input.baseScheduledAt.getTime() + (maxOffsetSeconds * 1000)),
+    estimatedFinishAt: new Date(input.baseScheduledAt.getTime() + (maxOffsetSeconds * 1000)),
   };
 }
 
@@ -300,9 +328,16 @@ export function validateScheduledDispatchDraft(draft: ScheduledDispatchDraft, op
       result.canSubmit = false;
     }
 
-    const numberDelaySeconds = normalizeScheduledDispatchDelay(draft.numberDelaySeconds);
-    if (Number.isNaN(numberDelaySeconds) || numberDelaySeconds > 86_400) {
-      result.numberDelaySeconds = "Informe um atraso entre 0 e 86400 segundos.";
+    const numberDelayRange = resolveScheduledDispatchDelayRange({
+      fixedSeconds: draft.numberDelaySeconds,
+      minSeconds: draft.numberDelayMinSeconds,
+      maxSeconds: draft.numberDelayMaxSeconds,
+    });
+    if (Number.isNaN(numberDelayRange.minSeconds) || Number.isNaN(numberDelayRange.maxSeconds) || numberDelayRange.minSeconds > 86_400 || numberDelayRange.maxSeconds > 86_400) {
+      result.numberDelaySeconds = "Informe uma faixa de atraso entre 0 e 86400 segundos.";
+      result.canSubmit = false;
+    } else if (numberDelayRange.maxSeconds < numberDelayRange.minSeconds) {
+      result.numberDelaySeconds = "O atraso maximo deve ser maior ou igual ao minimo.";
       result.canSubmit = false;
     }
   }
@@ -313,9 +348,16 @@ export function validateScheduledDispatchDraft(draft: ScheduledDispatchDraft, op
   }
 
   if (draft.targetType === "group") {
-    const groupDelaySeconds = normalizeScheduledDispatchDelay(draft.groupDelaySeconds);
-    if (Number.isNaN(groupDelaySeconds) || groupDelaySeconds > 86_400) {
-      result.groupDelaySeconds = "Informe um atraso entre 0 e 86400 segundos.";
+    const groupDelayRange = resolveScheduledDispatchDelayRange({
+      fixedSeconds: draft.groupDelaySeconds,
+      minSeconds: draft.groupDelayMinSeconds,
+      maxSeconds: draft.groupDelayMaxSeconds,
+    });
+    if (Number.isNaN(groupDelayRange.minSeconds) || Number.isNaN(groupDelayRange.maxSeconds) || groupDelayRange.minSeconds > 86_400 || groupDelayRange.maxSeconds > 86_400) {
+      result.groupDelaySeconds = "Informe uma faixa de atraso entre 0 e 86400 segundos.";
+      result.canSubmit = false;
+    } else if (groupDelayRange.maxSeconds < groupDelayRange.minSeconds) {
+      result.groupDelaySeconds = "O atraso maximo deve ser maior ou igual ao minimo.";
       result.canSubmit = false;
     }
   }
