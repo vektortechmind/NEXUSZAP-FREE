@@ -2,6 +2,25 @@
 
 Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
+## [1.0.17] - 2026-06-18
+
+### Added
+
+- Cancelamento de campanha em lote no modulo `Envios`, permitindo cancelar todos os jobs pendentes `SCHEDULED` de uma campanha em uma unica acao.
+- Novo endpoint autenticado `POST /api/scheduled-dispatches/campaigns/:campaignId/cancel` com resumo de contagens por status.
+- Botao `Cancelar campanha` no resumo do historico de campanhas, com confirmacao e recarga automatica do historico.
+
+### Changed
+
+- Composer de `Envios` passa a listar apenas instancias WhatsApp com status `CONNECTED` para novas campanhas.
+- Validacao de criacao de disparos no backend agora rejeita instancias nao conectadas com erro operacional claro `SCHEDULED_DISPATCH_INSTANCE_NOT_CONNECTED`.
+- Versao do frontend, backend, `backend/VERSION`, README e changelog atualizada para `1.0.17`.
+
+### Fixed
+
+- Evitado o cenario operacional em que campanhas grandes podiam ser criadas em instancia desconectada e deixar centenas de jobs pendentes.
+- Cancelamento em lote preserva jobs `SENT`, `FAILED`, `PROCESSING` e `CANCELLED`, alterando somente itens ainda pendentes.
+
 ## [1.0.16] - 2026-06-18
 
 ### Added
