@@ -9,11 +9,14 @@ Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 - Cancelamento de campanha em lote no modulo `Envios`, permitindo cancelar todos os jobs pendentes `SCHEDULED` de uma campanha em uma unica acao.
 - Novo endpoint autenticado `POST /api/scheduled-dispatches/campaigns/:campaignId/cancel` com resumo de contagens por status.
 - Botao `Cancelar campanha` no resumo do historico de campanhas, com confirmacao e recarga automatica do historico.
+- Delay aleatorio por faixa no composer de `Envios`, permitindo configurar minimo e maximo por numero ou grupo para sortear cada intervalo entre destinos.
 
 ### Changed
 
 - Composer de `Envios` passa a listar apenas instancias WhatsApp com status `CONNECTED` para novas campanhas.
 - Validacao de criacao de disparos no backend agora rejeita instancias nao conectadas com erro operacional claro `SCHEDULED_DISPATCH_INSTANCE_NOT_CONNECTED`.
+- Backend de disparos agora calcula e persiste o cronograma final com `scheduledAt` sorteado por destino, mantendo compatibilidade com `numberDelaySeconds` e `groupDelaySeconds` legados.
+- Preview de `Ritmo de envio` passa a mostrar janela minima/maxima de termino quando o delay esta configurado como faixa aleatoria.
 - Versao do frontend, backend, `backend/VERSION`, README e changelog atualizada para `1.0.17`.
 
 ### Fixed
