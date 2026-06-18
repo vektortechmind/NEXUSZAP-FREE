@@ -171,6 +171,34 @@ print_migration_summary() {
   echo "Migrations Prisma verificadas com sucesso."
 }
 
+is_prisma_status_blocking_failure() {
+  local status_output="$1"
+  printf '%s\n' "$status_output" | grep -Eqi "failed migration|migration.*failed|drift detected|database schema drift|histories diverge|migration history.*diverge|could not connect|can't reach database|connection refused|connection timed out|authentication failed|P1000|P1001|P1002|P1003"
+}
+
+is_prisma_status_pending_only() {
+  local status_output="$1"
+  if is_prisma_status_blocking_failure "$status_output"; then
+    return 1
+  fi
+
+  printf '%s\n' "$status_output" | grep -Eqi "pending migrations|not yet been applied|have not yet been applied|database schema is not up to date|following migration"
+}
+
+handle_prisma_status_failure() {
+  local status_output="$1"
+  local environment_label="$2"
+
+  printf '%s\n' "$status_output"
+  if is_prisma_status_pending_only "$status_output"; then
+    echo "Migrations Prisma pendentes detectadas${environment_label}; seguindo para migrate deploy."
+    return 0
+  fi
+
+  echo "ERRO: falha ao verificar status das migrations Prisma${environment_label}." >&2
+  return 1
+}
+
 update_panel_job_state() {
   local status="$1"
   local summary="$2"
@@ -202,12 +230,13 @@ run_backend_migrations_local() {
   echo "Verificando status das migrations Prisma..."
   pushd backend >/dev/null
   if ! status_output="$(npx prisma migrate status --schema prisma/schema.prisma 2>&1)"; then
+    if ! handle_prisma_status_failure "$status_output" ""; then
+      popd >/dev/null
+      exit 1
+    fi
+  else
     printf '%s\n' "$status_output"
-    popd >/dev/null
-    echo "ERRO: falha ao verificar status das migrations Prisma." >&2
-    exit 1
   fi
-  printf '%s\n' "$status_output"
 
   echo "Aplicando migrations Prisma..."
   if ! deploy_output="$(npm run db:migrate:deploy 2>&1)"; then
@@ -231,11 +260,12 @@ run_backend_migrations_docker() {
 
   echo "Verificando status das migrations Prisma via Docker..."
   if ! status_output="$(docker_compose run --rm --no-deps backend npx prisma migrate status --schema prisma/schema.prisma 2>&1)"; then
+    if ! handle_prisma_status_failure "$status_output" " no ambiente Docker"; then
+      exit 1
+    fi
+  else
     printf '%s\n' "$status_output"
-    echo "ERRO: falha ao verificar status das migrations Prisma no ambiente Docker." >&2
-    exit 1
   fi
-  printf '%s\n' "$status_output"
 
   echo "Aplicando migrations Prisma via Docker..."
   if ! deploy_output="$(docker_compose run --rm --no-deps backend npm run db:migrate:deploy 2>&1)"; then

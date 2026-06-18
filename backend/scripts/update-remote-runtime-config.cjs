@@ -52,6 +52,12 @@ assert.ok(!updateScript.includes("docker_compose up -d postgres"), "update.sh na
 assert.ok(updateScript.includes("docker_compose up -d --no-deps backend frontend"), "update.sh deve recriar backend/frontend sem tocar dependencias stateful");
 assert.ok(updateScript.includes("docker_compose run --rm --no-deps backend npx prisma migrate status"), "update.sh deve verificar migrations sem recriar dependencias do Compose");
 assert.ok(updateScript.includes("docker_compose run --rm --no-deps backend npm run db:migrate:deploy"), "update.sh deve aplicar migrations sem recriar dependencias do Compose");
+assert.ok(updateScript.includes("is_prisma_status_pending_only()"), "update.sh deve classificar migrations Prisma pendentes como nao fatais");
+assert.ok(updateScript.includes("is_prisma_status_blocking_failure()"), "update.sh deve continuar bloqueando falhas reais de status Prisma");
+assert.ok(updateScript.includes("handle_prisma_status_failure()"), "update.sh deve centralizar tratamento de falha do prisma migrate status");
+assert.ok(updateScript.includes("Migrations Prisma pendentes detectadas"), "update.sh deve informar que seguira para migrate deploy quando houver apenas pendencias");
+assert.ok(updateScript.includes("if ! handle_prisma_status_failure \"$status_output\" \"\"; then"), "fluxo local nao deve abortar automaticamente quando status retornar pendencias");
+assert.ok(updateScript.includes("if ! handle_prisma_status_failure \"$status_output\" \" no ambiente Docker\"; then"), "fluxo Docker nao deve abortar automaticamente quando status retornar pendencias");
 assert.ok(updateScript.includes("update_panel_job_state"), "update.sh deve persistir progresso do job antes do restart Docker");
 assert.ok(updateScript.includes("validate_docker_stack_after_update"), "update.sh deve validar stack antes de marcar sucesso");
 assert.ok(updateScript.indexOf("validate_docker_stack_after_update") < updateScript.lastIndexOf("update_panel_job_state \"success\""), "update.sh deve validar saude antes do sucesso");
