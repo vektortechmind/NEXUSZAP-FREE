@@ -22,6 +22,7 @@ Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
 - Cobertura de backend e frontend reforcada para validar o contrato de templates globais em disparos agendados e evitar regressao no envio com midia reaproveitada.
 - Cobertura de chat ampliada para validar pausa/retomada da IA por conversa, serializacao realtime e indicador visual `Atendimento humano`.
+- Build Docker do backend corrigido para fornecer `DATABASE_URL` placeholder durante `prisma generate` com Prisma 7.
 
 ## [1.0.15] - 2026-06-18
 
