@@ -18,12 +18,27 @@ export type ScheduledDispatchHistoryItem = {
   body: string | null;
   mediaUrl: string | null;
   buttons: ScheduledDispatchUrlButton[];
+  campaignId: string | null;
+  campaign: ScheduledDispatchCampaignSummary | null;
   scheduledAt: string;
   status: ScheduledDispatchStatus;
   providerMessageId: string | null;
   failureCode: string | null;
   providerError: string | null;
   processedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type ScheduledDispatchCampaignSummary = {
+  id: string;
+  instanceId: string;
+  targetType: "NUMBER" | "GROUP";
+  totalDestinations: number;
+  baseScheduledAt: string;
+  delaySeconds: number;
+  pauseEveryCount: number;
+  pauseDurationSeconds: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -43,6 +58,8 @@ export type ScheduledDispatchDraft = {
   groupJids: string[];
   numberDelaySeconds: string;
   groupDelaySeconds: string;
+  pauseEveryCount: string;
+  pauseDurationSeconds: string;
   contentType: ScheduledDispatchContentType;
   body: string;
   mediaUrl: string;
@@ -62,6 +79,8 @@ export type ScheduledDispatchDraftValidation = {
   instanceId?: string;
   numberDelaySeconds?: string;
   groupDelaySeconds?: string;
+  pauseEveryCount?: string;
+  pauseDurationSeconds?: string;
   canSubmit: boolean;
 };
 
@@ -90,6 +109,8 @@ export function createInitialScheduledDispatchDraft(now = new Date()): Scheduled
     groupJids: [],
     numberDelaySeconds: "0",
     groupDelaySeconds: "0",
+    pauseEveryCount: "0",
+    pauseDurationSeconds: "0",
     contentType: "text",
     body: "",
     mediaUrl: "",
@@ -165,6 +186,36 @@ export function normalizeScheduledDispatchDelay(value: string) {
   return Number.isInteger(parsed) && parsed >= 0 ? parsed : Number.NaN;
 }
 
+export function normalizeScheduledDispatchPauseEveryCount(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return 0;
+  const parsed = Number(trimmed);
+  return Number.isInteger(parsed) && parsed >= 0 ? parsed : Number.NaN;
+}
+
+export function calculateScheduledDispatchPreview(input: {
+  totalDestinations: number;
+  baseScheduledAt: Date;
+  delaySeconds: number;
+  pauseEveryCount: number;
+  pauseDurationSeconds: number;
+}) {
+  const pauseEnabled = input.pauseEveryCount > 0 && input.pauseDurationSeconds > 0;
+  const estimatedPauseCount = pauseEnabled && input.totalDestinations > 0
+    ? Math.floor((input.totalDestinations - 1) / input.pauseEveryCount)
+    : 0;
+  const lastIndex = Math.max(0, input.totalDestinations - 1);
+  const offsetSeconds = (lastIndex * input.delaySeconds) + (estimatedPauseCount * input.pauseDurationSeconds);
+  return {
+    totalDestinations: input.totalDestinations,
+    delaySeconds: input.delaySeconds,
+    pauseEveryCount: input.pauseEveryCount,
+    pauseDurationSeconds: input.pauseDurationSeconds,
+    estimatedPauseCount,
+    estimatedFinishAt: new Date(input.baseScheduledAt.getTime() + (offsetSeconds * 1000)),
+  };
+}
+
 export function resolveScheduledDispatchIso(draft: ScheduledDispatchDraft, now = new Date()) {
   if (draft.deliveryMode === "immediate") return now.toISOString();
   return new Date(draft.scheduledAt).toISOString();
@@ -215,6 +266,18 @@ export function validateScheduledDispatchDraft(draft: ScheduledDispatchDraft): S
       result.groupDelaySeconds = "Informe um atraso entre 0 e 86400 segundos.";
       result.canSubmit = false;
     }
+  }
+
+  const pauseEveryCount = normalizeScheduledDispatchPauseEveryCount(draft.pauseEveryCount);
+  if (Number.isNaN(pauseEveryCount) || pauseEveryCount > 10_000) {
+    result.pauseEveryCount = "Informe uma pausa a cada entre 0 e 10000 envios.";
+    result.canSubmit = false;
+  }
+
+  const pauseDurationSeconds = normalizeScheduledDispatchDelay(draft.pauseDurationSeconds);
+  if (Number.isNaN(pauseDurationSeconds) || pauseDurationSeconds > 86_400) {
+    result.pauseDurationSeconds = "Informe uma duracao de pausa entre 0 e 86400 segundos.";
+    result.canSubmit = false;
   }
 
   if (draft.contentType === "text") {

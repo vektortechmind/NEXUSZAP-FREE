@@ -115,6 +115,7 @@ model Instance {
   messages            Message[]
   agent               Agent?
   integrationCredentials IntegrationCredential[]
+  scheduledDispatchCampaigns ScheduledDispatchCampaign[]
   scheduledDispatches ScheduledDispatch[]
 
   @@index([slot])
@@ -330,10 +331,31 @@ model Settings {
   updatedAt   DateTime @updatedAt
 }
 
+model ScheduledDispatchCampaign {
+  id                   String                      @id @default(uuid())
+  instanceId           String
+  instance             Instance                    @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  targetType           ScheduledDispatchTargetType
+  totalDestinations    Int
+  baseScheduledAt      DateTime
+  delaySeconds         Int                         @default(0)
+  pauseEveryCount      Int                         @default(0)
+  pauseDurationSeconds Int                         @default(0)
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @default(now()) @updatedAt
+
+  dispatches           ScheduledDispatch[]
+
+  @@index([instanceId, createdAt])
+  @@index([instanceId, baseScheduledAt])
+}
+
 model ScheduledDispatch {
   id                String                      @id @default(uuid())
   instanceId        String
   instance          Instance                    @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  campaignId        String?
+  campaign          ScheduledDispatchCampaign?  @relation(fields: [campaignId], references: [id], onDelete: SetNull)
   targetType        ScheduledDispatchTargetType
   recipientPhone    String?
   recipientJid      String?
@@ -352,5 +374,6 @@ model ScheduledDispatch {
 
   @@index([instanceId, createdAt])
   @@index([instanceId, scheduledAt])
+  @@index([campaignId])
   @@index([status, scheduledAt])
 }

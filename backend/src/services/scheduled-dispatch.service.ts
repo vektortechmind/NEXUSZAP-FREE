@@ -1,14 +1,16 @@
-import { type ScheduledDispatch, type ScheduledDispatchContentType, type ScheduledDispatchStatus, type ScheduledDispatchTargetType } from "@prisma/client";
+import { type ScheduledDispatch, type ScheduledDispatchCampaign, type ScheduledDispatchContentType, type ScheduledDispatchStatus, type ScheduledDispatchTargetType } from "@prisma/client";
 import { prisma } from "../database/prisma";
 import { normalizeOperationalPhoneDigits } from "../utils/phoneNormalization";
 
-export type ScheduledDispatchRecord = ScheduledDispatch;
+export type ScheduledDispatchCampaignRecord = ScheduledDispatchCampaign;
+export type ScheduledDispatchRecord = ScheduledDispatch & { campaign?: ScheduledDispatchCampaignRecord | null };
 export type ScheduledDispatchUrlButton = {
   text: string;
   url: string;
 };
 export type ScheduledDispatchViewRecord = Omit<ScheduledDispatchRecord, "buttonsJson"> & {
   buttons: ScheduledDispatchUrlButton[];
+  campaign: ScheduledDispatchCampaignRecord | null;
 };
 
 export type ScheduledDispatchGroupTarget = {
@@ -21,6 +23,7 @@ export type ScheduledDispatchGroupTarget = {
 
 type ScheduledDispatchCreateInput = {
   instanceId: string;
+  campaignId?: string | null;
   targetType: "number" | "group";
   phone?: string | null;
   groupJid?: string | null;
@@ -34,6 +37,8 @@ type ScheduledDispatchCreateInput = {
   scheduledAt?: Date | null;
   numberDelaySeconds?: number | null;
   groupDelaySeconds?: number | null;
+  pauseEveryCount?: number | null;
+  pauseDurationSeconds?: number | null;
 };
 
 type ScheduledDispatchListInput = {
@@ -54,8 +59,18 @@ export type ScheduledDispatchStore = {
   findInstance(instanceId: string): Promise<{ id: string } | null>;
   listGroupTargets(input: { instanceId: string; search?: string }): Promise<ScheduledDispatchGroupTarget[]>;
   findGroupTarget(input: { instanceId: string; jid: string }): Promise<ScheduledDispatchGroupTarget | null>;
+  createCampaign(input: {
+    instanceId: string;
+    targetType: ScheduledDispatchTargetType;
+    totalDestinations: number;
+    baseScheduledAt: Date;
+    delaySeconds: number;
+    pauseEveryCount: number;
+    pauseDurationSeconds: number;
+  }): Promise<ScheduledDispatchCampaignRecord>;
   createDispatch(input: {
     instanceId: string;
+    campaignId?: string | null;
     targetType: ScheduledDispatchTargetType;
     recipientPhone?: string | null;
     recipientJid?: string | null;
@@ -156,6 +171,34 @@ function normalizeDelaySeconds(value?: number | null, field = "delaySeconds") {
   return value;
 }
 
+function normalizePauseEveryCount(value?: number | null) {
+  if (value == null) return 0;
+  if (!Number.isInteger(value) || value < 0 || value > 10_000) {
+    throw new ScheduledDispatchValidationError("pauseEveryCount deve ser um inteiro entre 0 e 10000.");
+  }
+  return value;
+}
+
+function normalizePauseDurationSeconds(value?: number | null) {
+  return normalizeDelaySeconds(value, "pauseDurationSeconds");
+}
+
+export function calculateScheduledDispatchAt(input: {
+  baseScheduledAt: Date;
+  index: number;
+  delaySeconds: number;
+  pauseEveryCount?: number | null;
+  pauseDurationSeconds?: number | null;
+}) {
+  const pauseEveryCount = input.pauseEveryCount && input.pauseEveryCount > 0 ? input.pauseEveryCount : 0;
+  const pauseDurationSeconds = input.pauseDurationSeconds && input.pauseDurationSeconds > 0 ? input.pauseDurationSeconds : 0;
+  const pauseBlocks = pauseEveryCount > 0 && pauseDurationSeconds > 0
+    ? Math.floor(input.index / pauseEveryCount)
+    : 0;
+  const offsetSeconds = (input.index * input.delaySeconds) + (pauseBlocks * pauseDurationSeconds);
+  return new Date(input.baseScheduledAt.getTime() + (offsetSeconds * 1000));
+}
+
 const MAX_SCHEDULED_DISPATCH_BUTTONS = 3;
 const MAX_SCHEDULED_DISPATCH_BUTTON_TEXT_LENGTH = 60;
 
@@ -245,9 +288,10 @@ export function parseScheduledDispatchButtons(buttonsJson: string | null): Sched
 }
 
 function toScheduledDispatchView(record: ScheduledDispatchRecord): ScheduledDispatchViewRecord {
-  const { buttonsJson, ...rest } = record;
+  const { buttonsJson, campaign, ...rest } = record;
   return {
     ...rest,
+    campaign: campaign ?? null,
     buttons: parseScheduledDispatchButtons(buttonsJson),
   };
 }
@@ -300,7 +344,7 @@ async function transitionDispatchWithPrisma(input: ScheduledDispatchTransitionIn
 
     if (result.count !== 1) return null;
 
-    const updated = await tx.scheduledDispatch.findUnique({ where: { id: input.id } });
+    const updated = await tx.scheduledDispatch.findUnique({ where: { id: input.id }, include: { campaign: true } });
     if (!updated) return null;
 
     return updated;
@@ -355,10 +399,25 @@ export const prismaScheduledDispatchStore: ScheduledDispatchStore = {
     });
   },
 
+  async createCampaign(input) {
+    return prisma.scheduledDispatchCampaign.create({
+      data: {
+        instanceId: input.instanceId,
+        targetType: input.targetType,
+        totalDestinations: input.totalDestinations,
+        baseScheduledAt: input.baseScheduledAt,
+        delaySeconds: input.delaySeconds,
+        pauseEveryCount: input.pauseEveryCount,
+        pauseDurationSeconds: input.pauseDurationSeconds,
+      },
+    });
+  },
+
   async createDispatch(input) {
     return prisma.scheduledDispatch.create({
       data: {
         instanceId: input.instanceId,
+        campaignId: input.campaignId ?? null,
         targetType: input.targetType,
         recipientPhone: input.recipientPhone ?? null,
         recipientJid: input.recipientJid ?? null,
@@ -369,6 +428,7 @@ export const prismaScheduledDispatchStore: ScheduledDispatchStore = {
         scheduledAt: input.scheduledAt,
         status: input.status,
       },
+      include: { campaign: true },
     });
   },
 
@@ -376,6 +436,7 @@ export const prismaScheduledDispatchStore: ScheduledDispatchStore = {
     return prisma.scheduledDispatch.findMany({
       where: input.instanceId ? { instanceId: input.instanceId } : undefined,
       orderBy: [{ scheduledAt: "desc" }, { createdAt: "desc" }],
+      include: { campaign: true },
     });
   },
 
@@ -387,11 +448,12 @@ export const prismaScheduledDispatchStore: ScheduledDispatchStore = {
       },
       orderBy: [{ scheduledAt: "asc" }, { createdAt: "asc" }],
       take: input.limit,
+      include: { campaign: true },
     });
   },
 
   async findDispatchById(id) {
-    return prisma.scheduledDispatch.findUnique({ where: { id } });
+    return prisma.scheduledDispatch.findUnique({ where: { id }, include: { campaign: true } });
   },
 
   async transitionDispatch(input) {
@@ -414,9 +476,11 @@ export function createInMemoryScheduledDispatchStore(seed: {
   groups?: Array<{ instanceId: string; jid: string; name?: string | null; lastMessageAt?: Date; updatedAt?: Date }>;
 } = {}): ScheduledDispatchStore & {
   dispatches: Map<string, ScheduledDispatchRecord>;
+  campaigns: Map<string, ScheduledDispatchCampaignRecord>;
 } {
   const instances = new Map((seed.instances ?? []).map((instance) => [instance.id, instance]));
   const dispatches = new Map<string, ScheduledDispatchRecord>();
+  const campaigns = new Map<string, ScheduledDispatchCampaignRecord>();
   const groups = new Map<string, ScheduledDispatchGroupTarget>(
     (seed.groups ?? []).map((group) => {
       const lastMessageAt = group.lastMessageAt ?? new Date();
@@ -434,6 +498,7 @@ export function createInMemoryScheduledDispatchStore(seed: {
 
   return {
     dispatches,
+    campaigns,
     async findInstance(instanceId) {
       return instances.get(instanceId) ?? null;
     },
@@ -454,11 +519,31 @@ export function createInMemoryScheduledDispatchStore(seed: {
     async findGroupTarget(input) {
       return groups.get(`${input.instanceId}:${normalizeGroupJid(input.jid)}`) ?? null;
     },
+    async createCampaign(input) {
+      const now = new Date();
+      const campaign: ScheduledDispatchCampaignRecord = {
+        id: newId("scheduled-dispatch-campaign"),
+        instanceId: input.instanceId,
+        targetType: input.targetType,
+        totalDestinations: input.totalDestinations,
+        baseScheduledAt: input.baseScheduledAt,
+        delaySeconds: input.delaySeconds,
+        pauseEveryCount: input.pauseEveryCount,
+        pauseDurationSeconds: input.pauseDurationSeconds,
+        createdAt: now,
+        updatedAt: now,
+      };
+      campaigns.set(campaign.id, campaign);
+      return campaign;
+    },
     async createDispatch(input) {
       const now = new Date();
+      const campaign = input.campaignId ? campaigns.get(input.campaignId) ?? null : null;
       const record: ScheduledDispatchRecord = {
         id: newId("scheduled-dispatch"),
         instanceId: input.instanceId,
+        campaignId: input.campaignId ?? null,
+        campaign,
         targetType: input.targetType,
         recipientPhone: input.recipientPhone ?? null,
         recipientJid: input.recipientJid ?? null,
@@ -595,6 +680,7 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
 
       return toScheduledDispatchView(await store.createDispatch({
         instanceId: input.instanceId,
+        campaignId: input.campaignId ?? null,
         targetType,
         recipientPhone,
         recipientJid,
@@ -611,6 +697,8 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
       const phones = normalizePhoneList(input.phones ?? (input.phone ? [input.phone] : []));
       const groupJids = normalizeGroupJidList(input.groupJids ?? (input.groupJid ? [input.groupJid] : []));
       const baseScheduledAt = resolveScheduledAt(input);
+      const pauseEveryCount = normalizePauseEveryCount(input.pauseEveryCount);
+      const pauseDurationSeconds = normalizePauseDurationSeconds(input.pauseDurationSeconds);
 
       if (Number.isNaN(baseScheduledAt.getTime())) {
         throw new ScheduledDispatchValidationError("Data de agendamento invalida.");
@@ -625,16 +713,33 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
           throw new ScheduledDispatchValidationError("Informe ao menos um numero valido.");
         }
 
+        const campaign = await store.createCampaign({
+          instanceId: input.instanceId,
+          targetType: "NUMBER",
+          totalDestinations: phones.length,
+          baseScheduledAt,
+          delaySeconds: numberDelaySeconds,
+          pauseEveryCount,
+          pauseDurationSeconds,
+        });
+
         const dispatches: ScheduledDispatchViewRecord[] = [];
         for (const [index, phone] of phones.entries()) {
           dispatches.push(await this.createDispatch({
             ...input,
+            campaignId: campaign.id,
             deliveryMode: "scheduled",
             phone,
             groupJid: null,
             phones: null,
             groupJids: null,
-            scheduledAt: new Date(baseScheduledAt.getTime() + (index * numberDelaySeconds * 1000)),
+            scheduledAt: calculateScheduledDispatchAt({
+              baseScheduledAt,
+              index,
+              delaySeconds: numberDelaySeconds,
+              pauseEveryCount,
+              pauseDurationSeconds,
+            }),
           }));
         }
         return dispatches;
@@ -648,16 +753,33 @@ export function createScheduledDispatchService(deps: { store?: ScheduledDispatch
         throw new ScheduledDispatchValidationError("Selecione ao menos um grupo valido.");
       }
 
+      const campaign = await store.createCampaign({
+        instanceId: input.instanceId,
+        targetType: "GROUP",
+        totalDestinations: groupJids.length,
+        baseScheduledAt,
+        delaySeconds: groupDelaySeconds,
+        pauseEveryCount,
+        pauseDurationSeconds,
+      });
+
       const dispatches: ScheduledDispatchViewRecord[] = [];
       for (const [index, groupJid] of groupJids.entries()) {
         dispatches.push(await this.createDispatch({
           ...input,
+          campaignId: campaign.id,
           deliveryMode: "scheduled",
           phone: null,
           groupJid,
           phones: null,
           groupJids: null,
-          scheduledAt: new Date(baseScheduledAt.getTime() + (index * groupDelaySeconds * 1000)),
+          scheduledAt: calculateScheduledDispatchAt({
+            baseScheduledAt,
+            index,
+            delaySeconds: groupDelaySeconds,
+            pauseEveryCount,
+            pauseDurationSeconds,
+          }),
         }));
       }
       return dispatches;

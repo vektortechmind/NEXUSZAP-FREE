@@ -115,6 +115,39 @@ function createApp() {
   assert.equal(createdText[0].scheduledAt, "2026-06-20T12:00:00.000Z");
   assert.equal(createdText[1].scheduledAt, "2026-06-20T12:00:45.000Z");
   assert.equal(createdText[2].scheduledAt, "2026-06-20T12:01:30.000Z");
+  assert.ok(createdText[0].campaignId, "jobs em massa devem receber campaignId");
+  assert.equal(createdText[0].campaignId, createdText[1].campaignId);
+  assert.equal(createdText[0].campaign.totalDestinations, 3);
+  assert.equal(createdText[0].campaign.pauseEveryCount, 0);
+
+  const createPausedNumbersResponse = await app.inject({
+    method: "POST",
+    url: "/api/scheduled-dispatches",
+    payload: {
+      instanceId: "instance-a",
+      targetType: "number",
+      phones: ["551100000001", "551100000002", "551100000003", "551100000004", "551100000005"],
+      contentType: "text",
+      body: "Campanha com pausa",
+      deliveryMode: "scheduled",
+      scheduledAt: "2026-06-20T13:00:00.000Z",
+      numberDelaySeconds: 10,
+      pauseEveryCount: 2,
+      pauseDurationSeconds: 60,
+    },
+  });
+  assert.equal(createPausedNumbersResponse.statusCode, 201, createPausedNumbersResponse.body);
+  const pausedNumbers = JSON.parse(createPausedNumbersResponse.body).dispatches;
+  assert.deepEqual(pausedNumbers.map((dispatch) => dispatch.scheduledAt), [
+    "2026-06-20T13:00:00.000Z",
+    "2026-06-20T13:00:10.000Z",
+    "2026-06-20T13:01:20.000Z",
+    "2026-06-20T13:01:30.000Z",
+    "2026-06-20T13:02:40.000Z",
+  ]);
+  assert.equal(pausedNumbers[0].campaignId, pausedNumbers[4].campaignId);
+  assert.equal(pausedNumbers[0].campaign.pauseEveryCount, 2);
+  assert.equal(pausedNumbers[0].campaign.pauseDurationSeconds, 60);
 
   const createImageResponse = await app.inject({
     method: "POST",
@@ -129,6 +162,8 @@ function createApp() {
       deliveryMode: "scheduled",
       scheduledAt: "2026-06-21T15:30:00.000Z",
       groupDelaySeconds: 30,
+      pauseEveryCount: 1,
+      pauseDurationSeconds: 120,
     },
   });
   assert.equal(createImageResponse.statusCode, 201, createImageResponse.body);
@@ -137,7 +172,9 @@ function createApp() {
   assert.equal(createdImage[0].targetType, "GROUP");
   assert.equal(createdImage[0].contentType, "IMAGE");
   assert.equal(createdImage[0].mediaUrl, uploadedMedia.mediaUrl);
-  assert.equal(createdImage[1].scheduledAt, "2026-06-21T15:30:30.000Z");
+  assert.equal(createdImage[0].scheduledAt, "2026-06-21T15:30:00.000Z");
+  assert.equal(createdImage[1].scheduledAt, "2026-06-21T15:32:30.000Z");
+  assert.equal(createdImage[0].campaignId, createdImage[1].campaignId);
 
   const detailResponse = await app.inject({ method: "GET", url: `/api/scheduled-dispatches/${createdImage[1].id}` });
   assert.equal(detailResponse.statusCode, 200, detailResponse.body);
@@ -145,6 +182,7 @@ function createApp() {
 
   const cancelResponse = await app.inject({ method: "POST", url: `/api/scheduled-dispatches/${createdImage[0].id}/cancel` });
   assert.equal(cancelResponse.statusCode, 200, cancelResponse.body);
+  assert.equal(JSON.parse(cancelResponse.body).dispatch.campaignId, createdImage[0].campaignId);
 
   const clearHistoryResponse = await app.inject({ method: "DELETE", url: "/api/scheduled-dispatches/history?instanceId=instance-a" });
   assert.equal(clearHistoryResponse.statusCode, 200, clearHistoryResponse.body);
@@ -181,6 +219,23 @@ function createApp() {
   assert.equal(invalidTargetsResponse.statusCode, 400, invalidTargetsResponse.body);
   assert.equal(JSON.parse(invalidTargetsResponse.body).code, "SCHEDULED_DISPATCH_CONTRACT_INVALID");
 
+  const invalidPauseResponse = await app.inject({
+    method: "POST",
+    url: "/api/scheduled-dispatches",
+    payload: {
+      instanceId: "instance-a",
+      targetType: "number",
+      phones: ["5511888882222"],
+      contentType: "text",
+      body: "Pausa invalida",
+      deliveryMode: "scheduled",
+      scheduledAt: "2026-06-21T15:30:00.000Z",
+      pauseEveryCount: 10001,
+      pauseDurationSeconds: 1,
+    },
+  });
+  assert.equal(invalidPauseResponse.statusCode, 400, invalidPauseResponse.body);
+
   const videoButtonsResponse = await app.inject({
     method: "POST",
     url: "/api/scheduled-dispatches",
@@ -202,7 +257,7 @@ function createApp() {
   const listAllResponse = await app.inject({ method: "GET", url: "/api/scheduled-dispatches" });
   assert.equal(listAllResponse.statusCode, 200, listAllResponse.body);
   const allDispatches = JSON.parse(listAllResponse.body).dispatches;
-  assert.equal(allDispatches.length, 5);
+  assert.equal(allDispatches.length, 10);
 
   await app.close();
   console.log("scheduled-dispatch-api: OK");

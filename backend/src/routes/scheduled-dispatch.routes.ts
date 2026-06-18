@@ -51,6 +51,8 @@ const createDispatchBodySchema = z.object({
   scheduledAt: z.string().datetime().optional().nullable(),
   numberDelaySeconds: z.coerce.number().int().min(0).max(86400).optional().nullable(),
   groupDelaySeconds: z.coerce.number().int().min(0).max(86400).optional().nullable(),
+  pauseEveryCount: z.coerce.number().int().min(0).max(10000).optional().nullable(),
+  pauseDurationSeconds: z.coerce.number().int().min(0).max(86400).optional().nullable(),
 }).strict();
 
 const listDispatchesQuerySchema = z.object({
@@ -280,6 +282,8 @@ export function createScheduledDispatchRoutes(deps: ScheduledDispatchRoutesDeps 
           scheduledAt: body.scheduledAt ? new Date(body.scheduledAt) : null,
           numberDelaySeconds: body.numberDelaySeconds ?? null,
           groupDelaySeconds: body.groupDelaySeconds ?? null,
+          pauseEveryCount: body.pauseEveryCount ?? null,
+          pauseDurationSeconds: body.pauseDurationSeconds ?? null,
         });
         return reply.status(201).send({
           dispatch: dispatches[0] ? serializeDate(dispatches[0]) : null,

@@ -9,6 +9,7 @@ import { api } from "../lib/axios";
 import type { InstanceStatus } from "../features/instances/types";
 import {
   applyInstanceToDraft,
+  calculateScheduledDispatchPreview,
   canCancelScheduledDispatch,
   createEmptyScheduledDispatchButton,
   createInitialScheduledDispatchDraft,
@@ -16,6 +17,7 @@ import {
   isSafeMediaUrl,
   MAX_SCHEDULED_DISPATCH_BUTTONS,
   normalizeScheduledDispatchDelay,
+  normalizeScheduledDispatchPauseEveryCount,
   normalizeScheduledDispatchButtons,
   normalizeScheduledDispatchPhones,
   resolveScheduledDispatchIso,
@@ -36,6 +38,19 @@ type DispatchListResponse = { dispatches: ScheduledDispatchHistoryItem[] };
 type DispatchMutationResponse = { dispatch: ScheduledDispatchHistoryItem | null; dispatches: ScheduledDispatchHistoryItem[] };
 type UploadMediaResponse = { mediaId: string; fileName: string; mimeType: string; mediaUrl: string };
 type ClearHistoryResponse = { deleted: number };
+
+type CampaignHistorySummary = {
+  campaignId: string;
+  total: number;
+  sent: number;
+  scheduled: number;
+  processing: number;
+  failed: number;
+  cancelled: number;
+  firstScheduledAt: string;
+  lastScheduledAt: string;
+  campaign: NonNullable<ScheduledDispatchHistoryItem["campaign"]>;
+};
 
 const selectClassName = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 shadow-sm transition-colors duration-200 focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:border-emerald-400 dark:focus:ring-emerald-400/25";
 const textareaClassName = `${selectClassName} min-h-32 resize-y`;
@@ -106,6 +121,35 @@ function pruneSelectedGroupJids(groups: ScheduledDispatchGroup[], groupJids: str
   return groupJids.filter((jid) => known.has(jid));
 }
 
+function buildCampaignSummaries(dispatches: ScheduledDispatchHistoryItem[]): CampaignHistorySummary[] {
+  const byCampaign = new Map<string, CampaignHistorySummary>();
+  for (const dispatch of dispatches) {
+    if (!dispatch.campaignId || !dispatch.campaign) continue;
+    const current = byCampaign.get(dispatch.campaignId) ?? {
+      campaignId: dispatch.campaignId,
+      total: 0,
+      sent: 0,
+      scheduled: 0,
+      processing: 0,
+      failed: 0,
+      cancelled: 0,
+      firstScheduledAt: dispatch.scheduledAt,
+      lastScheduledAt: dispatch.scheduledAt,
+      campaign: dispatch.campaign,
+    };
+    current.total += 1;
+    if (dispatch.status === "SENT") current.sent += 1;
+    if (dispatch.status === "SCHEDULED") current.scheduled += 1;
+    if (dispatch.status === "PROCESSING") current.processing += 1;
+    if (dispatch.status === "FAILED") current.failed += 1;
+    if (dispatch.status === "CANCELLED") current.cancelled += 1;
+    if (new Date(dispatch.scheduledAt).getTime() < new Date(current.firstScheduledAt).getTime()) current.firstScheduledAt = dispatch.scheduledAt;
+    if (new Date(dispatch.scheduledAt).getTime() > new Date(current.lastScheduledAt).getTime()) current.lastScheduledAt = dispatch.scheduledAt;
+    byCampaign.set(dispatch.campaignId, current);
+  }
+  return Array.from(byCampaign.values()).sort((left, right) => new Date(right.campaign.createdAt).getTime() - new Date(left.campaign.createdAt).getTime());
+}
+
 export function ScheduledDispatchPage() {
   const { addToast } = useToast();
   const mediaInputRef = useRef<HTMLInputElement | null>(null);
@@ -134,9 +178,21 @@ export function ScheduledDispatchPage() {
   const visibleGroups = useMemo(() => filterScheduledDispatchGroups(groups, deferredGroupSearch), [deferredGroupSearch, groups]);
   const selectedGroups = useMemo(() => groups.filter((group) => draft.groupJids.includes(group.jid)), [draft.groupJids, groups]);
   const parsedPhones = useMemo(() => normalizeScheduledDispatchPhones(draft.phonesText), [draft.phonesText]);
+  const destinationCount = draft.targetType === "number" ? parsedPhones.length : draft.groupJids.length;
+  const activeDelaySeconds = draft.targetType === "number" ? normalizeScheduledDispatchDelay(draft.numberDelaySeconds) : normalizeScheduledDispatchDelay(draft.groupDelaySeconds);
+  const pauseEveryCount = normalizeScheduledDispatchPauseEveryCount(draft.pauseEveryCount);
+  const pauseDurationSeconds = normalizeScheduledDispatchDelay(draft.pauseDurationSeconds);
+  const rhythmPreview = useMemo(() => calculateScheduledDispatchPreview({
+    totalDestinations: destinationCount,
+    baseScheduledAt: draft.deliveryMode === "scheduled" && !Number.isNaN(new Date(draft.scheduledAt).getTime()) ? new Date(draft.scheduledAt) : new Date(),
+    delaySeconds: Number.isNaN(activeDelaySeconds) ? 0 : activeDelaySeconds,
+    pauseEveryCount: Number.isNaN(pauseEveryCount) ? 0 : pauseEveryCount,
+    pauseDurationSeconds: Number.isNaN(pauseDurationSeconds) ? 0 : pauseDurationSeconds,
+  }), [activeDelaySeconds, destinationCount, draft.deliveryMode, draft.scheduledAt, pauseDurationSeconds, pauseEveryCount]);
   const mediaPreviewEnabled = draft.contentType !== "text" && isSafeMediaUrl(draft.mediaUrl);
   const hasUploadedMedia = draft.contentType !== "text" && Boolean(draft.mediaUrl.trim());
   const visibleHistory = useMemo(() => sortDispatchHistory(history), [history]);
+  const campaignSummaries = useMemo(() => buildCampaignSummaries(visibleHistory), [visibleHistory]);
   const historyTotalPages = Math.max(1, Math.ceil(visibleHistory.length / HISTORY_PAGE_SIZE));
   const currentHistoryPage = Math.min(historyPage, historyTotalPages);
   const pagedHistory = useMemo(() => {
@@ -349,6 +405,8 @@ export function ScheduledDispatchPage() {
         groupJids: draft.targetType === "group" ? draft.groupJids : null,
         numberDelaySeconds: draft.targetType === "number" ? normalizeScheduledDispatchDelay(draft.numberDelaySeconds) : null,
         groupDelaySeconds: draft.targetType === "group" ? normalizeScheduledDispatchDelay(draft.groupDelaySeconds) : null,
+        pauseEveryCount: normalizeScheduledDispatchPauseEveryCount(draft.pauseEveryCount),
+        pauseDurationSeconds: normalizeScheduledDispatchDelay(draft.pauseDurationSeconds),
         contentType: draft.contentType,
         body: draft.body.trim() || null,
         mediaUrl: draft.contentType === "text" ? null : draft.mediaUrl.trim(),
@@ -503,14 +561,6 @@ export function ScheduledDispatchPage() {
                 <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Use uma linha por numero ou separe por virgula. Repetidos sao removidos automaticamente.</p>
                 {validation.phonesText ? <p className="mt-1.5 text-sm text-red-600 dark:text-red-400">{validation.phonesText}</p> : null}
                 {parsedPhones.length > 0 ? <InlineAlert tone="info" className="mt-3">{parsedPhones.length} numero(s) pronto(s) para o disparo.</InlineAlert> : null}
-                <Input
-                  label="Atraso por numero (segundos)"
-                  placeholder="0"
-                  inputMode="numeric"
-                  value={draft.numberDelaySeconds}
-                  onChange={(event) => setDraft((current) => ({ ...current, numberDelaySeconds: event.target.value }))}
-                />
-                {validation.numberDelaySeconds ? <p className="text-sm text-red-600 dark:text-red-400">{validation.numberDelaySeconds}</p> : null}
               </div>
             ) : (
               <div className="space-y-4">
@@ -564,14 +614,6 @@ export function ScheduledDispatchPage() {
                     </div>
                   )}
                 </div>
-                <Input
-                  label="Atraso por grupo (segundos)"
-                  placeholder="0"
-                  inputMode="numeric"
-                  value={draft.groupDelaySeconds}
-                  onChange={(event) => setDraft((current) => ({ ...current, groupDelaySeconds: event.target.value }))}
-                />
-                {validation.groupDelaySeconds ? <p className="text-sm text-red-600 dark:text-red-400">{validation.groupDelaySeconds}</p> : null}
               </div>
             )}
           </div>
@@ -700,6 +742,48 @@ export function ScheduledDispatchPage() {
               {validation.buttons ? <p className="text-sm text-red-600 dark:text-red-400">{validation.buttons}</p> : null}
             </div>
 
+            <div className="space-y-3 rounded-xl border border-slate-200 bg-white/90 p-3 dark:border-slate-800 dark:bg-slate-950/50">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Ritmo de envio</h3>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Configure intervalo entre destinos e pausas automaticas por bloco.</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Input
+                  label={draft.targetType === "number" ? "Delay por numero (s)" : "Delay por grupo (s)"}
+                  placeholder="0"
+                  inputMode="numeric"
+                  value={draft.targetType === "number" ? draft.numberDelaySeconds : draft.groupDelaySeconds}
+                  onChange={(event) => setDraft((current) => draft.targetType === "number"
+                    ? { ...current, numberDelaySeconds: event.target.value }
+                    : { ...current, groupDelaySeconds: event.target.value })}
+                />
+                <Input
+                  label="Pausar a cada"
+                  placeholder="0"
+                  inputMode="numeric"
+                  value={draft.pauseEveryCount}
+                  onChange={(event) => setDraft((current) => ({ ...current, pauseEveryCount: event.target.value }))}
+                />
+                <Input
+                  label="Pausar por (s)"
+                  placeholder="0"
+                  inputMode="numeric"
+                  value={draft.pauseDurationSeconds}
+                  onChange={(event) => setDraft((current) => ({ ...current, pauseDurationSeconds: event.target.value }))}
+                />
+              </div>
+              {validation.numberDelaySeconds ? <p className="text-sm text-red-600 dark:text-red-400">{validation.numberDelaySeconds}</p> : null}
+              {validation.groupDelaySeconds ? <p className="text-sm text-red-600 dark:text-red-400">{validation.groupDelaySeconds}</p> : null}
+              {validation.pauseEveryCount ? <p className="text-sm text-red-600 dark:text-red-400">{validation.pauseEveryCount}</p> : null}
+              {validation.pauseDurationSeconds ? <p className="text-sm text-red-600 dark:text-red-400">{validation.pauseDurationSeconds}</p> : null}
+              <div className="grid gap-2 rounded-lg border border-dashed border-slate-300 px-3 py-2.5 text-xs text-slate-600 dark:border-slate-700 dark:text-slate-400 sm:grid-cols-2 xl:grid-cols-4">
+                <span>Total: <strong className="text-slate-900 dark:text-slate-100">{rhythmPreview.totalDestinations}</strong></span>
+                <span>Delay: <strong className="text-slate-900 dark:text-slate-100">{rhythmPreview.delaySeconds}s</strong></span>
+                <span>Pausas: <strong className="text-slate-900 dark:text-slate-100">{rhythmPreview.estimatedPauseCount}</strong></span>
+                <span>Termino estimado: <strong className="text-slate-900 dark:text-slate-100">{formatDateTime(rhythmPreview.estimatedFinishAt.toISOString())}</strong></span>
+              </div>
+            </div>
+
             {selectedGroups.length > 0 ? (
               <InlineAlert tone="success" title="Grupos selecionados">
                 {selectedGroups.length} grupo(s) vinculado(s) ao disparo atual.
@@ -749,9 +833,11 @@ export function ScheduledDispatchPage() {
                 {" · "}
                 Modo: <span className="font-semibold text-slate-900 dark:text-slate-100">{deliveryModeLabels[draft.deliveryMode]}</span>
                 {" · "}
-                Destinos: <span className="font-semibold text-slate-900 dark:text-slate-100">{draft.targetType === "number" ? parsedPhones.length : draft.groupJids.length}</span>
+                Destinos: <span className="font-semibold text-slate-900 dark:text-slate-100">{destinationCount}</span>
                 {" · "}
-                Atraso: <span className="font-semibold text-slate-900 dark:text-slate-100">{draft.targetType === "number" ? normalizeScheduledDispatchDelay(draft.numberDelaySeconds) : normalizeScheduledDispatchDelay(draft.groupDelaySeconds)}s</span>
+                Atraso: <span className="font-semibold text-slate-900 dark:text-slate-100">{Number.isNaN(activeDelaySeconds) ? 0 : activeDelaySeconds}s</span>
+                {" · "}
+                Pausas: <span className="font-semibold text-slate-900 dark:text-slate-100">{rhythmPreview.estimatedPauseCount}</span>
               </div>
 
               <Button onClick={() => void handleSubmit()} loading={saving} disabled={!validation.canSubmit || uploadingMedia} className="w-full">
@@ -788,6 +874,30 @@ export function ScheduledDispatchPage() {
             <InlineAlert tone="info">Nenhum disparo encontrado para a instancia selecionada.</InlineAlert>
           ) : null}
 
+          {campaignSummaries.length > 0 ? (
+            <div className="grid gap-3 lg:grid-cols-2">
+              {campaignSummaries.slice(0, 6).map((summary) => (
+                <div key={summary.campaignId} className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/35">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Campanha {summary.campaignId.slice(0, 8)}</p>
+                      <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{summary.campaign.targetType === "NUMBER" ? "Numeros" : "Grupos"} · delay {summary.campaign.delaySeconds}s · pausa a cada {summary.campaign.pauseEveryCount || "-"}</p>
+                    </div>
+                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-900 dark:text-slate-200">{summary.total}/{summary.campaign.totalDestinations}</span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600 dark:text-slate-400 sm:grid-cols-5">
+                    <span>Enviados <strong className="block text-slate-900 dark:text-slate-100">{summary.sent}</strong></span>
+                    <span>Pendentes <strong className="block text-slate-900 dark:text-slate-100">{summary.scheduled}</strong></span>
+                    <span>Falhos <strong className="block text-slate-900 dark:text-slate-100">{summary.failed}</strong></span>
+                    <span>Cancelados <strong className="block text-slate-900 dark:text-slate-100">{summary.cancelled}</strong></span>
+                    <span>Processando <strong className="block text-slate-900 dark:text-slate-100">{summary.processing}</strong></span>
+                  </div>
+                  <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">Janela: {formatDateTime(summary.firstScheduledAt)} ate {formatDateTime(summary.lastScheduledAt)}</p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
           {pagedHistory.length > 0 ? (
             <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800">
               <ul className="divide-y divide-slate-200 dark:divide-slate-800">
@@ -798,6 +908,7 @@ export function ScheduledDispatchPage() {
                         <div className="flex flex-wrap items-center gap-2">
                           <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${statusToneClassName[dispatch.status]}`}>{SCHEDULED_DISPATCH_STATUS_LABELS[dispatch.status]}</span>
                           <span className="text-sm font-semibold text-slate-900 dark:text-slate-100">{historyContentTypeLabels[dispatch.contentType]}</span>
+                          {dispatch.campaignId ? <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700 dark:bg-slate-900 dark:text-slate-300">Campanha {dispatch.campaignId.slice(0, 8)}</span> : null}
                           <span className="font-mono text-xs text-slate-500 dark:text-slate-400">{dispatch.id}</span>
                         </div>
 

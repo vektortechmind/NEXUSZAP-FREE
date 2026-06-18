@@ -5,12 +5,14 @@ import path from "node:path";
 import { APP_NAV_GROUPS, getAppRouteTitle } from "../src/features/navigation/appNavigation.ts";
 import {
   applyInstanceToDraft,
+  calculateScheduledDispatchPreview,
   canCancelScheduledDispatch,
   createEmptyScheduledDispatchButton,
   createInitialScheduledDispatchDraft,
   filterScheduledDispatchGroups,
   MAX_SCHEDULED_DISPATCH_BUTTONS,
   normalizeScheduledDispatchDelay,
+  normalizeScheduledDispatchPauseEveryCount,
   normalizeScheduledDispatchPhones,
   resolveScheduledDispatchIso,
   resolveScheduledDispatchTargetLabel,
@@ -59,12 +61,27 @@ test("instance changes clear previous group selection and uploaded media", () =>
   assert.equal(next.body, "Campanha");
   assert.equal(next.numberDelaySeconds, "0");
   assert.equal(next.groupDelaySeconds, "0");
+  assert.equal(next.pauseEveryCount, "0");
+  assert.equal(next.pauseDurationSeconds, "0");
 });
 
 test("phone parsing removes separators and duplicates", () => {
   assert.deepEqual(normalizeScheduledDispatchPhones("+55 (11) 99999-1234\n5511999991234,1188887777,1198765432"), ["5511999991234", "551188887777", "551198765432"]);
   assert.equal(normalizeScheduledDispatchDelay("15"), 15);
   assert.equal(normalizeScheduledDispatchDelay(""), 0);
+  assert.equal(normalizeScheduledDispatchPauseEveryCount("3"), 3);
+});
+
+test("programmed pause preview estimates block pauses without initial pause", () => {
+  const preview = calculateScheduledDispatchPreview({
+    totalDestinations: 5,
+    baseScheduledAt: new Date("2026-06-20T13:00:00.000Z"),
+    delaySeconds: 10,
+    pauseEveryCount: 2,
+    pauseDurationSeconds: 60,
+  });
+  assert.equal(preview.estimatedPauseCount, 2);
+  assert.equal(preview.estimatedFinishAt.toISOString(), "2026-06-20T13:02:40.000Z");
 });
 
 test("group filtering and submit validation enforce selected groups", () => {
@@ -199,6 +216,16 @@ test("composer validation supports multi-number, local media upload, and immedia
   });
   assert.equal(invalidNumberDelay.canSubmit, false);
   assert.equal(invalidNumberDelay.numberDelaySeconds, "Informe um atraso entre 0 e 86400 segundos.");
+
+  const invalidPause = validateScheduledDispatchDraft({
+    ...base,
+    contentType: "text",
+    body: "Pausa invalida",
+    pauseEveryCount: "10001",
+    pauseDurationSeconds: "1",
+  });
+  assert.equal(invalidPause.canSubmit, false);
+  assert.equal(invalidPause.pauseEveryCount, "Informe uma pausa a cada entre 0 e 10000 envios.");
 });
 
 test("scheduled dispatch page keeps multi-target composer, group selection, and upload flow", () => {
@@ -210,15 +237,23 @@ test("scheduled dispatch page keeps multi-target composer, group selection, and 
   assert.match(source, /groupJids: draft\.targetType === "group" \? draft\.groupJids : null/);
   assert.match(source, /numberDelaySeconds: draft\.targetType === "number" \? normalizeScheduledDispatchDelay\(draft\.numberDelaySeconds\) : null/);
   assert.match(source, /groupDelaySeconds: draft\.targetType === "group" \? normalizeScheduledDispatchDelay\(draft\.groupDelaySeconds\) : null/);
+  assert.match(source, /pauseEveryCount: normalizeScheduledDispatchPauseEveryCount\(draft\.pauseEveryCount\)/);
+  assert.match(source, /pauseDurationSeconds: normalizeScheduledDispatchDelay\(draft\.pauseDurationSeconds\)/);
   assert.match(source, /type="checkbox"/);
   assert.match(source, /setActiveView\("composer"\)/);
   assert.match(source, /setActiveView\("history"\)/);
   assert.match(source, /Envios/);
   assert.match(source, /max-h-64 overflow-y-auto/);
   assert.match(source, /HISTORY_PAGE_SIZE = 100/);
-  assert.match(source, /Pagina \{historyPage\} de \{historyTotalPages\}/);
-  assert.match(source, /Atraso por numero \(segundos\)/);
-  assert.match(source, /Atraso por grupo \(segundos\)/);
+  assert.match(source, /Pagina \{currentHistoryPage\} de \{historyTotalPages\}/);
+  assert.match(source, /Ritmo de envio/);
+  assert.match(source, /Delay por numero \(s\)/);
+  assert.match(source, /Delay por grupo \(s\)/);
+  assert.match(source, /Pausar a cada/);
+  assert.match(source, /Pausar por \(s\)/);
+  assert.match(source, /Termino estimado/);
+  assert.match(source, /buildCampaignSummaries/);
+  assert.match(source, /Campanha \{dispatch\.campaignId\.slice\(0, 8\)\}/);
   assert.match(source, /Midia opcional/);
   assert.match(source, /accept="image\/\*,video\/\*"/);
   assert.match(source, /Adicionar midia/);
@@ -252,6 +287,8 @@ test("scheduled dispatch history helpers expose status labels and cancellation r
     body: null,
     mediaUrl: null,
     buttons: [],
+    campaignId: null,
+    campaign: null,
     scheduledAt: "2026-06-16T10:00:00.000Z",
     status: "SCHEDULED",
     providerMessageId: null,
