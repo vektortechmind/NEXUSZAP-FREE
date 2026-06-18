@@ -2,6 +2,25 @@
 
 Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
+## [1.0.15] - 2026-06-18
+
+### Added
+
+- Disparos agendados agora podem usar pausas programadas por bloco, permitindo configurar pausa a cada X destinos por Y segundos sem criar pausa manual no worker.
+- Nova entidade persistente de campanha/lote agrupa jobs de disparo, preserva metadados do cronograma e expõe resumo no historico da aba `Envios`/`Historico`.
+- Composer de disparos ganhou secao compacta de ritmo de envio com delay, pausa por bloco e previsao aproximada de termino.
+
+### Changed
+
+- Update Center passou a transmitir logs incrementais do job com cursor, reduzindo atraso visual durante aplicacao de update pelo painel.
+- Worker de disparos continua processando apenas jobs `SCHEDULED` elegiveis por `scheduledAt`; pausas programadas sao calculadas no cronograma de criacao.
+- Versao do frontend, backend, `backend/VERSION`, README e changelog atualizada para `1.0.15`.
+
+### Fixed
+
+- `update.sh` nao aborta mais quando `prisma migrate status` encontra apenas migrations pendentes aplicaveis; o fluxo segue para `npm run db:migrate:deploy` e continua bloqueando drift, erro de conexao e migrations falhadas.
+- Historico de disparos preserva acesso aos jobs individuais mesmo quando exibe resumo de campanha, mantendo cancelamento e diagnostico por job.
+
 ## [1.0.14] - 2026-06-17
 
 ### Added
