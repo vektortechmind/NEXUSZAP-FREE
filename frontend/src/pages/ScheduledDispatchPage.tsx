@@ -1,4 +1,5 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { isAxiosError } from "axios";
 import { useToast } from "../contexts/ToastContext";
 import { Button } from "../components/ui/Button";
 import { InlineAlert } from "../components/ui/InlineAlert";
@@ -38,6 +39,12 @@ type DispatchListResponse = { dispatches: ScheduledDispatchHistoryItem[] };
 type DispatchMutationResponse = { dispatch: ScheduledDispatchHistoryItem | null; dispatches: ScheduledDispatchHistoryItem[] };
 type UploadMediaResponse = { mediaId: string; fileName: string; mimeType: string; mediaUrl: string };
 type ClearHistoryResponse = { deleted: number };
+
+function resolveScheduledDispatchSubmitError(error: unknown) {
+  if (!isAxiosError(error)) return "Nao foi possivel salvar o disparo.";
+  const data = error.response?.data as { error?: string; message?: string } | undefined;
+  return data?.error ?? data?.message ?? "Nao foi possivel salvar o disparo.";
+}
 
 type CampaignHistorySummary = {
   campaignId: string;
@@ -426,7 +433,12 @@ export function ScheduledDispatchPage() {
         scheduledAt: createInitialScheduledDispatchDraft().scheduledAt,
       }));
       setHistoryPage(1);
-      await loadHistory(draft.instanceId);
+      try {
+        await loadHistory(draft.instanceId);
+      } catch (historyError) {
+        console.error(historyError);
+        addToast("Disparo salvo, mas nao foi possivel atualizar o historico agora.", "error");
+      }
       addToast(
         draft.deliveryMode === "immediate"
           ? `${res.data.dispatches.length} envio(s) imediato(s) colocado(s) na fila.`
@@ -435,7 +447,7 @@ export function ScheduledDispatchPage() {
       );
     } catch (err) {
       console.error(err);
-      addToast("Nao foi possivel salvar o disparo.", "error");
+      addToast(resolveScheduledDispatchSubmitError(err), "error");
     } finally {
       setSaving(false);
     }

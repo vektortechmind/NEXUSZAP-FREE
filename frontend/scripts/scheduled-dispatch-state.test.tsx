@@ -239,6 +239,9 @@ test("scheduled dispatch page keeps multi-target composer, group selection, and 
   assert.match(source, /groupDelaySeconds: draft\.targetType === "group" \? normalizeScheduledDispatchDelay\(draft\.groupDelaySeconds\) : null/);
   assert.match(source, /pauseEveryCount: normalizeScheduledDispatchPauseEveryCount\(draft\.pauseEveryCount\)/);
   assert.match(source, /pauseDurationSeconds: normalizeScheduledDispatchDelay\(draft\.pauseDurationSeconds\)/);
+  assert.match(source, /resolveScheduledDispatchSubmitError\(err\)/);
+  assert.match(source, /Disparo salvo, mas nao foi possivel atualizar o historico agora\./);
+  assert.match(source, /try \{\s*await loadHistory\(draft\.instanceId\);\s*\} catch \(historyError\)/s);
   assert.match(source, /type="checkbox"/);
   assert.match(source, /setActiveView\("composer"\)/);
   assert.match(source, /setActiveView\("history"\)/);
