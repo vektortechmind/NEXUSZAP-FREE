@@ -117,9 +117,7 @@ async function handleTelegramMessage(ctx: Context) {
   if (!userContent || !userContent.trim()) return;
 
   const knowledgeFiles = (await listKnowledgeFilesByInstance(instance.id, "TELEGRAM")) ?? [];
-  await ensureKnowledgeExtracted(
-    knowledgeFiles as Array<{ id: string; mimetype: string; data: Buffer; extracted: string | null }>
-  );
+  await ensureKnowledgeExtracted(knowledgeFiles);
   const combinedKnowledge = buildFileContextSuffix(knowledgeFiles);
 
   const behavioral = await getResolvedTelegramPrompt(instance.id);

@@ -14,6 +14,7 @@ const assert = require("assert");
 const fs = require("fs");
 const path = require("path");
 const { PrismaClient } = require("@prisma/client");
+const { PrismaPg } = require("@prisma/adapter-pg");
 const {
   ActiveIntegrationCredentialExistsError,
   DEFAULT_INTEGRATION_REPLAY_WINDOW_MS,
@@ -176,7 +177,8 @@ async function runInMemoryScenarios() {
 }
 
 async function runOptionalPrismaProbe() {
-  const prisma = new PrismaClient();
+  const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL });
+  const prisma = new PrismaClient({ adapter });
 
   try {
     await prisma.$connect();

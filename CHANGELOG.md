@@ -14,6 +14,9 @@ Todas as mudanças relevantes deste projeto serão documentadas neste arquivo.
 
 - Update Center passou a transmitir logs incrementais do job com cursor, reduzindo atraso visual durante aplicacao de update pelo painel.
 - Worker de disparos continua processando apenas jobs `SCHEDULED` elegiveis por `scheduledAt`; pausas programadas sao calculadas no cronograma de criacao.
+- Dependencias de root, backend e frontend foram atualizadas para as versoes mais recentes disponiveis no registry, com `npm outdated` e `npm audit` zerados.
+- Baseline de runtime/build foi elevado para Node 24 no Docker e no CI para acompanhar os requisitos das dependencias atuais.
+- Prisma foi atualizado para 7.8.0, movendo a URL do datasource para `backend/prisma.config.ts` e usando o adapter PostgreSQL no `PrismaClient`.
 - Versao do frontend, backend, `backend/VERSION`, README e changelog atualizada para `1.0.15`.
 
 ### Fixed

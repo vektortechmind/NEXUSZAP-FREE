@@ -409,9 +409,7 @@ export async function handleIncomingMessage(sock: WASocket, instanceId: string, 
       const memory = globalMemoryManager.getMemory(memoryKey, memoryLimit);
 
       const knowledgeFiles = (await listKnowledgeFilesByInstance(instanceId, "WHATSAPP")) ?? [];
-      await ensureKnowledgeExtracted(
-        knowledgeFiles as Array<{ id: string; mimetype: string; data: Buffer; extracted: string | null }>
-      );
+      await ensureKnowledgeExtracted(knowledgeFiles);
       const combinedKnowledge = buildFileContextSuffix(knowledgeFiles) || "";
       const behavioral = await getResolvedAgentPrompt(instanceId);
       const systemContent = buildCompleteSystemPrompt({
